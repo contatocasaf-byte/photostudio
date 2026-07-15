@@ -43,26 +43,40 @@ precisa de um bucket novo, dedicado a este app.
    grátis) em **Settings → Public Access** → copie a URL →
    `NEXT_PUBLIC_R2_PUBLIC_URL`.
 
-## 3. Backend Python (Render, tier grátis)
+## 3. GitHub (dois repositórios novos, vazios)
 
-1. Suba a pasta `brasmam-studio-api` (que já criei) pra um repositório
-   Git novo (posso fazer isso junto com você quando estiver pronto).
-2. No [render.com](https://render.com) → **New → Web Service** → conectar
-   o repositório → Render detecta o `Dockerfile` automaticamente.
-3. Plano: **Free**.
-4. Em **Environment**, adicionar as mesmas `R2_*` do passo 2, mais um
-   `BACKEND_SHARED_SECRET` (qualquer string aleatória longa, só pra travar
-   o acesso — só o Next.js deve chamar esse backend).
-5. Depois do deploy, copiar a URL pública do serviço (tipo
+Os dois projetos já têm commit local pronto — só falta um repositório
+vazio no GitHub pra cada um, pra eu poder subir (`git push`). Não tenho
+`gh` CLI nem suas credenciais, então esse passo é manual:
+
+1. [github.com/new](https://github.com/new) → criar **`brasmam-studio`**
+   (frontend) — deixe **vazio**, sem README/gitignore/license (já temos
+   tudo local, marcar qualquer uma dessas opções cria conflito no push).
+2. Repetir pra **`brasmam-studio-api`** (backend).
+3. Me passa as duas URLs (algo como
+   `https://github.com/<seu-usuário>/brasmam-studio.git`) que eu configuro
+   o remote e faço o push dos dois.
+
+## 4. Backend Python (Render, tier grátis)
+
+1. No [render.com](https://render.com) → **New → Web Service** → conectar
+   o repositório `brasmam-studio-api` do GitHub (passo 3) → Render detecta
+   o `Dockerfile` automaticamente.
+2. Plano: **Free**.
+3. Em **Environment**, adicionar as mesmas `R2_*` do passo 2, mais um
+   `BACKEND_SHARED_SECRET` (qualquer string aleatória longa — já gerei uma
+   pro `.env` local, pode reaproveitar o mesmo valor: veja
+   `brasmam-studio-api\.env`).
+4. Depois do deploy, copiar a URL pública do serviço (tipo
    `https://brasmam-studio-api.onrender.com`) → `BACKEND_URL` no Next.js,
    e o mesmo `BACKEND_SHARED_SECRET` nos dois lados.
 
-## 4. Vercel (frontend)
+## 5. Vercel (frontend)
 
 1. [vercel.com](https://vercel.com) → **Add New → Project** → importar o
-   repositório do `brasmam-studio` (crio o repo Git quando você confirmar).
-2. Adicionar todas as env vars acima (as do `.env.local.example`) em
-   **Settings → Environment Variables**.
+   repositório `brasmam-studio` do GitHub (passo 3).
+2. Adicionar todas as env vars do `.env.local` (veja
+   `brasmam-studio\.env.local`) em **Settings → Environment Variables**.
 3. Deploy automático a cada push, igual ao CRM.
 
 ---
@@ -70,12 +84,15 @@ precisa de um bucket novo, dedicado a este app.
 ## O que eu já fiz (sem depender de conta nenhuma)
 
 - Projeto Next.js criado em `C:\Users\RODRIGO\Projects\brasmam-studio`
-  (login, layout, upload individual, chamada ao backend) — builda limpo.
+  (login, layout, upload individual e em lote, chamada ao backend) —
+  builda limpo, já testado por você de ponta a ponta local.
 - Backend FastAPI criado em `C:\Users\RODRIGO\Projects\brasmam-studio-api`
-  com `/remove-background`, testado localmente contra uma foto real do
-  lote de produtos (fundo removido corretamente, transparência real
-  confirmada no canal alfa).
+  com `/remove-background`, incluindo pós-processamento vetorizado
+  (numpy/scipy) pra remover ilhas internas de fundo — ~20x mais rápido
+  que a primeira versão (Python puro), importante porque hoje o backend
+  roda no seu computador durante os testes locais.
+- Ambos os projetos já têm **commit local** (`git init` + primeiro
+  commit) — só falta o repositório vazio no GitHub (passo 3 acima) pra eu
+  poder subir.
 
-Assim que você tiver os itens 1 e 2 (Supabase + R2) prontos, já dá pra
-testar o fluxo completo local (`npm run dev` + backend local) antes de
-mexer em Render/Vercel.
+Falta só o GitHub (passo 3) pra eu conseguir avançar com Render/Vercel.
