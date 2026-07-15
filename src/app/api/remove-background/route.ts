@@ -3,6 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 
 // Proxy server-side pro microserviço Python (FastAPI) — evita expor a URL
 // do backend e configurar CORS nele para chamadas vindas do navegador.
+//
+// maxDuration alto de propósito: o backend no Render (tier grátis) "dorme"
+// após inatividade e pode levar 30-60s pra acordar na primeira chamada —
+// sem isso, a função da Vercel expira antes do Render responder e o
+// navegador recebe uma resposta vazia (erro "Unexpected end of JSON
+// input"). 60s é o máximo permitido no plano Hobby da Vercel.
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
