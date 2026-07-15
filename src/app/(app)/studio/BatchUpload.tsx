@@ -1,0 +1,134 @@
+"use client";
+
+import { useState } from "react";
+import { removeBackgroundForFile } from "./removeBackground";
+import { getPublicUrl } from "@/lib/storage/public-url";
+
+const MAX_LOTE = 50;
+
+type ItemStatus = "pendente" | "processando" | "pronto" | "erro";
+
+type BatchItem = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: ItemStatus;
+  resultUrl?: string;
+  error?: string;
+};
+
+export default function BatchUpload() {
+  const [items, setItems] = useState<BatchItem[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
+
+  function handleSelect(fileList: FileList | null) {
+    if (!fileList) return;
+    let files = Array.from(fileList);
+    setWarning(null);
+    if (files.length > MAX_LOTE) {
+      setWarning(`Selecionadas ${files.length} fotos — só as primeiras ${MAX_LOTE} foram carregadas (limite do lote).`);
+      files = files.slice(0, MAX_LOTE);
+    }
+    setItems(
+      files.map((file) => ({
+        id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: "pendente",
+      }))
+    );
+  }
+
+  async function processAll() {
+    setProcessing(true);
+    // Processa um de cada vez (sem fila no servidor) — mesma UX de
+    // progresso item-a-item do app desktop original.
+    for (const item of items) {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: "processando" } : i)));
+      try {
+        const resultKey = await removeBackgroundForFile(item.file);
+        setItems((prev) =>
+          prev.map((i) => (i.id === item.id ? { ...i, status: "pronto", resultUrl: getPublicUrl(resultKey) } : i))
+        );
+      } catch (err) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id
+              ? { ...i, status: "erro", error: err instanceof Error ? err.message : "Erro desconhecido." }
+              : i
+          )
+        );
+      }
+    }
+    setProcessing(false);
+  }
+
+  const total = items.length;
+  const prontos = items.filter((i) => i.status === "pronto").length;
+  const erros = items.filter((i) => i.status === "erro").length;
+
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
+      <input
+        type="file"
+        accept="image/*"
+        multiple
+        disabled={processing}
+        onChange={(e) => handleSelect(e.target.files)}
+      />
+      {warning && <p className="mt-2 text-sm text-amber-600">{warning}</p>}
+
+      {total > 0 && (
+        <>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-slate-600">
+              {total} foto{total > 1 ? "s" : ""} selecionada{total > 1 ? "s" : ""}
+              {(prontos > 0 || erros > 0) && ` — ${prontos} pronta${prontos !== 1 ? "s" : ""}, ${erros} com erro`}
+            </p>
+            <button
+              onClick={processAll}
+              disabled={processing}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {processing ? "Processando..." : "Remover fundo de todas"}
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {items.map((item) => (
+              <div key={item.id} className="rounded border border-slate-200 p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.status === "pronto" && item.resultUrl ? item.resultUrl : item.previewUrl}
+                  alt={item.file.name}
+                  className="aspect-square w-full rounded bg-slate-100 object-contain"
+                />
+                <p className="mt-1 truncate text-xs text-slate-500" title={item.file.name}>
+                  {item.file.name}
+                </p>
+                <p
+                  className={
+                    "text-xs " +
+                    (item.status === "pronto"
+                      ? "text-emerald-700"
+                      : item.status === "erro"
+                        ? "text-red-600"
+                        : item.status === "processando"
+                          ? "text-slate-500"
+                          : "text-slate-400")
+                  }
+                >
+                  {item.status === "pendente" && "Aguardando"}
+                  {item.status === "processando" && "Removendo fundo..."}
+                  {item.status === "pronto" && "Pronto"}
+                  {item.status === "erro" && (item.error ?? "Erro")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
