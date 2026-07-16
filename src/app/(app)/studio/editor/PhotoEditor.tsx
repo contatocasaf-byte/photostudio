@@ -425,8 +425,21 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
             <ToolButton label="Cortar" active={store.tool === "crop"} onClick={() => store.setTool("crop")} />
 
             {(store.tool === "pencil" || store.tool === "eraser") && (
-              <label className="mt-2 flex flex-col gap-1 text-xs text-slate-600">
-                Tamanho do pincel ({store.brushSize}px)
+              <div className="mt-2 flex flex-col gap-1 text-xs text-slate-600">
+                <div className="flex items-center justify-between">
+                  <span>Tamanho do pincel</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={200}
+                    value={store.brushSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isNaN(n)) store.setBrushSize(Math.min(200, Math.max(2, n)));
+                    }}
+                    className="w-14 rounded border border-slate-300 px-1 py-0.5 text-right"
+                  />
+                </div>
                 <input
                   type="range"
                   min={2}
@@ -434,7 +447,7 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                   value={store.brushSize}
                   onChange={(e) => store.setBrushSize(Number(e.target.value))}
                 />
-              </label>
+              </div>
             )}
 
             {store.tool === "magic" && (
