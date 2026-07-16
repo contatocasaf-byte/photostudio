@@ -7,7 +7,13 @@ import { useEditorStore, MIN_SCALE, MAX_SCALE, type EditorSnapshot } from "./Edi
 import { floodFillMask } from "./floodFill";
 import { loadImage, splitImageIntoLayers, canvasToDataUrl, dataUrlToCanvas, exportFinal, canvasToBlob } from "./canvasUtils";
 
-const VIEW_SIZE = 640;
+// Igual ao CANVAS_OUT usado em exportFinal (canvasUtils.ts) DE PROPÓSITO:
+// a área de edição precisa ser o mesmo tamanho do canvas exportado, senão
+// uma escala calibrada pra "80% de 640px" vira uma porcentagem diferente
+// quando aplicada num canvas de 1000px na exportação (foi exatamente o
+// bug anterior). Com os dois do mesmo tamanho, o que aparece no editor É
+// o resultado final, sem conversão nenhuma.
+const VIEW_SIZE = 1000;
 // Usado quando o usuário corta manualmente (ferramenta Cortar) — a
 // seleção escolhida na hora vira ~85% do quadro.
 const FIT_RATIO = 0.85;
@@ -452,7 +458,7 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+      <div className="flex max-h-full max-w-7xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h2 className="text-sm font-semibold text-slate-900">Editar foto</h2>
           <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-900">
