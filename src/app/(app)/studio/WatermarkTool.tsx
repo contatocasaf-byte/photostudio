@@ -5,6 +5,7 @@ import { loadImage, canvasToBlob } from "./editor/canvasUtils";
 import { downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
 import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "./FilePickerZone";
+import InfoTooltip from "./InfoTooltip";
 
 const MAX_ITENS = 100;
 // Mesmo tamanho de canvas usado no export do editor (canvasUtils.ts,
@@ -251,10 +252,31 @@ export default function WatermarkTool() {
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
-      <p className="text-sm text-slate-500">
-        Composição: fundo branco → objeto centralizado → marca d&apos;água → logomarca. Use fotos já processadas no
-        Studio (fundo removido, canto transparente).
-      </p>
+      <div className="flex items-start gap-2">
+        <p className="text-sm text-slate-500">
+          Composição: fundo branco → objeto centralizado → marca d&apos;água → logomarca. Use fotos já processadas no
+          Studio (fundo removido, canto transparente).
+        </p>
+        <InfoTooltip title="Como funciona o Aplicador de Marca">
+          <p>
+            Seleciona a <strong>marca d&apos;água</strong> e a <strong>logomarca</strong> (PNGs) uma única vez — elas
+            valem pra todo o lote.
+          </p>
+          <p>Depois escolhe as fotos de produto (já sem fundo, exportadas pelo Editor).</p>
+          <p>
+            Cada foto vira: fundo branco 1000×1000 → objeto centralizado → marca d&apos;água encostada no canto
+            superior esquerdo → logo por cima, no mesmo canto.
+          </p>
+          <p>
+            A marca e a logo <strong>não são reposicionadas</strong> pela ferramenta — o PNG de cada uma já precisa
+            vir pronto do tamanho/posição desejados (desenhado no Canva, Photoshop etc.).
+          </p>
+          <p>
+            Baixe cada resultado individualmente ou tudo em .zip, em alta resolução ou comprimido (80-120&nbsp;KB,
+            pronto pra site/rede social).
+          </p>
+        </InfoTooltip>
+      </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <AssetPicker

@@ -13,6 +13,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { downloadBlob, zipBlobs, uniqueName } from "./download";
 import FilePickerZone from "./FilePickerZone";
+import InfoTooltip from "./InfoTooltip";
 
 type FileEntry = {
   id: string;
@@ -255,11 +256,37 @@ export default function RenamerTool() {
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
-      <p className="text-sm text-slate-500">
-        Envie as fotos na ordem em que foram tiradas (etiqueta do produto seguida das fotos do produto). Marque a foto
-        da etiqueta, digite o código e as fotos seguintes do mesmo grupo recebem <code>código_1</code>,{" "}
-        <code>código_2</code>... automaticamente, até a próxima etiqueta.
-      </p>
+      <div className="flex items-start gap-2">
+        <p className="text-sm text-slate-500">
+          Envie as fotos na ordem em que foram tiradas (etiqueta do produto seguida das fotos do produto). Marque a
+          foto da etiqueta, digite o código e as fotos seguintes do mesmo grupo recebem <code>código_1</code>,{" "}
+          <code>código_2</code>... automaticamente, até a próxima etiqueta.
+        </p>
+        <InfoTooltip title="Como funciona o Renomeador">
+          <p>Sem OCR — a marcação de qual foto é etiqueta e qual é o código é manual.</p>
+          <p>
+            <strong>1.</strong> Envie as fotos na ordem em que foram tiradas: normalmente uma foto da etiqueta do
+            produto, seguida das fotos daquele produto, depois a etiqueta do próximo, e assim por diante.
+          </p>
+          <p>
+            <strong>2.</strong> Clique em &quot;Marcar como etiqueta&quot; na foto da etiqueta — isso insere uma
+            barra de grupo antes dela, com um campo pra digitar o código. A própria foto da etiqueta fica marcada
+            como ignorada (ela não é uma foto de produto).
+          </p>
+          <p>
+            <strong>3.</strong> As fotos seguintes daquele grupo recebem <code>código_1</code>, <code>código_2</code>
+            ... automaticamente, até o próximo grupo.
+          </p>
+          <p>
+            Dá pra arrastar (ícone ⠿) pra reordenar, alternar &quot;Ignorar/Incluir&quot; em qualquer foto, remover
+            itens, ou criar um &quot;Grupo manual&quot; sem foto de etiqueta associada.
+          </p>
+          <p>
+            &quot;Renomear&quot; na prática baixa os arquivos com o nome novo (individual ou .zip) — o navegador não
+            consegue renomear arquivos no disco do computador.
+          </p>
+        </InfoTooltip>
+      </div>
 
       <div className="mt-4">
         <FilePickerZone
