@@ -29,7 +29,7 @@ function computeOpaqueBBox(maskCanvas: HTMLCanvasElement) {
   let minX = w, minY = h, maxX = -1, maxY = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4] > 10) {
+      if (data[(y * w + x) * 4 + 3] > 10) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -177,10 +177,16 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
     const ctx = mask.getContext("2d")!;
     const scale = store.transform.scaleX || 1;
     const radius = Math.max(1, store.brushSize / scale / 2);
-    ctx.fillStyle = erase ? "black" : "white";
+    // A máscara guarda o valor em ALFA, não em RGB — "apagar" precisa
+    // zerar o alfa de verdade (destination-out), não só pintar uma cor
+    // escura por cima (que ficava opaca=255 do mesmo jeito).
+    ctx.save();
+    ctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
+    ctx.fillStyle = "rgba(255,255,255,1)";
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   }
 
   function handleStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
@@ -283,9 +289,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
     const maskData = mctx.getImageData(0, 0, mask.width, mask.height);
     for (let i = 0; i < selData.data.length; i += 4) {
       if (selData.data[i + 3] > 0) {
-        maskData.data[i] = 0;
-        maskData.data[i + 1] = 0;
-        maskData.data[i + 2] = 0;
+        maskData.data[i + 3] = 0; // zera o ALFA — é isso que a composição consulta
       }
     }
     mctx.putImageData(maskData, 0, 0);

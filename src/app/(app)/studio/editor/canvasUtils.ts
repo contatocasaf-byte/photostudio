@@ -13,8 +13,12 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
 // Separa a foto processada (já sem fundo, vinda do R2) em duas camadas,
 // espelhando ItemState do app original: `origCanvas` = cor RGB opaca
 // (usada como base da composição e como fonte de cor pra varinha mágica),
-// `maskCanvas` = alfa atual em escala de cinza (lápis pinta 255, borracha
-// pinta 0). Nota: diferente do original, aqui não temos a foto ANTES do
+// `maskCanvas` = o valor de visibilidade atual guardado no próprio CANAL
+// ALFA do canvas (RGB fica fixo, sem uso) — é isso que
+// `globalCompositeOperation = "destination-in"` consulta em
+// `compositeLayers`; lápis usa "source-over" opaco (restaura o alfa),
+// borracha usa "destination-out" (zera o alfa). Nota: diferente do
+// original, aqui não temos a foto ANTES do
 // rembg — então "restaurar" com o lápis numa área que já estava com alfa
 // zero revela a cor que o rembg deixou ali (que pode ser preto), não a
 // cor real do produto. Isso cobre bem o caso mais comum (apagar resíduo
@@ -53,11 +57,13 @@ export function splitImageIntoLayers(img: HTMLImageElement): {
     origData.data[o + 2] = srcData[o + 2];
     origData.data[o + 3] = 255;
 
-    const a = srcData[o + 3];
-    maskData.data[o] = a;
-    maskData.data[o + 1] = a;
-    maskData.data[o + 2] = a;
-    maskData.data[o + 3] = 255;
+    // O valor da máscara mora no canal ALFA (não no RGB) — é o que a
+    // composição via "destination-in" de fato consulta. RGB fica fixo em
+    // branco opaco, irrelevante pra composição.
+    maskData.data[o] = 255;
+    maskData.data[o + 1] = 255;
+    maskData.data[o + 2] = 255;
+    maskData.data[o + 3] = srcData[o + 3];
   }
 
   octx.putImageData(origData, 0, 0);
