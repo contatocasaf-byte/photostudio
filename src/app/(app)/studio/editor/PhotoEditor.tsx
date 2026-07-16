@@ -8,7 +8,13 @@ import { floodFillMask } from "./floodFill";
 import { loadImage, splitImageIntoLayers, canvasToDataUrl, dataUrlToCanvas, exportFinal, canvasToBlob } from "./canvasUtils";
 
 const VIEW_SIZE = 640;
+// Usado quando o usuário corta manualmente (ferramenta Cortar) — a
+// seleção escolhida na hora vira ~85% do quadro.
 const FIT_RATIO = 0.85;
+// Usado no enquadramento automático (carregar a foto / "Restaurar
+// tudo") — o OBJETO em si (sem a margem de respiro do corte) ocupa
+// ~80% do canvas final.
+const TARGET_OBJECT_RATIO = 0.8;
 
 type Props = {
   imageUrl: string;
@@ -129,10 +135,12 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
 
       // Corte automático ao redor do objeto (com uma margem de respiro),
       // já aplicado de cara — a área de trabalho fica do tamanho do
-      // produto, não da imagem inteira original.
+      // produto, não da imagem inteira original. O ajuste de zoom usa a
+      // caixa JUSTA (sem a margem) como referência, pra o objeto em si
+      // ocupar ~80% do canvas — não 80% da caixa com margem.
       const padded = padBBox(bboxRef.current, img.naturalWidth, img.naturalHeight);
       store.setCropBox(padded);
-      fitCropToView(padded);
+      fitCropToView(bboxRef.current, TARGET_OBJECT_RATIO);
 
       redrawDisplay();
       setReady(true);
@@ -143,8 +151,8 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, originalImageUrl]);
 
-  function fitCropToView(box: { width: number; height: number }) {
-    const scale = Math.min(VIEW_SIZE / box.width, VIEW_SIZE / box.height) * FIT_RATIO;
+  function fitCropToView(box: { width: number; height: number }, ratio: number = FIT_RATIO) {
+    const scale = Math.min(VIEW_SIZE / box.width, VIEW_SIZE / box.height) * ratio;
     store.setTransform({ x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, rotation: 0, scaleX: scale, scaleY: scale });
   }
 
@@ -401,7 +409,7 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     const bbox = computeOpaqueBBox(mask);
     const padded = padBBox(bbox, naturalSizeRef.current.width, naturalSizeRef.current.height);
     store.setCropBox(padded);
-    fitCropToView(padded);
+    fitCropToView(bbox, TARGET_OBJECT_RATIO);
   }
 
   async function handleSave() {
