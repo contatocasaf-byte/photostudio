@@ -84,7 +84,18 @@ export default function BatchUpload() {
     if (!item?.resultKey) return;
     await saveEditedImage(item.resultKey, blob);
     setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, resultUrl: `${getPublicUrl(item.resultKey!)}?t=${Date.now()}` } : i))
+      prev.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              resultUrl: `${getPublicUrl(item.resultKey!)}?t=${Date.now()}`,
+              // A foto processada agora tem outro formato (canvas fixo da
+              // exportação) — a original não serve mais como fonte de cor
+              // sem distorcer numa reedição.
+              originalUrl: undefined,
+            }
+          : i
+      )
     );
     setEditingId(null);
   }

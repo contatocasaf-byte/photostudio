@@ -39,6 +39,11 @@ export default function IndividualUpload() {
     if (!resultKey) return;
     await saveEditedImage(resultKey, blob);
     setResultUrl(`${getPublicUrl(resultKey)}?t=${Date.now()}`);
+    // A partir daqui a foto processada tem outro formato/proporção (canvas
+    // fixo 1000x1000 da exportação) — a original (proporção da câmera) não
+    // serve mais como fonte de cor sem distorcer. Uma reedição usa a
+    // própria foto processada como cor, igual ao caso "sem original".
+    setOriginalUrl(null);
     setEditing(false);
   }
 
