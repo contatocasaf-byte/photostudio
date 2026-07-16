@@ -4,11 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 // Proxy server-side pro microserviço Python (FastAPI) — evita expor a URL
 // do backend e configurar CORS nele para chamadas vindas do navegador.
 //
-// maxDuration alto de propósito: o backend no Render (tier grátis) "dorme"
-// após inatividade e pode levar 30-60s pra acordar na primeira chamada —
-// sem isso, a função da Vercel expira antes do Render responder e o
-// navegador recebe uma resposta vazia (erro "Unexpected end of JSON
-// input"). 60s é o máximo permitido no plano Hobby da Vercel.
+// maxDuration no teto do plano Hobby da Vercel (60s, não dá pra subir mais
+// nesse plano). O backend no Render (Standard, sempre ativo) processa em
+// ~5s quando já está "quente" — só a primeira chamada logo depois de um
+// deploy novo do backend pode passar de 60s (baixando o modelo de novo),
+// o que é raro e não afeta o uso normal do dia a dia.
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
