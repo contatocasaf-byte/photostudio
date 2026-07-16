@@ -9,6 +9,7 @@ import {
   type LayoutConfig,
   type TextAlign,
   type TextElementConfig,
+  substitutePlaceholders,
 } from "./layoutConfig";
 import { fitImageOnCanvas, type ProductTransform } from "./fitImageOnCanvas";
 import { formatarPrecoBR } from "./priceFormat";
@@ -69,7 +70,9 @@ function wrapTextToLines(
 // Desenha texto respeitando font_size_max (reduzido até caber em
 // max_lines linhas de max_w, só truncando com reticências se nem no
 // tamanho mínimo couber) e alinhamento left/center/right/justify.
-function drawTextFit(
+// Exportado — o Editor de Layout (Fase 4a) reaproveita pra renderizar
+// uma prévia WYSIWYG de verdade, não uma estimativa de caixa.
+export function drawTextFit(
   ctx: CanvasRenderingContext2D,
   text: string,
   fontWeight: "bold" | "normal",
@@ -177,21 +180,26 @@ export function renderOffer(params: RenderOfferParams): HTMLCanvasElement {
     ctx.drawImage(prodFit, pb.x, pb.y);
   }
 
-  const texts: Partial<Record<ElementKey, string>> = {
-    ref_pos: `Ref: ${ref}`,
-    desc_pos: desc,
+  // Valores disponíveis pra substituir nos templates editáveis de cada
+  // elemento (ver layoutConfig.ts, ELEMENT_PLACEHOLDERS) — troca o
+  // "Preço SP"/"R$ 99,90" hardcoded do app original por texto
+  // configurável por layout.
+  const values: Record<string, string> = {
+    ref,
+    desc,
+    preco_sp: formatarPrecoBR(precoSp),
+    preco_pa: formatarPrecoBR(precoPa),
+    data_ini: dataIni,
+    data_fim: dataFim,
   };
-  if (mostrarPrecos) {
-    texts.label_sp_pos = "Preço SP";
-    texts.price_sp_pos = `R$ ${formatarPrecoBR(precoSp)}`;
-    texts.label_pa_pos = "Preço PA";
-    texts.price_pa_pos = `R$ ${formatarPrecoBR(precoPa)}`;
-    texts.validity_pos = `Válido de ${dataIni} até ${dataFim}`;
-  }
 
-  for (const key of Object.keys(texts) as ElementKey[]) {
-    const text = texts[key]!;
+  const keysToRender: ElementKey[] = mostrarPrecos
+    ? ["ref_pos", "desc_pos", "label_sp_pos", "price_sp_pos", "label_pa_pos", "price_pa_pos", "validity_pos"]
+    : ["ref_pos", "desc_pos"];
+
+  for (const key of keysToRender) {
     const c = cfg[key] as TextElementConfig;
+    const text = substitutePlaceholders(c.text ?? "", values);
     drawTextFit(
       ctx,
       text,

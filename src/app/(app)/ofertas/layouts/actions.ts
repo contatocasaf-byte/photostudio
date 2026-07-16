@@ -6,6 +6,7 @@ import { createR2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 import { createClient } from "@/lib/supabase/server";
 
 const PREFIX = "layouts/";
+const IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".webp"];
 
 export type LayoutEntry = { key: string; name: string };
 
@@ -26,7 +27,10 @@ export async function listLayouts(): Promise<{ layouts?: LayoutEntry[]; error?: 
 
   const layouts = (res.Contents ?? [])
     .map((obj) => obj.Key)
-    .filter((key): key is string => !!key && key !== PREFIX)
+    // Só imagens — o prefixo layouts/ também guarda o .json de config
+    // de posições (Fase 4a) ao lado da imagem, que não é um layout
+    // selecionável em si.
+    .filter((key): key is string => !!key && key !== PREFIX && IMAGE_EXTS.some((ext) => key.toLowerCase().endsWith(ext)))
     .map((key) => ({ key, name: key.slice(PREFIX.length) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -55,4 +59,31 @@ export async function getLayoutUploadUrl(params: {
   const url = await getSignedUrl(client, command, { expiresIn: 300 });
 
   return { url, key };
+}
+
+// URL de PUT assinada pro .json de configuração de posições (Fase 4a),
+// salvo ao lado da imagem do layout (mesmo nome, extensão .json) — só
+// quem já pode subir um layout pode sobrescrever a config dele.
+export async function getLayoutConfigUploadUrl(params: {
+  configKey: string;
+}): Promise<{ url?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  if (!params.configKey.startsWith(PREFIX) || !params.configKey.endsWith(".json")) {
+    return { error: "Key inválida pra config de layout." };
+  }
+
+  const client = createR2Client();
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: params.configKey,
+    ContentType: "application/json",
+  });
+  const url = await getSignedUrl(client, command, { expiresIn: 300 });
+
+  return { url };
 }
