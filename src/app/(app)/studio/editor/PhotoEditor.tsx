@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Transformer, Rect, Circle } from "react-konva";
 import type Konva from "konva";
-import {
-  useEditorStore,
-  createInitialTransform,
-  MIN_SCALE,
-  MAX_SCALE,
-  type EditorSnapshot,
-  type CropBox,
-} from "./EditorStore";
+import { useEditorStore, MIN_SCALE, MAX_SCALE, type EditorSnapshot } from "./EditorStore";
 import { floodFillMask } from "./floodFill";
 import { loadImage, splitImageIntoLayers, canvasToDataUrl, dataUrlToCanvas, exportFinal, canvasToBlob } from "./canvasUtils";
 
@@ -44,6 +37,23 @@ function computeOpaqueBBox(maskCanvas: HTMLCanvasElement) {
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
+// Adiciona uma margem de respiro em volta do objeto (senão o corte fica
+// colado exatamente na borda, cortando pixels de antialiasing).
+function padBBox(
+  bbox: { x: number; y: number; width: number; height: number },
+  naturalW: number,
+  naturalH: number,
+  paddingRatio = 0.06
+) {
+  const padX = bbox.width * paddingRatio;
+  const padY = bbox.height * paddingRatio;
+  const x = Math.max(0, bbox.x - padX);
+  const y = Math.max(0, bbox.y - padY);
+  const x2 = Math.min(naturalW, bbox.x + bbox.width + padX);
+  const y2 = Math.min(naturalH, bbox.y + bbox.height + padY);
+  return { x, y, width: x2 - x, height: y2 - y };
+}
+
 export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSave }: Props) {
   const store = useEditorStore();
   const [ready, setReady] = useState(false);
@@ -60,6 +70,11 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   // Posição do cursor em espaço de view (tela), pra desenhar o círculo do
   // pincel/borracha do tamanho certo em cima da imagem.
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  // Retângulo de arrasto do corte, em espaço de view (só feedback visual
+  // enquanto arrasta — o corte de verdade só é aplicado no mouseup).
+  const [dragCropView, setDragCropView] = useState<{ x: number; y: number; width: number; height: number } | null>(
+    null
+  );
   const naturalSizeRef = useRef({ width: 0, height: 0 });
   const bboxRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
@@ -112,16 +127,12 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
       sel.height = img.naturalHeight;
       selectionCanvasRef.current = sel;
 
-      const bbox = bboxRef.current;
-      const scale = Math.min(VIEW_SIZE / bbox.width, VIEW_SIZE / bbox.height) * FIT_RATIO;
-      store.setTransform({
-        x: VIEW_SIZE / 2,
-        y: VIEW_SIZE / 2,
-        rotation: 0,
-        scaleX: scale,
-        scaleY: scale,
-      });
-      store.setCropBox(null);
+      // Corte automático ao redor do objeto (com uma margem de respiro),
+      // já aplicado de cara — a área de trabalho fica do tamanho do
+      // produto, não da imagem inteira original.
+      const padded = padBBox(bboxRef.current, img.naturalWidth, img.naturalHeight);
+      store.setCropBox(padded);
+      fitCropToView(padded);
 
       redrawDisplay();
       setReady(true);
@@ -131,6 +142,11 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, originalImageUrl]);
+
+  function fitCropToView(box: { width: number; height: number }) {
+    const scale = Math.min(VIEW_SIZE / box.width, VIEW_SIZE / box.height) * FIT_RATIO;
+    store.setTransform({ x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, rotation: 0, scaleX: scale, scaleY: scale });
+  }
 
   useEffect(() => {
     if (store.tool === "select" && transformerRef.current && imageNodeRef.current) {
@@ -180,7 +196,13 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     const pos = stage.getPointerPosition();
     if (!pos) return null;
     const inv = node.getAbsoluteTransform().copy().invert();
-    return inv.point(pos);
+    const local = inv.point(pos);
+    // Com um corte ativo, o (0,0) local do node passa a ser o canto do
+    // corte, não da imagem inteira — soma de volta o deslocamento do
+    // corte pra chegar na coordenada real dentro de origCanvas/maskCanvas.
+    const baseX = store.cropBox?.x ?? 0;
+    const baseY = store.cropBox?.y ?? 0;
+    return { x: local.x + baseX, y: local.y + baseY };
   }
 
   function paintAt(x: number, y: number, erase: boolean) {
@@ -241,10 +263,10 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
       sctx.putImageData(next, 0, 0);
       setSelectionVersion((v) => v + 1);
     } else if (tool === "crop") {
-      const p = pointerToSource();
-      if (!p) return;
-      dragState.current = { tool, lastX: p.x, lastY: p.y, cropStart: { x: p.x, y: p.y } };
-      store.setCropBox({ x: p.x, y: p.y, width: 0, height: 0 });
+      const pos = stageRef.current?.getPointerPosition();
+      if (!pos) return;
+      dragState.current = { tool, lastX: pos.x, lastY: pos.y, cropStart: { x: pos.x, y: pos.y } };
+      setDragCropView({ x: pos.x, y: pos.y, width: 0, height: 0 });
     }
   }
 
@@ -270,14 +292,15 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
       dragState.current.lastY = p.y;
       redrawDisplay();
     } else if (tool === "crop" && dragState.current.cropStart) {
-      const p = pointerToSource();
-      if (!p) return;
+      const pos = stageRef.current?.getPointerPosition();
+      if (!pos) return;
       const start = dragState.current.cropStart;
-      const x = Math.min(start.x, p.x);
-      const y = Math.min(start.y, p.y);
-      const width = Math.abs(p.x - start.x);
-      const height = Math.abs(p.y - start.y);
-      store.setCropBox({ x, y, width, height });
+      setDragCropView({
+        x: Math.min(start.x, pos.x),
+        y: Math.min(start.y, pos.y),
+        width: Math.abs(pos.x - start.x),
+        height: Math.abs(pos.y - start.y),
+      });
     }
   }
 
@@ -287,12 +310,28 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     if (tool === "pencil" || tool === "eraser") {
       // snapshot já foi feito no mousedown (um traço = uma unidade de undo)
     } else if (tool === "crop") {
-      const box = store.cropBox;
+      const rect = dragCropView;
       dragState.current.cropStart = undefined;
-      if (box && box.width > 4 && box.height > 4) {
+      setDragCropView(null);
+      const node = imageNodeRef.current;
+      if (rect && rect.width > 4 && rect.height > 4 && node) {
+        // Retângulo arrastado (espaço de tela) -> espaço fonte, via
+        // transform inverso do node — depois soma o deslocamento do
+        // corte que já estava ativo, já que o (0,0) local do node é o
+        // canto do corte atual, não da imagem inteira.
+        const inv = node.getAbsoluteTransform().copy().invert();
+        const p1 = inv.point({ x: rect.x, y: rect.y });
+        const p2 = inv.point({ x: rect.x + rect.width, y: rect.y + rect.height });
+        const baseX = store.cropBox?.x ?? 0;
+        const baseY = store.cropBox?.y ?? 0;
+        const sx1 = Math.min(p1.x, p2.x) + baseX;
+        const sy1 = Math.min(p1.y, p2.y) + baseY;
+        const sx2 = Math.max(p1.x, p2.x) + baseX;
+        const sy2 = Math.max(p1.y, p2.y) + baseY;
+        const newBox = { x: sx1, y: sy1, width: sx2 - sx1, height: sy2 - sy1 };
         commitSnapshot();
-      } else {
-        store.setCropBox(null);
+        store.setCropBox(newBox);
+        fitCropToView(newBox);
       }
     }
   }
@@ -353,11 +392,16 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   }
 
   function handleReset() {
-    const bbox = bboxRef.current;
-    const scale = Math.min(VIEW_SIZE / bbox.width, VIEW_SIZE / bbox.height) * FIT_RATIO;
+    const mask = maskCanvasRef.current;
+    if (!mask) return;
     commitSnapshot();
-    store.setTransform({ x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, rotation: 0, scaleX: scale, scaleY: scale });
-    store.setCropBox(null);
+    // Recalcula a partir da máscara ATUAL (que pode já ter edições de
+    // lápis/borracha/varinha) — "restaurar" volta o enquadramento/corte
+    // ao redor do objeto, não desfaz pintura (pra isso é o Desfazer).
+    const bbox = computeOpaqueBBox(mask);
+    const padded = padBBox(bbox, naturalSizeRef.current.width, naturalSizeRef.current.height);
+    store.setCropBox(padded);
+    fitCropToView(padded);
   }
 
   async function handleSave() {
@@ -397,14 +441,6 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });
 
-  const cropRectStage = (() => {
-    if (!store.cropBox || !imageNodeRef.current) return null;
-    const node = imageNodeRef.current;
-    const abs = node.getAbsoluteTransform();
-    const p1 = abs.point({ x: store.cropBox.x, y: store.cropBox.y });
-    const p2 = abs.point({ x: store.cropBox.x + store.cropBox.width, y: store.cropBox.y + store.cropBox.height });
-    return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y), width: Math.abs(p2.x - p1.x), height: Math.abs(p2.y - p1.y) };
-  })();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -530,14 +566,16 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                     rotation={store.transform.rotation}
                     scaleX={store.transform.scaleX}
                     scaleY={store.transform.scaleY}
-                    offsetX={bboxRef.current.x + bboxRef.current.width / 2}
-                    offsetY={bboxRef.current.y + bboxRef.current.height / 2}
+                    crop={store.cropBox ?? undefined}
+                    width={store.cropBox ? store.cropBox.width : naturalSizeRef.current.width}
+                    height={store.cropBox ? store.cropBox.height : naturalSizeRef.current.height}
+                    offsetX={store.cropBox ? store.cropBox.width / 2 : bboxRef.current.x + bboxRef.current.width / 2}
+                    offsetY={store.cropBox ? store.cropBox.height / 2 : bboxRef.current.y + bboxRef.current.height / 2}
                     draggable={store.tool === "select"}
                     onDragEnd={handleDragEnd}
                     onTransformEnd={handleTransformEnd}
                   />
                   {selectionCanvasRef.current && (
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     <KonvaImage
                       image={selectionCanvasRef.current}
                       x={store.transform.x}
@@ -545,8 +583,13 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                       rotation={store.transform.rotation}
                       scaleX={store.transform.scaleX}
                       scaleY={store.transform.scaleY}
-                      offsetX={bboxRef.current.x + bboxRef.current.width / 2}
-                      offsetY={bboxRef.current.y + bboxRef.current.height / 2}
+                      crop={store.cropBox ?? undefined}
+                      width={store.cropBox ? store.cropBox.width : naturalSizeRef.current.width}
+                      height={store.cropBox ? store.cropBox.height : naturalSizeRef.current.height}
+                      offsetX={store.cropBox ? store.cropBox.width / 2 : bboxRef.current.x + bboxRef.current.width / 2}
+                      offsetY={
+                        store.cropBox ? store.cropBox.height / 2 : bboxRef.current.y + bboxRef.current.height / 2
+                      }
                       listening={false}
                       key={selectionVersion}
                     />
@@ -560,19 +603,19 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                       boundBoxFunc={(oldBox, newBox) => {
                         const node = imageNodeRef.current;
                         if (!node) return newBox;
-                        const w = naturalSizeRef.current.width || 1;
+                        const w = (store.cropBox ? store.cropBox.width : naturalSizeRef.current.width) || 1;
                         const scale = newBox.width / w;
                         if (scale < MIN_SCALE || scale > MAX_SCALE) return oldBox;
                         return newBox;
                       }}
                     />
                   )}
-                  {cropRectStage && (
+                  {dragCropView && (
                     <Rect
-                      x={cropRectStage.x}
-                      y={cropRectStage.y}
-                      width={cropRectStage.width}
-                      height={cropRectStage.height}
+                      x={dragCropView.x}
+                      y={dragCropView.y}
+                      width={dragCropView.width}
+                      height={dragCropView.height}
                       stroke="#e03020"
                       dash={[6, 4]}
                       listening={false}
