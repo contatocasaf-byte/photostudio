@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import FilePickerZone from "@/components/FilePickerZone";
-import FolderPickerZone from "@/components/FolderPickerZone";
+import FolderPickerZone, { type LazyFileEntry } from "@/components/FolderPickerZone";
 import { defaultConfigForSize } from "./core/layoutConfig";
 import { loadImage, loadImageToCanvas } from "./core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "./core/renderOffer";
 import { formatarPrecoBR } from "./core/priceFormat";
-import { directChildrenImages, encontrarFotoProduto } from "./core/findProductPhoto";
+import { encontrarFotoProduto, PRODUCT_PHOTO_EXTS } from "./core/findProductPhoto";
 import { parsePlanilha, buscarProduto, type ProdutoRow } from "./core/parsePlanilha";
 import LayoutPicker, { type SelectedLayout } from "./LayoutPicker";
 import PhotoAdjustWidget, { type PhotoTransform } from "./PhotoAdjustWidget";
@@ -34,7 +34,7 @@ export default function OfertasPage() {
   const [planilhaStatus, setPlanilhaStatus] = useState<string | null>(null);
   const [parsingPlanilha, setParsingPlanilha] = useState(false);
 
-  const [pastaFiles, setPastaFiles] = useState<File[]>([]);
+  const [pastaEntries, setPastaEntries] = useState<LazyFileEntry[]>([]);
   const [fotoStatus, setFotoStatus] = useState("— busque um produto ou envie a foto manualmente");
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [transform, setTransform] = useState<PhotoTransform>(DEFAULT_TRANSFORM);
@@ -71,7 +71,7 @@ export default function OfertasPage() {
     }
   }
 
-  function handleBuscar() {
+  async function handleBuscar() {
     const code = codigo.trim();
     if (!code) return;
 
@@ -83,13 +83,14 @@ export default function OfertasPage() {
       if (produto.precoPa) setPrecoPa(formatarPrecoBR(produto.precoPa));
     }
 
-    const found = encontrarFotoProduto(pastaFiles, code);
+    const found = encontrarFotoProduto(pastaEntries, code);
     if (found) {
       setFotoStatus(`✔ ${found.name}`);
-      setFotoUrl(URL.createObjectURL(found));
+      const file = await found.getFile();
+      setFotoUrl(URL.createObjectURL(file));
     } else {
       setFotoStatus(
-        pastaFiles.length > 0
+        pastaEntries.length > 0
           ? "⚠ Nenhuma foto encontrada para este código na pasta selecionada"
           : "⚠ Nenhuma pasta de fotos selecionada — envie a foto manualmente abaixo"
       );
@@ -203,8 +204,9 @@ export default function OfertasPage() {
           />
           <FolderPickerZone
             label="Pasta de fotos dos produtos (opcional)"
-            count={pastaFiles.length}
-            onFiles={(fl) => setPastaFiles(directChildrenImages(fl))}
+            count={pastaEntries.length}
+            extensions={PRODUCT_PHOTO_EXTS}
+            onEntries={setPastaEntries}
           />
         </div>
         {planilhaStatus && <p className="mt-2 text-xs text-slate-500">{planilhaStatus}</p>}

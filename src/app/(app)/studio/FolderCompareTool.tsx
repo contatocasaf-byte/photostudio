@@ -3,45 +3,35 @@
 import { useState } from "react";
 import { compressImageFromUrl } from "./compress";
 import { downloadBlob, zipBlobs } from "./download";
-import FolderPickerZone from "@/components/FolderPickerZone";
+import FolderPickerZone, { type LazyFileEntry } from "@/components/FolderPickerZone";
 import InfoTooltip from "@/components/InfoTooltip";
 
-const IMG_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"]);
-
-function extOf(filename: string) {
-  const dot = filename.lastIndexOf(".");
-  return dot > 0 ? filename.slice(dot).toLowerCase() : "";
-}
+const IMG_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"];
 
 function stemOf(filename: string) {
   const dot = filename.lastIndexOf(".");
   return dot > 0 ? filename.slice(0, dot) : filename;
 }
 
-// Só os arquivos diretamente dentro da pasta selecionada (sem
-// subpastas) — mesmo comportamento não-recursivo de os.listdir() no
-// app original.
-function directChildrenImages(files: FileList) {
-  return Array.from(files).filter((f) => {
-    const rel = f.webkitRelativePath;
-    if (rel && rel.split("/").length !== 2) return false;
-    return IMG_EXTS.has(extOf(f.name));
-  });
-}
-
 type Pendente = {
   key: string;
   stem: string;
-  file: File;
+  entry: LazyFileEntry;
 };
 
 // Porta ComparadorPastas._comparar (removedor_fundo.py:2619-2664):
 // identifica por nome sem extensão (ignora .png vs .jpg), case-
-// insensitive — fotos que estão na pasta A mas não na B.
-function compararPastas(filesA: File[], filesB: File[]) {
+// insensitive — fotos que estão na pasta A mas não na B. Só compara
+// NOMES (entry.name) — nenhum arquivo é lido/baixado nessa etapa,
+// só os que sobrarem como pendentes é que têm o conteúdo lido de
+// fato, um a um, na hora de gerar a cópia comprimida.
+function compararPastas(entriesA: LazyFileEntry[], entriesB: LazyFileEntry[]) {
   const mapA = new Map<string, Pendente>();
-  for (const f of filesA) mapA.set(stemOf(f.name).toLowerCase(), { key: stemOf(f.name).toLowerCase(), stem: stemOf(f.name), file: f });
-  const keysB = new Set(filesB.map((f) => stemOf(f.name).toLowerCase()));
+  for (const e of entriesA) {
+    const key = stemOf(e.name).toLowerCase();
+    mapA.set(key, { key, stem: stemOf(e.name), entry: e });
+  }
+  const keysB = new Set(entriesB.map((e) => stemOf(e.name).toLowerCase()));
   const pendentes = [...mapA.values()]
     .filter((p) => !keysB.has(p.key))
     .sort((a, b) => a.key.localeCompare(b.key));
@@ -49,26 +39,27 @@ function compararPastas(filesA: File[], filesB: File[]) {
 }
 
 export default function FolderCompareTool() {
-  const [filesA, setFilesA] = useState<File[]>([]);
-  const [filesB, setFilesB] = useState<File[]>([]);
+  const [entriesA, setEntriesA] = useState<LazyFileEntry[]>([]);
+  const [entriesB, setEntriesB] = useState<LazyFileEntry[]>([]);
   const [resultado, setResultado] = useState<{ pendentes: Pendente[]; totalA: number; totalB: number } | null>(null);
   const [compressingAll, setCompressingAll] = useState(false);
   const [compressingKey, setCompressingKey] = useState<string | null>(null);
 
   function handleComparar() {
-    setResultado(compararPastas(filesA, filesB));
+    setResultado(compararPastas(entriesA, entriesB));
   }
 
   function limpar() {
-    setFilesA([]);
-    setFilesB([]);
+    setEntriesA([]);
+    setEntriesB([]);
     setResultado(null);
   }
 
   async function handleDownloadOne(p: Pendente) {
     setCompressingKey(p.key);
     try {
-      const blob = await compressImageFromUrl(URL.createObjectURL(p.file));
+      const file = await p.entry.getFile();
+      const blob = await compressImageFromUrl(URL.createObjectURL(file));
       downloadBlob(blob, `${p.stem}.jpg`);
     } finally {
       setCompressingKey(null);
@@ -80,10 +71,10 @@ export default function FolderCompareTool() {
     setCompressingAll(true);
     try {
       const zipItems = await Promise.all(
-        resultado.pendentes.map(async (p) => ({
-          blob: await compressImageFromUrl(URL.createObjectURL(p.file)),
-          filename: `${p.stem}.jpg`,
-        }))
+        resultado.pendentes.map(async (p) => {
+          const file = await p.entry.getFile();
+          return { blob: await compressImageFromUrl(URL.createObjectURL(file)), filename: `${p.stem}.jpg` };
+        })
       );
       await zipBlobs(zipItems, `fotos-pendentes-${Date.now()}.zip`);
     } finally {
@@ -91,7 +82,7 @@ export default function FolderCompareTool() {
     }
   }
 
-  const podeComparar = filesA.length > 0 && filesB.length > 0;
+  const podeComparar = entriesA.length > 0 && entriesB.length > 0;
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
@@ -111,6 +102,10 @@ export default function FolderCompareTool() {
           </p>
           <p>Só os arquivos diretamente dentro da pasta selecionada contam (subpastas são ignoradas).</p>
           <p>
+            Selecionar a pasta só lista os nomes dos arquivos — nenhuma foto é lida ou baixada nessa etapa. Só as que
+            sobrarem como pendentes têm o conteúdo aberto de fato, na hora de gerar a cópia comprimida.
+          </p>
+          <p>
             Pra cada foto pendente, gera uma cópia comprimida (80-120&nbsp;KB) pronta pra passar pelo Aplicador de
             Marca ou subir direto pro site/rede social.
           </p>
@@ -118,8 +113,18 @@ export default function FolderCompareTool() {
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <FolderPickerZone label="Pasta A — fotos sem marca" count={filesA.length} onFiles={(fl) => setFilesA(directChildrenImages(fl))} />
-        <FolderPickerZone label="Pasta B — fotos com marca" count={filesB.length} onFiles={(fl) => setFilesB(directChildrenImages(fl))} />
+        <FolderPickerZone
+          label="Pasta A — fotos sem marca"
+          count={entriesA.length}
+          extensions={IMG_EXTS}
+          onEntries={setEntriesA}
+        />
+        <FolderPickerZone
+          label="Pasta B — fotos com marca"
+          count={entriesB.length}
+          extensions={IMG_EXTS}
+          onEntries={setEntriesB}
+        />
       </div>
 
       <div className="mt-4 flex gap-2">
@@ -161,8 +166,8 @@ export default function FolderCompareTool() {
               <div className="mt-2 max-h-80 overflow-auto rounded border border-slate-200">
                 {resultado.pendentes.map((p) => (
                   <div key={p.key} className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5 text-sm last:border-b-0">
-                    <span className="truncate text-slate-700" title={p.file.name}>
-                      {p.file.name}
+                    <span className="truncate text-slate-700" title={p.entry.name}>
+                      {p.entry.name}
                     </span>
                     <button
                       onClick={() => handleDownloadOne(p)}
