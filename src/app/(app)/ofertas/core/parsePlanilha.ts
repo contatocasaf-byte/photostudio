@@ -81,3 +81,17 @@ export function buscarProduto(produtos: ProdutoRow[], codigo: string): ProdutoRo
   const code = codigo.trim().replace(/^0+/, "");
   return produtos.find((p) => p.codigo.trim().replace(/^0+/, "") === code) ?? null;
 }
+
+// Limite de itens por importação pro modo em lote (MAX_ITENS_LOTE,
+// core.py:48) — evita lotes excessivamente grandes.
+export const MAX_ITENS_LOTE = 50;
+
+// listar_produtos_planilha (core.py:94-122): corta em MAX_ITENS_LOTE,
+// devolvendo também o total ANTES do corte pra avisar o usuário se a
+// planilha tiver mais itens do que o permitido.
+export function listarProdutosPlanilha(
+  produtos: ProdutoRow[],
+  limite = MAX_ITENS_LOTE
+): { itens: ProdutoRow[]; total: number } {
+  return { itens: produtos.slice(0, limite), total: produtos.length };
+}
