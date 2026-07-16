@@ -1,3 +1,8 @@
+// Porta encontrar_foto_produto (core.py:127-150): procura CODIGO_N.ext
+// (menor N primeiro) na pasta de fotos selecionada; fallback pra
+// CODIGO.ext exato. Opera sobre os nomes já listados pelo
+// FolderPickerZone (LazyFileEntry) — só lê o arquivo de fato (getFile())
+// pro item encontrado, nunca pra pasta inteira.
 import type { LazyFileEntry } from "@/components/FolderPickerZone";
 
 export const PRODUCT_PHOTO_EXTS = [".jpg", ".jpeg", ".png", ".webp"];
@@ -11,14 +16,7 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Procura CODIGO_N.ext (menor N primeiro) entre os itens listados de
-// uma pasta (ver FolderPickerZone); fallback pra CODIGO.ext exato.
-// Porta encontrar_foto_produto (core.py:127-150 do Gerador de Ofertas
-// original) — reaproveitada tanto no Gerador de Ofertas quanto no
-// Aplicador de Marca do Studio, por isso mora num local compartilhado
-// (é utilidade genérica de arquivo, não lógica de negócio de nenhum
-// dos dois módulos).
-export function findFileByCode(entries: LazyFileEntry[], codigo: string): LazyFileEntry | null {
+export function encontrarFotoProduto(entries: LazyFileEntry[], codigo: string): LazyFileEntry | null {
   const code = codigo.trim();
   if (!code) return null;
 
