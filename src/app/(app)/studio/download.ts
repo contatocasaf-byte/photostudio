@@ -51,3 +51,11 @@ export function pngFilenameFor(originalName: string) {
   const base = dot > 0 ? originalName.slice(0, dot) : originalName;
   return `${base}.png`;
 }
+
+// Mesma ideia, pra versão comprimida (sempre JPEG, ver compress.ts) —
+// sufixo "_web" deixa claro que não é a foto em alta resolução.
+export function jpgFilenameFor(originalName: string) {
+  const dot = originalName.lastIndexOf(".");
+  const base = dot > 0 ? originalName.slice(0, dot) : originalName;
+  return `${base}_web.jpg`;
+}

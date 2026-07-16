@@ -5,7 +5,8 @@ import { removeBackgroundForFile } from "./removeBackground";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
-import { downloadUrl, pngFilenameFor } from "./download";
+import { downloadUrl, downloadBlob, pngFilenameFor, jpgFilenameFor } from "./download";
+import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "./FilePickerZone";
 
 type Status = "idle" | "uploading" | "processing" | "done" | "error";
@@ -19,6 +20,7 @@ export default function IndividualUpload() {
   const [editing, setEditing] = useState(false);
   const [fileName, setFileName] = useState<string>("foto.png");
   const [downloading, setDownloading] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
   async function handleFile(file: File) {
     setError(null);
@@ -62,6 +64,17 @@ export default function IndividualUpload() {
     }
   }
 
+  async function handleDownloadCompressed() {
+    if (!resultUrl) return;
+    setCompressing(true);
+    try {
+      const blob = await compressImageFromUrl(resultUrl);
+      downloadBlob(blob, jpgFilenameFor(fileName));
+    } finally {
+      setCompressing(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
       <FilePickerZone
@@ -101,7 +114,15 @@ export default function IndividualUpload() {
               disabled={downloading}
               className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              {downloading ? "Baixando..." : "Baixar"}
+              {downloading ? "Baixando..." : "Baixar (alta resolução)"}
+            </button>
+            <button
+              onClick={handleDownloadCompressed}
+              disabled={compressing}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              title="JPEG comprimido (80-120 KB), pronto pra site/rede social"
+            >
+              {compressing ? "Comprimindo..." : "Baixar comprimido"}
             </button>
           </div>
         </div>

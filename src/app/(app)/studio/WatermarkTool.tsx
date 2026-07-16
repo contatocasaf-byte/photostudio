@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { loadImage, canvasToBlob } from "./editor/canvasUtils";
-import { downloadBlob, zipBlobs, pngFilenameFor } from "./download";
+import { downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
+import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "./FilePickerZone";
 
 const MAX_ITENS = 100;
@@ -119,6 +120,8 @@ export default function WatermarkTool() {
   const [processing, setProcessing] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [compressingAll, setCompressingAll] = useState(false);
+  const [compressingId, setCompressingId] = useState<string | null>(null);
 
   const [marcaFile, setMarcaFile] = useState<File | null>(null);
   const [marcaPreview, setMarcaPreview] = useState<string | null>(null);
@@ -207,6 +210,34 @@ export default function WatermarkTool() {
     }
   }
 
+  async function handleDownloadOneCompressed(item: MarcaItem) {
+    if (!item.resultUrl) return;
+    setCompressingId(item.id);
+    try {
+      const blob = await compressImageFromUrl(item.resultUrl);
+      downloadBlob(blob, jpgFilenameFor(item.file.name).replace(/\.jpg$/, "_marca.jpg"));
+    } finally {
+      setCompressingId(null);
+    }
+  }
+
+  async function handleDownloadAllCompressed() {
+    const prontos = items.filter((i) => i.status === "pronto" && i.resultUrl);
+    if (prontos.length === 0) return;
+    setCompressingAll(true);
+    try {
+      const zipItems = await Promise.all(
+        prontos.map(async (i) => ({
+          blob: await compressImageFromUrl(i.resultUrl!),
+          filename: jpgFilenameFor(i.file.name).replace(/\.jpg$/, "_marca.jpg"),
+        }))
+      );
+      await zipBlobs(zipItems, `fotos-com-marca-web-${Date.now()}.zip`);
+    } finally {
+      setCompressingAll(false);
+    }
+  }
+
   const total = items.length;
   const prontos = items.filter((i) => i.status === "pronto").length;
   const erros = items.filter((i) => i.status === "erro").length;
@@ -276,13 +307,23 @@ export default function WatermarkTool() {
                 {processing ? "Processando..." : "Aplicar marca ao lote"}
               </button>
               {prontos > 0 && (
-                <button
-                  onClick={handleDownloadAll}
-                  disabled={downloadingAll}
-                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {downloadingAll ? "Compactando..." : "Baixar todas (.zip)"}
-                </button>
+                <>
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll}
+                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {downloadingAll ? "Compactando..." : "Baixar todas (alta resolução, .zip)"}
+                  </button>
+                  <button
+                    onClick={handleDownloadAllCompressed}
+                    disabled={compressingAll}
+                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    title="JPEG comprimido (80-120 KB por foto), pronto pra site/rede social"
+                  >
+                    {compressingAll ? "Comprimindo..." : "Baixar todas comprimidas (.zip)"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -317,13 +358,23 @@ export default function WatermarkTool() {
                   {item.status === "erro" && (item.error ?? "Erro")}
                 </p>
                 {item.status === "pronto" && (
-                  <button
-                    onClick={() => handleDownloadOne(item)}
-                    disabled={downloadingId === item.id}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {downloadingId === item.id ? "..." : "Baixar"}
-                  </button>
+                  <div className="mt-1 flex flex-col gap-1">
+                    <button
+                      onClick={() => handleDownloadOne(item)}
+                      disabled={downloadingId === item.id}
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {downloadingId === item.id ? "..." : "Baixar"}
+                    </button>
+                    <button
+                      onClick={() => handleDownloadOneCompressed(item)}
+                      disabled={compressingId === item.id}
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      title="JPEG comprimido (80-120 KB), pronto pra site/rede social"
+                    >
+                      {compressingId === item.id ? "Comprimindo..." : "Baixar comprimido"}
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

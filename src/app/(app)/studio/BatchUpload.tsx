@@ -5,7 +5,8 @@ import { removeBackgroundForFile } from "./removeBackground";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
-import { downloadUrl, downloadAllAsZip, pngFilenameFor } from "./download";
+import { downloadUrl, downloadAllAsZip, downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
+import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "./FilePickerZone";
 
 const MAX_LOTE = 50;
@@ -23,6 +24,26 @@ type BatchItem = {
   error?: string;
 };
 
+// Evita colisão de nome dentro do zip se dois arquivos originais tiverem
+// o mesmo nome base.
+function uniqueName(usedNames: Set<string>, filename: string) {
+  if (!usedNames.has(filename)) {
+    usedNames.add(filename);
+    return filename;
+  }
+  const dot = filename.lastIndexOf(".");
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot) : "";
+  let n = 2;
+  let candidate = `${base}_${n}${ext}`;
+  while (usedNames.has(candidate)) {
+    n++;
+    candidate = `${base}_${n}${ext}`;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
 export default function BatchUpload() {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -30,6 +51,8 @@ export default function BatchUpload() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [compressingId, setCompressingId] = useState<string | null>(null);
+  const [compressingAll, setCompressingAll] = useState(false);
 
   function handleSelect(fileList: FileList | null) {
     if (!fileList) return;
@@ -120,21 +143,42 @@ export default function BatchUpload() {
     setDownloadingAll(true);
     try {
       const usedNames = new Set<string>();
-      const zipItems = prontos.map((i) => {
-        let name = pngFilenameFor(i.file.name);
-        // Evita colisão de nome dentro do zip se dois arquivos originais
-        // tiverem o mesmo nome base.
-        let n = 2;
-        while (usedNames.has(name)) {
-          name = `${pngFilenameFor(i.file.name).replace(/\.png$/, "")}_${n}.png`;
-          n++;
-        }
-        usedNames.add(name);
-        return { url: i.resultUrl!, filename: name };
-      });
+      const zipItems = prontos.map((i) => ({
+        url: i.resultUrl!,
+        filename: uniqueName(usedNames, pngFilenameFor(i.file.name)),
+      }));
       await downloadAllAsZip(zipItems, `fotos-sem-fundo-${Date.now()}.zip`);
     } finally {
       setDownloadingAll(false);
+    }
+  }
+
+  async function handleDownloadOneCompressed(item: BatchItem) {
+    if (!item.resultUrl) return;
+    setCompressingId(item.id);
+    try {
+      const blob = await compressImageFromUrl(item.resultUrl);
+      downloadBlob(blob, jpgFilenameFor(item.file.name));
+    } finally {
+      setCompressingId(null);
+    }
+  }
+
+  async function handleDownloadAllCompressed() {
+    const prontos = items.filter((i) => i.status === "pronto" && i.resultUrl);
+    if (prontos.length === 0) return;
+    setCompressingAll(true);
+    try {
+      const usedNames = new Set<string>();
+      const zipItems = await Promise.all(
+        prontos.map(async (i) => ({
+          blob: await compressImageFromUrl(i.resultUrl!),
+          filename: uniqueName(usedNames, jpgFilenameFor(i.file.name)),
+        }))
+      );
+      await zipBlobs(zipItems, `fotos-sem-fundo-web-${Date.now()}.zip`);
+    } finally {
+      setCompressingAll(false);
     }
   }
 
@@ -171,13 +215,23 @@ export default function BatchUpload() {
                 {processing ? "Processando..." : "Remover fundo de todas"}
               </button>
               {prontos > 0 && (
-                <button
-                  onClick={handleDownloadAll}
-                  disabled={downloadingAll}
-                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {downloadingAll ? "Compactando..." : `Baixar todas (.zip)`}
-                </button>
+                <>
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll}
+                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {downloadingAll ? "Compactando..." : "Baixar todas (alta resolução, .zip)"}
+                  </button>
+                  <button
+                    onClick={handleDownloadAllCompressed}
+                    disabled={compressingAll}
+                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    title="JPEG comprimido (80-120 KB por foto), pronto pra site/rede social"
+                  >
+                    {compressingAll ? "Comprimindo..." : "Baixar todas comprimidas (.zip)"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -212,19 +266,29 @@ export default function BatchUpload() {
                   {item.status === "erro" && (item.error ?? "Erro")}
                 </p>
                 {item.status === "pronto" && (
-                  <div className="mt-1 flex gap-1">
+                  <div className="mt-1 flex flex-col gap-1">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setEditingId(item.id)}
+                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDownloadOne(item)}
+                        disabled={downloadingId === item.id}
+                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {downloadingId === item.id ? "..." : "Baixar"}
+                      </button>
+                    </div>
                     <button
-                      onClick={() => setEditingId(item.id)}
-                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      onClick={() => handleDownloadOneCompressed(item)}
+                      disabled={compressingId === item.id}
+                      className="w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      title="JPEG comprimido (80-120 KB), pronto pra site/rede social"
                     >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDownloadOne(item)}
-                      disabled={downloadingId === item.id}
-                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {downloadingId === item.id ? "..." : "Baixar"}
+                      {compressingId === item.id ? "Comprimindo..." : "Baixar comprimido"}
                     </button>
                   </div>
                 )}
