@@ -8,6 +8,7 @@ type Props = {
   title: string;
   subtitle: string;
   buttonLabel: string;
+  accept?: string;
   onFiles: (files: FileList) => void;
 };
 
@@ -15,7 +16,15 @@ type Props = {
 // nenhuma pista visual de que é clicável) — clique em qualquer parte do
 // quadro ou no botão abrem o seletor de arquivo; também aceita arrastar e
 // soltar. Botão com a MESMA aparência do "Remover fundo de todas".
-export default function FilePickerZone({ multiple, disabled, title, subtitle, buttonLabel, onFiles }: Props) {
+export default function FilePickerZone({
+  multiple,
+  disabled,
+  title,
+  subtitle,
+  buttonLabel,
+  accept = "image/*",
+  onFiles,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -86,7 +95,7 @@ export default function FilePickerZone({ multiple, disabled, title, subtitle, bu
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={accept}
         multiple={multiple}
         disabled={disabled}
         className="hidden"

@@ -8,6 +8,7 @@ import { loadImage, loadImageToCanvas } from "./core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "./core/renderOffer";
 import { formatarPrecoBR } from "./core/priceFormat";
 import { directChildrenImages, encontrarFotoProduto } from "./core/findProductPhoto";
+import { parsePlanilha, buscarProduto, type ProdutoRow } from "./core/parsePlanilha";
 import LayoutPicker, { type SelectedLayout } from "./LayoutPicker";
 import PhotoAdjustWidget, { type PhotoTransform } from "./PhotoAdjustWidget";
 
@@ -29,6 +30,10 @@ export default function OfertasPage() {
   const [dataIni, setDataIni] = useState("");
   const [dataFim, setDataFim] = useState("");
 
+  const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
+  const [planilhaStatus, setPlanilhaStatus] = useState<string | null>(null);
+  const [parsingPlanilha, setParsingPlanilha] = useState(false);
+
   const [pastaFiles, setPastaFiles] = useState<File[]>([]);
   const [fotoStatus, setFotoStatus] = useState("— busque um produto ou envie a foto manualmente");
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
@@ -46,9 +51,38 @@ export default function OfertasPage() {
   const boxW = layoutCfg?.product_box.w ?? 1;
   const boxH = layoutCfg?.product_box.h ?? 1;
 
+  async function handlePlanilha(files: FileList) {
+    const file = files[0];
+    if (!file) return;
+    setParsingPlanilha(true);
+    setPlanilhaStatus(null);
+    try {
+      const rows = await parsePlanilha(file);
+      setProdutos(rows);
+      setPlanilhaStatus(
+        rows.length > 0
+          ? `✔ ${rows.length} produto(s) carregados de "${file.name}"`
+          : `⚠ Nenhum produto reconhecido em "${file.name}" — confira se há uma coluna de código (COD/CÓDIGO).`
+      );
+    } catch {
+      setPlanilhaStatus(`⚠ Não foi possível ler "${file.name}".`);
+    } finally {
+      setParsingPlanilha(false);
+    }
+  }
+
   function handleBuscar() {
     const code = codigo.trim();
     if (!code) return;
+
+    const produto = buscarProduto(produtos, code);
+    if (produto) {
+      setRef(produto.ref);
+      setDesc(produto.desc);
+      if (produto.precoSp) setPrecoSp(formatarPrecoBR(produto.precoSp));
+      if (produto.precoPa) setPrecoPa(formatarPrecoBR(produto.precoPa));
+    }
+
     const found = encontrarFotoProduto(pastaFiles, code);
     if (found) {
       setFotoStatus(`✔ ${found.name}`);
@@ -154,17 +188,26 @@ export default function OfertasPage() {
       <div className="mt-6 rounded-lg border border-dashed border-slate-300 bg-white p-6">
         <h2 className="text-sm font-semibold text-slate-900">Produto</h2>
         <p className="mt-1 text-xs text-slate-400">
-          Pasta de fotos é opcional — sem ela, preencha os campos abaixo manualmente e envie a foto direto na seção
-          &quot;Foto do Produto&quot;. Busca por planilha chega numa próxima entrega.
+          Planilha e pasta de fotos são opcionais — sem elas, preencha os campos abaixo manualmente e envie a foto
+          direto na seção &quot;Foto do Produto&quot;.
         </p>
 
-        <div className="mt-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <FilePickerZone
+            disabled={parsingPlanilha}
+            title="Arraste a planilha aqui ou clique para escolher"
+            subtitle="Excel (.xlsx) com colunas COD/REF/DESCRIÇÃO/PREÇO SP/PREÇO PA"
+            buttonLabel={parsingPlanilha ? "Lendo..." : "Escolher planilha"}
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            onFiles={handlePlanilha}
+          />
           <FolderPickerZone
             label="Pasta de fotos dos produtos (opcional)"
             count={pastaFiles.length}
             onFiles={(fl) => setPastaFiles(directChildrenImages(fl))}
           />
         </div>
+        {planilhaStatus && <p className="mt-2 text-xs text-slate-500">{planilhaStatus}</p>}
 
         <div className="mt-4 flex items-end gap-2">
           <div className="flex-1">
@@ -180,7 +223,7 @@ export default function OfertasPage() {
             onClick={handleBuscar}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Buscar foto
+            Buscar
           </button>
         </div>
         <p className="mt-1 text-xs text-slate-500">{fotoStatus}</p>
