@@ -5,6 +5,7 @@ import { removeBackgroundForFile } from "./removeBackground";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
+import { downloadUrl, downloadAllAsZip, pngFilenameFor } from "./download";
 
 const MAX_LOTE = 50;
 
@@ -26,6 +27,8 @@ export default function BatchUpload() {
   const [processing, setProcessing] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   function handleSelect(fileList: FileList | null) {
     if (!fileList) return;
@@ -100,6 +103,40 @@ export default function BatchUpload() {
     setEditingId(null);
   }
 
+  async function handleDownloadOne(item: BatchItem) {
+    if (!item.resultUrl) return;
+    setDownloadingId(item.id);
+    try {
+      await downloadUrl(item.resultUrl, pngFilenameFor(item.file.name));
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  async function handleDownloadAll() {
+    const prontos = items.filter((i) => i.status === "pronto" && i.resultUrl);
+    if (prontos.length === 0) return;
+    setDownloadingAll(true);
+    try {
+      const usedNames = new Set<string>();
+      const zipItems = prontos.map((i) => {
+        let name = pngFilenameFor(i.file.name);
+        // Evita colisão de nome dentro do zip se dois arquivos originais
+        // tiverem o mesmo nome base.
+        let n = 2;
+        while (usedNames.has(name)) {
+          name = `${pngFilenameFor(i.file.name).replace(/\.png$/, "")}_${n}.png`;
+          n++;
+        }
+        usedNames.add(name);
+        return { url: i.resultUrl!, filename: name };
+      });
+      await downloadAllAsZip(zipItems, `fotos-sem-fundo-${Date.now()}.zip`);
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
   const total = items.length;
   const prontos = items.filter((i) => i.status === "pronto").length;
   const erros = items.filter((i) => i.status === "erro").length;
@@ -123,13 +160,24 @@ export default function BatchUpload() {
               {total} foto{total > 1 ? "s" : ""} selecionada{total > 1 ? "s" : ""}
               {(prontos > 0 || erros > 0) && ` — ${prontos} pronta${prontos !== 1 ? "s" : ""}, ${erros} com erro`}
             </p>
-            <button
-              onClick={processAll}
-              disabled={processing}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {processing ? "Processando..." : "Remover fundo de todas"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={processAll}
+                disabled={processing}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {processing ? "Processando..." : "Remover fundo de todas"}
+              </button>
+              {prontos > 0 && (
+                <button
+                  onClick={handleDownloadAll}
+                  disabled={downloadingAll}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {downloadingAll ? "Compactando..." : `Baixar todas (.zip)`}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -162,12 +210,21 @@ export default function BatchUpload() {
                   {item.status === "erro" && (item.error ?? "Erro")}
                 </p>
                 {item.status === "pronto" && (
-                  <button
-                    onClick={() => setEditingId(item.id)}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                  >
-                    Editar
-                  </button>
+                  <div className="mt-1 flex gap-1">
+                    <button
+                      onClick={() => setEditingId(item.id)}
+                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDownloadOne(item)}
+                      disabled={downloadingId === item.id}
+                      className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {downloadingId === item.id ? "..." : "Baixar"}
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
