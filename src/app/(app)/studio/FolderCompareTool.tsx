@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { compressImageFromUrl } from "./compress";
 import { downloadBlob, zipBlobs } from "./download";
-import FolderPickerZone from "./FolderPickerZone";
-import InfoTooltip from "./InfoTooltip";
+import FolderPickerZone from "@/components/FolderPickerZone";
+import InfoTooltip from "@/components/InfoTooltip";
 
 const IMG_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"]);
 

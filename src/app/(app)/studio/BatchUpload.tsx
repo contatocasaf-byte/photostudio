@@ -15,7 +15,7 @@ import {
   uniqueName,
 } from "./download";
 import { compressImageFromUrl } from "./compress";
-import FilePickerZone from "./FilePickerZone";
+import FilePickerZone from "@/components/FilePickerZone";
 
 const MAX_LOTE = 50;
 

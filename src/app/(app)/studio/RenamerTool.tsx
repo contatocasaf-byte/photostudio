@@ -12,8 +12,8 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { downloadBlob, zipBlobs, uniqueName } from "./download";
-import FilePickerZone from "./FilePickerZone";
-import InfoTooltip from "./InfoTooltip";
+import FilePickerZone from "@/components/FilePickerZone";
+import InfoTooltip from "@/components/InfoTooltip";
 
 type FileEntry = {
   id: string;

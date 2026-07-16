@@ -4,8 +4,8 @@ import { useRef, useState } from "react";
 import { loadImage, canvasToBlob } from "./editor/canvasUtils";
 import { downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
 import { compressImageFromUrl } from "./compress";
-import FilePickerZone from "./FilePickerZone";
-import InfoTooltip from "./InfoTooltip";
+import FilePickerZone from "@/components/FilePickerZone";
+import InfoTooltip from "@/components/InfoTooltip";
 
 const MAX_ITENS = 100;
 // Mesmo tamanho de canvas usado no export do editor (canvasUtils.ts,
