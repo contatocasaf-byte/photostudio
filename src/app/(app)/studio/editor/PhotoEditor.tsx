@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Transformer, Rect } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Transformer, Rect, Circle } from "react-konva";
 import type Konva from "konva";
 import {
   useEditorStore,
@@ -57,6 +57,9 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   );
   const selectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [selectionVersion, setSelectionVersion] = useState(0);
+  // Posição do cursor em espaço de view (tela), pra desenhar o círculo do
+  // pincel/borracha do tamanho certo em cima da imagem.
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const naturalSizeRef = useRef({ width: 0, height: 0 });
   const bboxRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
 
@@ -246,8 +249,12 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   }
 
   function handleStageMouseMove() {
-    if (!isPointerDown.current) return;
     const tool = store.tool;
+    if (tool === "pencil" || tool === "eraser") {
+      const stagePos = stageRef.current?.getPointerPosition();
+      if (stagePos) setCursorPos(stagePos);
+    }
+    if (!isPointerDown.current) return;
     if (tool === "pencil" || tool === "eraser") {
       const p = pointerToSource();
       if (!p) return;
@@ -495,7 +502,10 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                 onMouseDown={handleStageMouseDown}
                 onMouseMove={handleStageMouseMove}
                 onMouseUp={handleStageMouseUp}
-                onMouseLeave={handleStageMouseUp}
+                onMouseLeave={() => {
+                  handleStageMouseUp();
+                  setCursorPos(null);
+                }}
                 onWheel={handleWheel}
               >
                 <Layer ref={layerRef}>
@@ -552,6 +562,16 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                       height={cropRectStage.height}
                       stroke="#e03020"
                       dash={[6, 4]}
+                      listening={false}
+                    />
+                  )}
+                  {(store.tool === "pencil" || store.tool === "eraser") && cursorPos && (
+                    <Circle
+                      x={cursorPos.x}
+                      y={cursorPos.y}
+                      radius={store.brushSize / 2}
+                      stroke={store.tool === "eraser" ? "#e03020" : "#1a56c4"}
+                      strokeWidth={1.5}
                       listening={false}
                     />
                   )}
