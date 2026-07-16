@@ -182,8 +182,14 @@ export default function WatermarkTool() {
     }
   }
 
+  // Mantém o nome original do arquivo enviado — só troca a extensão pro
+  // formato real do resultado, sem sufixo nenhum.
   function resultFilename(item: MarcaItem) {
-    return pngFilenameFor(item.file.name).replace(/\.png$/, "_marca.png");
+    return pngFilenameFor(item.file.name);
+  }
+
+  function compressedFilename(item: MarcaItem) {
+    return jpgFilenameFor(item.file.name).replace(/_web\.jpg$/, ".jpg");
   }
 
   async function handleDownloadOne(item: MarcaItem) {
@@ -215,7 +221,7 @@ export default function WatermarkTool() {
     setCompressingId(item.id);
     try {
       const blob = await compressImageFromUrl(item.resultUrl);
-      downloadBlob(blob, jpgFilenameFor(item.file.name).replace(/\.jpg$/, "_marca.jpg"));
+      downloadBlob(blob, compressedFilename(item));
     } finally {
       setCompressingId(null);
     }
@@ -229,7 +235,7 @@ export default function WatermarkTool() {
       const zipItems = await Promise.all(
         prontos.map(async (i) => ({
           blob: await compressImageFromUrl(i.resultUrl!),
-          filename: jpgFilenameFor(i.file.name).replace(/\.jpg$/, "_marca.jpg"),
+          filename: compressedFilename(i),
         }))
       );
       await zipBlobs(zipItems, `fotos-com-marca-web-${Date.now()}.zip`);
