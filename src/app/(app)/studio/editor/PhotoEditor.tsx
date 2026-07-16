@@ -21,6 +21,13 @@ const FIT_RATIO = 0.85;
 // tudo") — o OBJETO em si (sem a margem de respiro do corte) ocupa
 // ~80% do canvas final.
 const TARGET_OBJECT_RATIO = 0.8;
+// Zoom da VISUALIZAÇÃO (câmera) — diferente de mover/rotacionar/zoom do
+// objeto (ferramenta "select", que redimensiona de verdade e entra no
+// export). Isso aqui só aproxima/afasta a área de trabalho pra editar
+// com mais precisão; não altera transform/crop nem o resultado salvo.
+const MIN_VIEW_ZOOM = 0.5;
+const MAX_VIEW_ZOOM = 4;
+const VIEW_ZOOM_STEP = 1.25;
 
 type Props = {
   imageUrl: string;
@@ -75,6 +82,8 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   // que passam despercebidas no fundo quadriculado) — o export/salvo
   // continua sempre transparente, independente disso.
   const [bgMode, setBgMode] = useState<"checker" | "black">("checker");
+  const [viewZoom, setViewZoom] = useState(1);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const origCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -151,6 +160,7 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
       const padded = padBBox(bboxRef.current, img.naturalWidth, img.naturalHeight);
       store.setCropBox(padded);
       fitCropToView(bboxRef.current, TARGET_OBJECT_RATIO);
+      setViewZoom(1);
 
       redrawDisplay();
       setReady(true);
@@ -165,6 +175,27 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     const scale = Math.min(VIEW_SIZE / box.width, VIEW_SIZE / box.height) * ratio;
     store.setTransform({ x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, rotation: 0, scaleX: scale, scaleY: scale });
   }
+
+  function zoomIn() {
+    setViewZoom((z) => Math.min(MAX_VIEW_ZOOM, Math.round(z * VIEW_ZOOM_STEP * 100) / 100));
+  }
+  function zoomOut() {
+    setViewZoom((z) => Math.max(MIN_VIEW_ZOOM, Math.round((z / VIEW_ZOOM_STEP) * 100) / 100));
+  }
+  function zoomReset() {
+    setViewZoom(1);
+  }
+
+  // Mantém a área editada centralizada no viewport ao mudar o zoom — o
+  // objeto sempre fica centralizado no meio lógico do canvas (VIEW_SIZE/2),
+  // então centralizar nesse ponto equivale a centralizar nele.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const offset = Math.max(0, (VIEW_SIZE * viewZoom - VIEW_SIZE) / 2);
+    el.scrollLeft = offset;
+    el.scrollTop = offset;
+  }, [viewZoom]);
 
   useEffect(() => {
     if (store.tool === "select" && transformerRef.current && imageNodeRef.current) {
@@ -292,7 +323,10 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     const tool = store.tool;
     if (tool === "pencil" || tool === "eraser") {
       const stagePos = stageRef.current?.getPointerPosition();
-      if (stagePos) setCursorPos(stagePos);
+      // getPointerPosition() vem em pixel absoluto do canvas (já
+      // considerando VIEW_SIZE*viewZoom) — o Circle do cursor é filho do
+      // Layer, em espaço lógico (0..VIEW_SIZE), daí a divisão.
+      if (stagePos) setCursorPos({ x: stagePos.x / viewZoom, y: stagePos.y / viewZoom });
     }
     if (!isPointerDown.current) return;
     if (tool === "pencil" || tool === "eraser") {
@@ -398,9 +432,12 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   }
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
-    e.evt.preventDefault();
     const node = imageNodeRef.current;
+    // Fora da ferramenta "mover/rotacionar/zoom", deixa o scroll nativo do
+    // container (overflow-auto) rolar/pan pela visualização com zoom —
+    // só a ferramenta select usa a roda pra redimensionar o objeto.
     if (!node || store.tool !== "select") return;
+    e.evt.preventDefault();
     const factor = e.evt.deltaY < 0 ? 1.06 : 0.94;
     const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, node.scaleX() * factor));
     node.scaleX(next);
@@ -420,6 +457,7 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
     const padded = padBBox(bbox, naturalSizeRef.current.width, naturalSizeRef.current.height);
     store.setCropBox(padded);
     fitCropToView(bbox, TARGET_OBJECT_RATIO);
+    setViewZoom(1);
   }
 
   async function handleSave() {
@@ -549,6 +587,35 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
             </button>
 
             <div className="mt-4 flex flex-col gap-1 text-xs text-slate-600">
+              <span>Zoom da visualização</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={zoomOut}
+                  disabled={viewZoom <= MIN_VIEW_ZOOM}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="w-12 text-center">{Math.round(viewZoom * 100)}%</span>
+                <button
+                  onClick={zoomIn}
+                  disabled={viewZoom >= MAX_VIEW_ZOOM}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-sm leading-none disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+              {viewZoom !== 1 && (
+                <button onClick={zoomReset} className="text-left text-[11px] text-slate-400 hover:text-slate-700">
+                  Redefinir zoom (100%)
+                </button>
+              )}
+              <span className="text-[11px] text-slate-400">
+                Só aproxima a visualização, não redimensiona a imagem.
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1 text-xs text-slate-600">
               <span>Fundo do editor</span>
               <div className="flex gap-1">
                 <button
@@ -575,7 +642,8 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
           </div>
 
           <div
-            className="relative shrink-0 overflow-hidden rounded border border-slate-200"
+            ref={viewportRef}
+            className="relative shrink-0 overflow-auto rounded border border-slate-200"
             style={
               bgMode === "black"
                 ? { width: VIEW_SIZE, height: VIEW_SIZE, backgroundColor: "#000" }
@@ -593,8 +661,10 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
             {ready && (
               <Stage
                 ref={stageRef}
-                width={VIEW_SIZE}
-                height={VIEW_SIZE}
+                width={VIEW_SIZE * viewZoom}
+                height={VIEW_SIZE * viewZoom}
+                scaleX={viewZoom}
+                scaleY={viewZoom}
                 onMouseDown={handleStageMouseDown}
                 onMouseMove={handleStageMouseMove}
                 onMouseUp={handleStageMouseUp}
@@ -658,11 +728,16 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
                     />
                   )}
                   {dragCropView && (
+                    // dragCropView guarda pixel absoluto do canvas (igual ao
+                    // que handleStageMouseUp espera pra converter em
+                    // coordenada fonte via transform inverso) — só o
+                    // preview visual aqui precisa voltar pro espaço lógico
+                    // do Layer, daí a divisão por viewZoom.
                     <Rect
-                      x={dragCropView.x}
-                      y={dragCropView.y}
-                      width={dragCropView.width}
-                      height={dragCropView.height}
+                      x={dragCropView.x / viewZoom}
+                      y={dragCropView.y / viewZoom}
+                      width={dragCropView.width / viewZoom}
+                      height={dragCropView.height / viewZoom}
                       stroke="#e03020"
                       dash={[6, 4]}
                       listening={false}
