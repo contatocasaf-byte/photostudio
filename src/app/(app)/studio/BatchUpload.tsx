@@ -6,6 +6,7 @@ import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
 import { downloadUrl, downloadAllAsZip, pngFilenameFor } from "./download";
+import FilePickerZone from "./FilePickerZone";
 
 const MAX_LOTE = 50;
 
@@ -144,12 +145,13 @@ export default function BatchUpload() {
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
-      <input
-        type="file"
-        accept="image/*"
+      <FilePickerZone
         multiple
         disabled={processing}
-        onChange={(e) => handleSelect(e.target.files)}
+        title="Arraste as fotos aqui ou clique para escolher"
+        subtitle={`PNG ou JPG — até ${MAX_LOTE} de uma vez`}
+        buttonLabel="Escolher arquivos"
+        onFiles={(files) => handleSelect(files)}
       />
       {warning && <p className="mt-2 text-sm text-amber-600">{warning}</p>}
 

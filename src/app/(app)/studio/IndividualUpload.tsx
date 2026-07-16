@@ -6,6 +6,7 @@ import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
 import { downloadUrl, pngFilenameFor } from "./download";
+import FilePickerZone from "./FilePickerZone";
 
 type Status = "idle" | "uploading" | "processing" | "done" | "error";
 
@@ -63,12 +64,13 @@ export default function IndividualUpload() {
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
-      <input
-        type="file"
-        accept="image/*"
+      <FilePickerZone
         disabled={status === "uploading" || status === "processing"}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
+        title="Arraste uma foto aqui ou clique para escolher"
+        subtitle="PNG ou JPG"
+        buttonLabel="Escolher arquivo"
+        onFiles={(files) => {
+          const file = files[0];
           if (file) handleFile(file);
         }}
       />
