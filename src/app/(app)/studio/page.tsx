@@ -1,27 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import IndividualUpload from "./IndividualUpload";
 import BatchUpload from "./BatchUpload";
 import WatermarkTool from "./WatermarkTool";
 
 const TABS = [
-  { id: "individual", label: "Individual" },
-  { id: "lote", label: "Lote (até 50)" },
+  { id: "lote", label: "Editor" },
   { id: "marca", label: "Marca d'água" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
 
 export default function StudioPage() {
-  const [tab, setTab] = useState<Tab>("individual");
+  const [tab, setTab] = useState<Tab>("lote");
 
   return (
     <div className="max-w-3xl">
       <h1 className="text-lg font-semibold text-slate-900">Studio de Produtos</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Remoção de fundo (individual ou em lote), editor e aplicador de marca d&apos;água. Renomeador e comparador
-        chegam nas próximas entregas.
+        Remoção de fundo, editor e aplicador de marca d&apos;água. Renomeador e comparador chegam nas próximas
+        entregas.
       </p>
 
       <div className="mt-4 flex gap-2 border-b border-slate-200">
@@ -40,7 +38,6 @@ export default function StudioPage() {
       </div>
 
       <div className="mt-4">
-        {tab === "individual" && <IndividualUpload />}
         {tab === "lote" && <BatchUpload />}
         {tab === "marca" && <WatermarkTool />}
       </div>

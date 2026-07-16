@@ -794,7 +794,7 @@ function ToolButton({ label, active, onClick }: { label: string; active: boolean
 
 // Reseta o store global ao desmontar não é necessário aqui — cada
 // abertura do editor cria uma nova instância lógica via `key` no
-// componente pai (ver IndividualUpload/BatchUpload), então o estado
+// componente pai (ver BatchUpload), então o estado
 // (tool, histórico) deve ser resetado explicitamente pelo chamador se
 // reabrir pra outra foto sem desmontar. Ver `resetAll()` em EditorStore.
 export function useResetEditorOnOpen(open: boolean) {
