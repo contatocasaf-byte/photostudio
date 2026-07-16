@@ -71,6 +71,10 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Só afeta a exibição no editor (ajuda a enxergar bordas/áreas removidas
+  // que passam despercebidas no fundo quadriculado) — o export/salvo
+  // continua sempre transparente, independente disso.
+  const [bgMode, setBgMode] = useState<"checker" | "black">("checker");
 
   const origCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -543,18 +547,47 @@ export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSav
             <button onClick={handleReset} className="mt-1 text-xs text-slate-500 hover:text-slate-900">
               Restaurar tudo
             </button>
+
+            <div className="mt-4 flex flex-col gap-1 text-xs text-slate-600">
+              <span>Fundo do editor</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setBgMode("checker")}
+                  className={
+                    "rounded-md px-2 py-1 text-xs font-medium " +
+                    (bgMode === "checker" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+                  }
+                >
+                  Quadriculado
+                </button>
+                <button
+                  onClick={() => setBgMode("black")}
+                  className={
+                    "rounded-md px-2 py-1 text-xs font-medium " +
+                    (bgMode === "black" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+                  }
+                >
+                  Preto
+                </button>
+              </div>
+              <span className="text-[11px] text-slate-400">Só na visualização — o salvo continua transparente.</span>
+            </div>
           </div>
 
           <div
             className="relative shrink-0 overflow-hidden rounded border border-slate-200"
-            style={{
-              width: VIEW_SIZE,
-              height: VIEW_SIZE,
-              backgroundImage:
-                "linear-gradient(45deg, #e8eaed 25%, transparent 25%), linear-gradient(-45deg, #e8eaed 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e8eaed 75%), linear-gradient(-45deg, transparent 75%, #e8eaed 75%)",
-              backgroundSize: "16px 16px",
-              backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
-            }}
+            style={
+              bgMode === "black"
+                ? { width: VIEW_SIZE, height: VIEW_SIZE, backgroundColor: "#000" }
+                : {
+                    width: VIEW_SIZE,
+                    height: VIEW_SIZE,
+                    backgroundImage:
+                      "linear-gradient(45deg, #e8eaed 25%, transparent 25%), linear-gradient(-45deg, #e8eaed 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e8eaed 75%), linear-gradient(-45deg, transparent 75%, #e8eaed 75%)",
+                    backgroundSize: "16px 16px",
+                    backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
+                  }
+            }
           >
             {!ready && <p className="p-4 text-sm text-slate-500">Carregando...</p>}
             {ready && (
