@@ -5,7 +5,15 @@ import { removeBackgroundForFile } from "./removeBackground";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import PhotoEditor from "./editor/PhotoEditor";
 import { saveEditedImage } from "./editor/saveEdit";
-import { downloadUrl, downloadAllAsZip, downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
+import {
+  downloadUrl,
+  downloadAllAsZip,
+  downloadBlob,
+  zipBlobs,
+  pngFilenameFor,
+  jpgFilenameFor,
+  uniqueName,
+} from "./download";
 import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "./FilePickerZone";
 
@@ -23,26 +31,6 @@ type BatchItem = {
   originalUrl?: string;
   error?: string;
 };
-
-// Evita colisão de nome dentro do zip se dois arquivos originais tiverem
-// o mesmo nome base.
-function uniqueName(usedNames: Set<string>, filename: string) {
-  if (!usedNames.has(filename)) {
-    usedNames.add(filename);
-    return filename;
-  }
-  const dot = filename.lastIndexOf(".");
-  const base = dot > 0 ? filename.slice(0, dot) : filename;
-  const ext = dot > 0 ? filename.slice(dot) : "";
-  let n = 2;
-  let candidate = `${base}_${n}${ext}`;
-  while (usedNames.has(candidate)) {
-    n++;
-    candidate = `${base}_${n}${ext}`;
-  }
-  usedNames.add(candidate);
-  return candidate;
-}
 
 export default function BatchUpload() {
   const [items, setItems] = useState<BatchItem[]>([]);

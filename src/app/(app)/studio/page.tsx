@@ -3,10 +3,12 @@
 import { useState } from "react";
 import BatchUpload from "./BatchUpload";
 import WatermarkTool from "./WatermarkTool";
+import RenamerTool from "./RenamerTool";
 
 const TABS = [
   { id: "lote", label: "Editor" },
   { id: "marca", label: "Marca d'água" },
+  { id: "renomear", label: "Renomeador" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -15,11 +17,11 @@ export default function StudioPage() {
   const [tab, setTab] = useState<Tab>("lote");
 
   return (
-    <div className="max-w-3xl">
+    <div className={tab === "renomear" ? "max-w-5xl" : "max-w-3xl"}>
       <h1 className="text-lg font-semibold text-slate-900">Studio de Produtos</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Remoção de fundo, editor e aplicador de marca d&apos;água. Renomeador e comparador chegam nas próximas
-        entregas.
+        Remoção de fundo, editor, aplicador de marca d&apos;água e renomeador. Comparador de pastas chega numa
+        próxima entrega.
       </p>
 
       <div className="mt-4 flex gap-2 border-b border-slate-200">
@@ -40,6 +42,7 @@ export default function StudioPage() {
       <div className="mt-4">
         {tab === "lote" && <BatchUpload />}
         {tab === "marca" && <WatermarkTool />}
+        {tab === "renomear" && <RenamerTool />}
       </div>
     </div>
   );
