@@ -33,3 +33,34 @@ export async function getUploadUrl(params: {
 
   return { url, filePath };
 }
+
+// URL presignada de PUT pra uma key JÁ EXISTENTE (sobrescreve) — usada
+// pelo editor de foto pra salvar a versão editada por cima do resultado
+// original, sem criar uma key nova (assim a miniatura já exibida continua
+// apontando pro mesmo arquivo). Restrito ao prefixo `produtos/` — o
+// editor só deve poder sobrescrever resultados já processados, não
+// qualquer objeto do bucket.
+export async function getOverwriteUploadUrl(params: {
+  key: string;
+  contentType: string;
+}): Promise<{ url?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  if (!params.key.startsWith("produtos/")) {
+    return { error: "Key inválida pra sobrescrever." };
+  }
+
+  const client = createR2Client();
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: params.key,
+    ContentType: params.contentType,
+  });
+  const url = await getSignedUrl(client, command, { expiresIn: 300 });
+
+  return { url };
+}

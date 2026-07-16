@@ -1,0 +1,591 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Stage, Layer, Image as KonvaImage, Transformer, Rect } from "react-konva";
+import type Konva from "konva";
+import {
+  useEditorStore,
+  createInitialTransform,
+  MIN_SCALE,
+  MAX_SCALE,
+  type EditorSnapshot,
+  type CropBox,
+} from "./EditorStore";
+import { floodFillMask } from "./floodFill";
+import { loadImage, splitImageIntoLayers, canvasToDataUrl, dataUrlToCanvas, exportFinal, canvasToBlob } from "./canvasUtils";
+
+const VIEW_SIZE = 640;
+const FIT_RATIO = 0.85;
+
+type Props = {
+  imageUrl: string;
+  onClose: () => void;
+  onSave: (blob: Blob) => Promise<void>;
+};
+
+function computeOpaqueBBox(maskCanvas: HTMLCanvasElement) {
+  const ctx = maskCanvas.getContext("2d")!;
+  const { data, width: w, height: h } = ctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4] > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX) return { x: 0, y: 0, width: w, height: h };
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
+  const store = useEditorStore();
+  const [ready, setReady] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const origCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const displayCanvasRef = useRef<HTMLCanvasElement>(
+    typeof document !== "undefined" ? document.createElement("canvas") : (null as unknown as HTMLCanvasElement)
+  );
+  const selectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const naturalSizeRef = useRef({ width: 0, height: 0 });
+  const bboxRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const imageNodeRef = useRef<Konva.Image | null>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+  const layerRef = useRef<Konva.Layer | null>(null);
+
+  const dragState = useRef<{ tool: string; lastX: number; lastY: number; cropStart?: { x: number; y: number } }>({
+    tool: "select",
+    lastX: 0,
+    lastY: 0,
+  });
+
+  const redrawDisplay = useCallback(() => {
+    const orig = origCanvasRef.current;
+    const mask = maskCanvasRef.current;
+    const display = displayCanvasRef.current;
+    if (!orig || !mask || !display) return;
+    display.width = orig.width;
+    display.height = orig.height;
+    const ctx = display.getContext("2d")!;
+    ctx.clearRect(0, 0, display.width, display.height);
+    ctx.drawImage(orig, 0, 0);
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.drawImage(mask, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    layerRef.current?.batchDraw();
+  }, []);
+
+  // Carrega a imagem processada e separa em camadas (orig RGB + máscara).
+  useEffect(() => {
+    let cancelled = false;
+    loadImage(imageUrl).then((img) => {
+      if (cancelled) return;
+      const { origCanvas, maskCanvas } = splitImageIntoLayers(img);
+      origCanvasRef.current = origCanvas;
+      maskCanvasRef.current = maskCanvas;
+      naturalSizeRef.current = { width: img.naturalWidth, height: img.naturalHeight };
+      bboxRef.current = computeOpaqueBBox(maskCanvas);
+
+      const sel = document.createElement("canvas");
+      sel.width = img.naturalWidth;
+      sel.height = img.naturalHeight;
+      selectionCanvasRef.current = sel;
+
+      const bbox = bboxRef.current;
+      const scale = Math.min(VIEW_SIZE / bbox.width, VIEW_SIZE / bbox.height) * FIT_RATIO;
+      store.setTransform({
+        x: VIEW_SIZE / 2,
+        y: VIEW_SIZE / 2,
+        rotation: 0,
+        scaleX: scale,
+        scaleY: scale,
+      });
+      store.setCropBox(null);
+
+      redrawDisplay();
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageUrl]);
+
+  useEffect(() => {
+    if (store.tool === "select" && transformerRef.current && imageNodeRef.current) {
+      transformerRef.current.nodes([imageNodeRef.current]);
+      transformerRef.current.getLayer()?.batchDraw();
+    } else {
+      transformerRef.current?.nodes([]);
+      transformerRef.current?.getLayer()?.batchDraw();
+    }
+  }, [store.tool, ready]);
+
+  function currentSnapshot(): EditorSnapshot {
+    return {
+      transform: { ...store.transform },
+      cropBox: store.cropBox,
+      maskDataUrl: maskCanvasRef.current ? canvasToDataUrl(maskCanvasRef.current) : "",
+    };
+  }
+
+  function commitSnapshot() {
+    store.pushHistory(currentSnapshot());
+  }
+
+  async function applySnapshot(snap: EditorSnapshot) {
+    const restored = await dataUrlToCanvas(snap.maskDataUrl);
+    maskCanvasRef.current = restored;
+    redrawDisplay();
+  }
+
+  async function handleUndo() {
+    const restored = store.undo(currentSnapshot());
+    if (restored) await applySnapshot(restored);
+  }
+
+  async function handleRedo() {
+    const restored = store.redo(currentSnapshot());
+    if (restored) await applySnapshot(restored);
+  }
+
+  // Ponteiro (view/stage) -> coordenada na imagem fonte, usando o
+  // transform inverso nativo do Konva — substitui a trigonometria manual
+  // de _view_to_src_coords do app original.
+  function pointerToSource(): { x: number; y: number } | null {
+    const stage = stageRef.current;
+    const node = imageNodeRef.current;
+    if (!stage || !node) return null;
+    const pos = stage.getPointerPosition();
+    if (!pos) return null;
+    const inv = node.getAbsoluteTransform().copy().invert();
+    return inv.point(pos);
+  }
+
+  function paintAt(x: number, y: number, erase: boolean) {
+    const mask = maskCanvasRef.current;
+    if (!mask) return;
+    const ctx = mask.getContext("2d")!;
+    const scale = store.transform.scaleX || 1;
+    const radius = Math.max(1, store.brushSize / scale / 2);
+    ctx.fillStyle = erase ? "black" : "white";
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function handleStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
+    const tool = store.tool;
+    if (tool === "pencil" || tool === "eraser") {
+      const p = pointerToSource();
+      if (!p) return;
+      commitSnapshot();
+      dragState.current = { tool, lastX: p.x, lastY: p.y };
+      paintAt(p.x, p.y, tool === "eraser");
+      redrawDisplay();
+    } else if (tool === "magic") {
+      const p = pointerToSource();
+      const orig = origCanvasRef.current;
+      const sel = selectionCanvasRef.current;
+      if (!p || !orig || !sel) return;
+      const octx = orig.getContext("2d")!;
+      const imgData = octx.getImageData(0, 0, orig.width, orig.height);
+      const found = floodFillMask(imgData, p.x, p.y, store.tolerance);
+
+      const mode = e.evt.ctrlKey ? "add" : e.evt.altKey ? "sub" : "new";
+      const sctx = sel.getContext("2d")!;
+      const prev = mode === "new" ? null : sctx.getImageData(0, 0, sel.width, sel.height);
+      const next = sctx.createImageData(sel.width, sel.height);
+      for (let i = 0; i < found.length; i++) {
+        const o = i * 4;
+        let on = found[i] === 255;
+        if (mode === "add" && prev && prev.data[o + 3] > 0) on = true;
+        if (mode === "sub" && prev && prev.data[o + 3] > 0 && found[i] === 255) on = false;
+        else if (mode === "sub" && prev) on = prev.data[o + 3] > 0;
+        if (on) {
+          next.data[o] = 0;
+          next.data[o + 1] = 120;
+          next.data[o + 2] = 255;
+          next.data[o + 3] = 110;
+        }
+      }
+      sctx.clearRect(0, 0, sel.width, sel.height);
+      sctx.putImageData(next, 0, 0);
+      setSelectionVersion((v) => v + 1);
+    } else if (tool === "crop") {
+      const p = pointerToSource();
+      if (!p) return;
+      dragState.current = { tool, lastX: p.x, lastY: p.y, cropStart: { x: p.x, y: p.y } };
+      store.setCropBox({ x: p.x, y: p.y, width: 0, height: 0 });
+    }
+  }
+
+  function handleStageMouseMove() {
+    const tool = store.tool;
+    if (tool === "pencil" || tool === "eraser") {
+      const p = pointerToSource();
+      if (!p) return;
+      const { lastX, lastY } = dragState.current;
+      const dist = Math.hypot(p.x - lastX, p.y - lastY);
+      const steps = Math.max(1, Math.ceil(dist / 4));
+      for (let s = 1; s <= steps; s++) {
+        const ix = lastX + ((p.x - lastX) * s) / steps;
+        const iy = lastY + ((p.y - lastY) * s) / steps;
+        paintAt(ix, iy, tool === "eraser");
+      }
+      dragState.current.lastX = p.x;
+      dragState.current.lastY = p.y;
+      redrawDisplay();
+    } else if (tool === "crop" && dragState.current.cropStart) {
+      const p = pointerToSource();
+      if (!p) return;
+      const start = dragState.current.cropStart;
+      const x = Math.min(start.x, p.x);
+      const y = Math.min(start.y, p.y);
+      const width = Math.abs(p.x - start.x);
+      const height = Math.abs(p.y - start.y);
+      store.setCropBox({ x, y, width, height });
+    }
+  }
+
+  function handleStageMouseUp() {
+    const tool = store.tool;
+    if (tool === "pencil" || tool === "eraser") {
+      // snapshot já foi feito no mousedown (um traço = uma unidade de undo)
+    } else if (tool === "crop") {
+      const box = store.cropBox;
+      dragState.current.cropStart = undefined;
+      if (box && box.width > 4 && box.height > 4) {
+        commitSnapshot();
+      } else {
+        store.setCropBox(null);
+      }
+    }
+  }
+
+  function applyMagicErase() {
+    const sel = selectionCanvasRef.current;
+    const mask = maskCanvasRef.current;
+    if (!sel || !mask) return;
+    commitSnapshot();
+    const sctx = sel.getContext("2d")!;
+    const selData = sctx.getImageData(0, 0, sel.width, sel.height);
+    const mctx = mask.getContext("2d")!;
+    const maskData = mctx.getImageData(0, 0, mask.width, mask.height);
+    for (let i = 0; i < selData.data.length; i += 4) {
+      if (selData.data[i + 3] > 0) {
+        maskData.data[i] = 0;
+        maskData.data[i + 1] = 0;
+        maskData.data[i + 2] = 0;
+      }
+    }
+    mctx.putImageData(maskData, 0, 0);
+    clearSelection();
+    redrawDisplay();
+  }
+
+  function clearSelection() {
+    const sel = selectionCanvasRef.current;
+    if (!sel) return;
+    sel.getContext("2d")!.clearRect(0, 0, sel.width, sel.height);
+    setSelectionVersion((v) => v + 1);
+  }
+
+  function handleTransformEnd() {
+    const node = imageNodeRef.current;
+    if (!node) return;
+    store.setTransform({
+      x: node.x(),
+      y: node.y(),
+      rotation: node.rotation(),
+      scaleX: node.scaleX(),
+      scaleY: node.scaleY(),
+    });
+    commitSnapshot();
+  }
+
+  function handleDragEnd() {
+    handleTransformEnd();
+  }
+
+  function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
+    e.evt.preventDefault();
+    const node = imageNodeRef.current;
+    if (!node || store.tool !== "select") return;
+    const factor = e.evt.deltaY < 0 ? 1.06 : 0.94;
+    const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, node.scaleX() * factor));
+    node.scaleX(next);
+    node.scaleY(next);
+    layerRef.current?.batchDraw();
+    handleTransformEnd();
+  }
+
+  function handleReset() {
+    const bbox = bboxRef.current;
+    const scale = Math.min(VIEW_SIZE / bbox.width, VIEW_SIZE / bbox.height) * FIT_RATIO;
+    commitSnapshot();
+    store.setTransform({ x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, rotation: 0, scaleX: scale, scaleY: scale });
+    store.setCropBox(null);
+  }
+
+  async function handleSave() {
+    const orig = origCanvasRef.current;
+    const mask = maskCanvasRef.current;
+    if (!orig || !mask) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const out = exportFinal(orig, mask, store.transform, store.cropBox);
+      const blob = await canvasToBlob(out);
+      await onSave(blob);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (store.tool === "magic") applyMagicErase();
+      } else if (e.key === "Escape") {
+        clearSelection();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  const cropRectStage = (() => {
+    if (!store.cropBox || !imageNodeRef.current) return null;
+    const node = imageNodeRef.current;
+    const abs = node.getAbsoluteTransform();
+    const p1 = abs.point({ x: store.cropBox.x, y: store.cropBox.y });
+    const p2 = abs.point({ x: store.cropBox.x + store.cropBox.width, y: store.cropBox.y + store.cropBox.height });
+    return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y), width: Math.abs(p2.x - p1.x), height: Math.abs(p2.y - p1.y) };
+  })();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <h2 className="text-sm font-semibold text-slate-900">Editar foto</h2>
+          <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-900">
+            Fechar
+          </button>
+        </div>
+
+        <div className="flex flex-1 gap-4 overflow-auto p-4">
+          <div className="flex flex-col gap-2">
+            <ToolButton label="Mover/rotacionar/zoom" active={store.tool === "select"} onClick={() => store.setTool("select")} />
+            <ToolButton label="Lápis" active={store.tool === "pencil"} onClick={() => store.setTool("pencil")} />
+            <ToolButton label="Borracha" active={store.tool === "eraser"} onClick={() => store.setTool("eraser")} />
+            <ToolButton label="Varinha mágica" active={store.tool === "magic"} onClick={() => store.setTool("magic")} />
+            <ToolButton label="Cortar" active={store.tool === "crop"} onClick={() => store.setTool("crop")} />
+
+            {(store.tool === "pencil" || store.tool === "eraser") && (
+              <label className="mt-2 flex flex-col gap-1 text-xs text-slate-600">
+                Tamanho do pincel ({store.brushSize}px)
+                <input
+                  type="range"
+                  min={2}
+                  max={200}
+                  value={store.brushSize}
+                  onChange={(e) => store.setBrushSize(Number(e.target.value))}
+                />
+              </label>
+            )}
+
+            {store.tool === "magic" && (
+              <>
+                <label className="mt-2 flex flex-col gap-1 text-xs text-slate-600">
+                  Tolerância ({store.tolerance})
+                  <input
+                    type="range"
+                    min={1}
+                    max={120}
+                    value={store.tolerance}
+                    onChange={(e) => store.setTolerance(Number(e.target.value))}
+                  />
+                </label>
+                <button
+                  onClick={applyMagicErase}
+                  className="mt-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  Apagar seleção (Delete)
+                </button>
+                <button onClick={clearSelection} className="text-xs text-slate-500 hover:text-slate-900">
+                  Limpar seleção (Esc)
+                </button>
+              </>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={handleUndo}
+                disabled={store.history.length === 0}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                Desfazer
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={store.future.length === 0}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+              >
+                Refazer
+              </button>
+            </div>
+            <button onClick={handleReset} className="mt-1 text-xs text-slate-500 hover:text-slate-900">
+              Restaurar tudo
+            </button>
+          </div>
+
+          <div
+            className="relative shrink-0 overflow-hidden rounded border border-slate-200"
+            style={{
+              width: VIEW_SIZE,
+              height: VIEW_SIZE,
+              backgroundImage:
+                "linear-gradient(45deg, #e8eaed 25%, transparent 25%), linear-gradient(-45deg, #e8eaed 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e8eaed 75%), linear-gradient(-45deg, transparent 75%, #e8eaed 75%)",
+              backgroundSize: "16px 16px",
+              backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
+            }}
+          >
+            {!ready && <p className="p-4 text-sm text-slate-500">Carregando...</p>}
+            {ready && (
+              <Stage
+                ref={stageRef}
+                width={VIEW_SIZE}
+                height={VIEW_SIZE}
+                onMouseDown={handleStageMouseDown}
+                onMouseMove={handleStageMouseMove}
+                onMouseUp={handleStageMouseUp}
+                onWheel={handleWheel}
+              >
+                <Layer ref={layerRef}>
+                  <KonvaImage
+                    ref={imageNodeRef}
+                    image={displayCanvasRef.current}
+                    x={store.transform.x}
+                    y={store.transform.y}
+                    rotation={store.transform.rotation}
+                    scaleX={store.transform.scaleX}
+                    scaleY={store.transform.scaleY}
+                    offsetX={bboxRef.current.x + bboxRef.current.width / 2}
+                    offsetY={bboxRef.current.y + bboxRef.current.height / 2}
+                    draggable={store.tool === "select"}
+                    onDragEnd={handleDragEnd}
+                    onTransformEnd={handleTransformEnd}
+                  />
+                  {selectionCanvasRef.current && (
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    <KonvaImage
+                      image={selectionCanvasRef.current}
+                      x={store.transform.x}
+                      y={store.transform.y}
+                      rotation={store.transform.rotation}
+                      scaleX={store.transform.scaleX}
+                      scaleY={store.transform.scaleY}
+                      offsetX={bboxRef.current.x + bboxRef.current.width / 2}
+                      offsetY={bboxRef.current.y + bboxRef.current.height / 2}
+                      listening={false}
+                      key={selectionVersion}
+                    />
+                  )}
+                  {store.tool === "select" && (
+                    <Transformer
+                      ref={transformerRef}
+                      enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+                      rotateAnchorOffset={18}
+                      keepRatio={true}
+                      boundBoxFunc={(oldBox, newBox) => {
+                        const node = imageNodeRef.current;
+                        if (!node) return newBox;
+                        const w = naturalSizeRef.current.width || 1;
+                        const scale = newBox.width / w;
+                        if (scale < MIN_SCALE || scale > MAX_SCALE) return oldBox;
+                        return newBox;
+                      }}
+                    />
+                  )}
+                  {cropRectStage && (
+                    <Rect
+                      x={cropRectStage.x}
+                      y={cropRectStage.y}
+                      width={cropRectStage.width}
+                      height={cropRectStage.height}
+                      stroke="#e03020"
+                      dash={[6, 4]}
+                      listening={false}
+                    />
+                  )}
+                </Layer>
+              </Stage>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="px-4 text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+          <button onClick={onClose} className="rounded-md px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!ready || saving}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToolButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        "rounded-md px-3 py-1.5 text-left text-xs font-medium " +
+        (active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+// Reseta o store global ao desmontar não é necessário aqui — cada
+// abertura do editor cria uma nova instância lógica via `key` no
+// componente pai (ver IndividualUpload/BatchUpload), então o estado
+// (tool, histórico) deve ser resetado explicitamente pelo chamador se
+// reabrir pra outra foto sem desmontar. Ver `resetAll()` em EditorStore.
+export function useResetEditorOnOpen(open: boolean) {
+  const resetAll = useEditorStore((s) => s.resetAll);
+  useEffect(() => {
+    if (open) resetAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+}

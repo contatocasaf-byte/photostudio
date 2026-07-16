@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { removeBackgroundForFile } from "./removeBackground";
 import { getPublicUrl } from "@/lib/storage/public-url";
+import PhotoEditor from "./editor/PhotoEditor";
+import { saveEditedImage } from "./editor/saveEdit";
 
 const MAX_LOTE = 50;
 
@@ -13,6 +15,7 @@ type BatchItem = {
   file: File;
   previewUrl: string;
   status: ItemStatus;
+  resultKey?: string;
   resultUrl?: string;
   error?: string;
 };
@@ -21,6 +24,7 @@ export default function BatchUpload() {
   const [items, setItems] = useState<BatchItem[]>([]);
   const [processing, setProcessing] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   function handleSelect(fileList: FileList | null) {
     if (!fileList) return;
@@ -49,7 +53,9 @@ export default function BatchUpload() {
       try {
         const resultKey = await removeBackgroundForFile(item.file);
         setItems((prev) =>
-          prev.map((i) => (i.id === item.id ? { ...i, status: "pronto", resultUrl: getPublicUrl(resultKey) } : i))
+          prev.map((i) =>
+            i.id === item.id ? { ...i, status: "pronto", resultKey, resultUrl: getPublicUrl(resultKey) } : i
+          )
         );
       } catch (err) {
         setItems((prev) =>
@@ -64,9 +70,20 @@ export default function BatchUpload() {
     setProcessing(false);
   }
 
+  async function handleSaveEdit(id: string, blob: Blob) {
+    const item = items.find((i) => i.id === id);
+    if (!item?.resultKey) return;
+    await saveEditedImage(item.resultKey, blob);
+    setItems((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, resultUrl: `${getPublicUrl(item.resultKey!)}?t=${Date.now()}` } : i))
+    );
+    setEditingId(null);
+  }
+
   const total = items.length;
   const prontos = items.filter((i) => i.status === "pronto").length;
   const erros = items.filter((i) => i.status === "erro").length;
+  const editingItem = items.find((i) => i.id === editingId);
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6">
@@ -124,10 +141,26 @@ export default function BatchUpload() {
                   {item.status === "pronto" && "Pronto"}
                   {item.status === "erro" && (item.error ?? "Erro")}
                 </p>
+                {item.status === "pronto" && (
+                  <button
+                    onClick={() => setEditingId(item.id)}
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    Editar
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {editingItem?.resultUrl && (
+        <PhotoEditor
+          imageUrl={editingItem.resultUrl}
+          onClose={() => setEditingId(null)}
+          onSave={(blob) => handleSaveEdit(editingItem.id, blob)}
+        />
       )}
     </div>
   );
