@@ -7,7 +7,7 @@ import { defaultConfigForSize } from "./core/layoutConfig";
 import { loadImage, loadImageToCanvas } from "./core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "./core/renderOffer";
 import { formatarPrecoBR } from "./core/priceFormat";
-import { encontrarFotoProduto, PRODUCT_PHOTO_EXTS } from "./core/findProductPhoto";
+import { findFileByCode, PRODUCT_PHOTO_EXTS } from "@/lib/findFileByCode";
 import { parsePlanilha, buscarProduto, type ProdutoRow } from "./core/parsePlanilha";
 import LayoutPicker, { type SelectedLayout } from "./LayoutPicker";
 import PhotoAdjustWidget, { type PhotoTransform } from "./PhotoAdjustWidget";
@@ -83,7 +83,7 @@ export default function OfertasPage() {
       if (produto.precoPa) setPrecoPa(formatarPrecoBR(produto.precoPa));
     }
 
-    const found = encontrarFotoProduto(pastaEntries, code);
+    const found = findFileByCode(pastaEntries, code);
     if (found) {
       setFotoStatus(`✔ ${found.name}`);
       const file = await found.getFile();

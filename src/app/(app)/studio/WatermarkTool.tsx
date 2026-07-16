@@ -5,7 +5,9 @@ import { loadImage, canvasToBlob } from "./editor/canvasUtils";
 import { downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
 import { compressImageFromUrl } from "./compress";
 import FilePickerZone from "@/components/FilePickerZone";
+import FolderPickerZone, { type LazyFileEntry } from "@/components/FolderPickerZone";
 import InfoTooltip from "@/components/InfoTooltip";
+import { findFileByCode, PRODUCT_PHOTO_EXTS } from "@/lib/findFileByCode";
 
 const MAX_ITENS = 100;
 // Mesmo tamanho de canvas usado no export do editor (canvasUtils.ts,
@@ -129,23 +131,69 @@ export default function WatermarkTool() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-  function handleSelectFiles(fileList: FileList) {
-    let files = Array.from(fileList);
+  const [folderEntries, setFolderEntries] = useState<LazyFileEntry[]>([]);
+  const [folderCode, setFolderCode] = useState("");
+  const [folderStatus, setFolderStatus] = useState<string | null>(null);
+  const [resolvingFolder, setResolvingFolder] = useState(false);
+
+  function addFiles(files: File[]) {
+    let toAdd = files;
     setWarning(null);
     if (items.length + files.length > MAX_ITENS) {
       const permitido = Math.max(0, MAX_ITENS - items.length);
       setWarning(`Máximo ${MAX_ITENS} fotos por lote — ${files.length - permitido} arquivo(s) ignorado(s).`);
-      files = files.slice(0, permitido);
+      toAdd = files.slice(0, permitido);
     }
     setItems((prev) => [
       ...prev,
-      ...files.map((file) => ({
+      ...toAdd.map((file) => ({
         id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
         file,
         previewUrl: URL.createObjectURL(file),
         status: "pendente" as ItemStatus,
       })),
     ]);
+  }
+
+  function handleSelectFiles(fileList: FileList) {
+    addFiles(Array.from(fileList));
+  }
+
+  // Em lote: todas as fotos listadas na pasta viram itens do lote de
+  // uma vez — só lê o conteúdo (getFile) de cada uma agora, na hora de
+  // efetivamente adicionar, não quando a pasta foi só selecionada.
+  async function handleAdicionarTodasDaPasta() {
+    if (folderEntries.length === 0) return;
+    setResolvingFolder(true);
+    setFolderStatus(null);
+    try {
+      const files = await Promise.all(folderEntries.map((e) => e.getFile()));
+      addFiles(files);
+      setFolderStatus(`✔ ${files.length} foto(s) adicionada(s) da pasta.`);
+    } finally {
+      setResolvingFolder(false);
+    }
+  }
+
+  // Individual: busca só UMA foto por código (padrão CODIGO_N.ext) —
+  // lê só o arquivo encontrado, não a pasta inteira.
+  async function handleBuscarPorCodigo() {
+    const code = folderCode.trim();
+    if (!code) return;
+    setResolvingFolder(true);
+    setFolderStatus(null);
+    try {
+      const found = findFileByCode(folderEntries, code);
+      if (!found) {
+        setFolderStatus(`⚠ Nenhuma foto encontrada para "${code}" nessa pasta.`);
+        return;
+      }
+      const file = await found.getFile();
+      addFiles([file]);
+      setFolderStatus(`✔ ${found.name} adicionada.`);
+    } finally {
+      setResolvingFolder(false);
+    }
   }
 
   function limparLista() {
@@ -262,7 +310,10 @@ export default function WatermarkTool() {
             Seleciona a <strong>marca d&apos;água</strong> e a <strong>logomarca</strong> (PNGs) uma única vez — elas
             valem pra todo o lote.
           </p>
-          <p>Depois escolhe as fotos de produto (já sem fundo, exportadas pelo Editor).</p>
+          <p>
+            Depois escolhe as fotos de produto (já sem fundo, exportadas pelo Editor) — enviando os arquivos direto ou
+            apontando uma pasta (todas de uma vez, ou só uma buscando pelo código do produto).
+          </p>
           <p>
             Cada foto vira: fundo branco 1000×1000 → objeto centralizado → marca d&apos;água encostada no canto
             superior esquerdo → logo por cima, no mesmo canto.
@@ -309,6 +360,57 @@ export default function WatermarkTool() {
           onFiles={handleSelectFiles}
         />
       </div>
+
+      <div className="mt-4 rounded-md border border-slate-200 p-3">
+        <p className="text-sm font-medium text-slate-700">Ou adicionar de uma pasta</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Aponte uma pasta com as fotos já processadas — dá pra adicionar todas de uma vez ou só uma, buscando pelo
+          código do produto.
+        </p>
+        <div className="mt-2">
+          <FolderPickerZone
+            label="Pasta de fotos"
+            count={folderEntries.length}
+            extensions={PRODUCT_PHOTO_EXTS}
+            onEntries={(entries) => {
+              setFolderEntries(entries);
+              setFolderStatus(null);
+            }}
+          />
+        </div>
+        {folderEntries.length > 0 && (
+          <>
+            <button
+              onClick={handleAdicionarTodasDaPasta}
+              disabled={resolvingFolder || processing}
+              className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {resolvingFolder ? "Adicionando..." : `Adicionar todas da pasta ao lote (${folderEntries.length})`}
+            </button>
+
+            <div className="mt-2 flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-slate-600">Ou buscar uma só, por código</label>
+                <input
+                  value={folderCode}
+                  onChange={(e) => setFolderCode(e.target.value)}
+                  placeholder="ex: 20502"
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                />
+              </div>
+              <button
+                onClick={handleBuscarPorCodigo}
+                disabled={resolvingFolder || processing || !folderCode.trim()}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Buscar e adicionar
+              </button>
+            </div>
+          </>
+        )}
+        {folderStatus && <p className="mt-2 text-xs text-slate-500">{folderStatus}</p>}
+      </div>
+
       {warning && <p className="mt-2 text-sm text-amber-600">{warning}</p>}
 
       {total > 0 && (
