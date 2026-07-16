@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { compressImageFromUrl } from "./compress";
-import { downloadBlob, zipBlobs } from "./download";
 import FolderPickerZone, { type LazyFileEntry } from "@/components/FolderPickerZone";
 import InfoTooltip from "@/components/InfoTooltip";
 
@@ -19,12 +17,19 @@ type Pendente = {
   entry: LazyFileEntry;
 };
 
+type Props = {
+  // Manda as fotos pendentes (já resolvidas via getFile) pro Aplicador
+  // de Marca — quem chama decide o que fazer com elas (StudioPage troca
+  // pra aba Marca d'água e injeta no lote de lá).
+  onApplyMarca: (files: File[]) => void;
+};
+
 // Porta ComparadorPastas._comparar (removedor_fundo.py:2619-2664):
 // identifica por nome sem extensão (ignora .png vs .jpg), case-
 // insensitive — fotos que estão na pasta A mas não na B. Só compara
-// NOMES (entry.name) — nenhum arquivo é lido/baixado nessa etapa,
-// só os que sobrarem como pendentes é que têm o conteúdo lido de
-// fato, um a um, na hora de gerar a cópia comprimida.
+// NOMES (entry.name) — nenhum arquivo é lido nessa etapa, só os que
+// sobrarem como pendentes têm o conteúdo lido de fato, um a um, na
+// hora de aplicar a marca.
 function compararPastas(entriesA: LazyFileEntry[], entriesB: LazyFileEntry[]) {
   const mapA = new Map<string, Pendente>();
   for (const e of entriesA) {
@@ -38,12 +43,12 @@ function compararPastas(entriesA: LazyFileEntry[], entriesB: LazyFileEntry[]) {
   return { pendentes, totalA: mapA.size, totalB: keysB.size };
 }
 
-export default function FolderCompareTool() {
+export default function FolderCompareTool({ onApplyMarca }: Props) {
   const [entriesA, setEntriesA] = useState<LazyFileEntry[]>([]);
   const [entriesB, setEntriesB] = useState<LazyFileEntry[]>([]);
   const [resultado, setResultado] = useState<{ pendentes: Pendente[]; totalA: number; totalB: number } | null>(null);
-  const [compressingAll, setCompressingAll] = useState(false);
-  const [compressingKey, setCompressingKey] = useState<string | null>(null);
+  const [applyingAll, setApplyingAll] = useState(false);
+  const [applyingKey, setApplyingKey] = useState<string | null>(null);
 
   function handleComparar() {
     setResultado(compararPastas(entriesA, entriesB));
@@ -55,30 +60,24 @@ export default function FolderCompareTool() {
     setResultado(null);
   }
 
-  async function handleDownloadOne(p: Pendente) {
-    setCompressingKey(p.key);
+  async function handleApplyMarcaOne(p: Pendente) {
+    setApplyingKey(p.key);
     try {
       const file = await p.entry.getFile();
-      const blob = await compressImageFromUrl(URL.createObjectURL(file));
-      downloadBlob(blob, `${p.stem}.jpg`);
+      onApplyMarca([file]);
     } finally {
-      setCompressingKey(null);
+      setApplyingKey(null);
     }
   }
 
-  async function handleDownloadAll() {
+  async function handleApplyMarcaAll() {
     if (!resultado || resultado.pendentes.length === 0) return;
-    setCompressingAll(true);
+    setApplyingAll(true);
     try {
-      const zipItems = await Promise.all(
-        resultado.pendentes.map(async (p) => {
-          const file = await p.entry.getFile();
-          return { blob: await compressImageFromUrl(URL.createObjectURL(file)), filename: `${p.stem}.jpg` };
-        })
-      );
-      await zipBlobs(zipItems, `fotos-pendentes-${Date.now()}.zip`);
+      const files = await Promise.all(resultado.pendentes.map((p) => p.entry.getFile()));
+      onApplyMarca(files);
     } finally {
-      setCompressingAll(false);
+      setApplyingAll(false);
     }
   }
 
@@ -102,12 +101,12 @@ export default function FolderCompareTool() {
           </p>
           <p>Só os arquivos diretamente dentro da pasta selecionada contam (subpastas são ignoradas).</p>
           <p>
-            Selecionar a pasta só lista os nomes dos arquivos — nenhuma foto é lida ou baixada nessa etapa. Só as que
-            sobrarem como pendentes têm o conteúdo aberto de fato, na hora de gerar a cópia comprimida.
+            Selecionar a pasta só lista os nomes dos arquivos — nenhuma foto é lida nessa etapa. Só as que sobrarem
+            como pendentes têm o conteúdo aberto de fato, na hora de aplicar a marca.
           </p>
           <p>
-            Pra cada foto pendente, gera uma cópia comprimida (80-120&nbsp;KB) pronta pra passar pelo Aplicador de
-            Marca ou subir direto pro site/rede social.
+            &quot;Aplicar marca d&apos;água&quot; manda as fotos pendentes direto pro Aplicador de Marca, já
+            carregadas — não precisa selecionar os arquivos de novo lá.
           </p>
         </InfoTooltip>
       </div>
@@ -154,12 +153,12 @@ export default function FolderCompareTool() {
                   com marca)
                 </p>
                 <button
-                  onClick={handleDownloadAll}
-                  disabled={compressingAll}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  title="JPEG comprimido (80-120 KB) por foto, num .zip só"
+                  onClick={handleApplyMarcaAll}
+                  disabled={applyingAll}
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  title="Manda todas as fotos pendentes pro Aplicador de Marca"
                 >
-                  {compressingAll ? "Compactando..." : "Baixar todas comprimidas (.zip)"}
+                  {applyingAll ? "Enviando..." : "Aplicar marca d'água (todas)"}
                 </button>
               </div>
 
@@ -170,11 +169,11 @@ export default function FolderCompareTool() {
                       {p.entry.name}
                     </span>
                     <button
-                      onClick={() => handleDownloadOne(p)}
-                      disabled={compressingKey === p.key}
+                      onClick={() => handleApplyMarcaOne(p)}
+                      disabled={applyingKey === p.key}
                       className="shrink-0 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
-                      {compressingKey === p.key ? "Comprimindo..." : "Baixar comprimida"}
+                      {applyingKey === p.key ? "Enviando..." : "Aplicar marca d'água"}
                     </button>
                   </div>
                 ))}

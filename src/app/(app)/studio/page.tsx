@@ -17,6 +17,10 @@ type Tab = (typeof TABS)[number]["id"];
 
 export default function StudioPage() {
   const [tab, setTab] = useState<Tab>("lote");
+  // Handoff do Comparador de Pastas pro Aplicador de Marca: fotos
+  // pendentes resolvidas (getFile já chamado) esperando serem
+  // adicionadas assim que a aba Marca d'água montar.
+  const [incomingMarcaFiles, setIncomingMarcaFiles] = useState<File[] | undefined>(undefined);
 
   return (
     <div className={tab === "renomear" ? "max-w-5xl" : "max-w-3xl"}>
@@ -42,9 +46,18 @@ export default function StudioPage() {
 
       <div className="mt-4">
         {tab === "lote" && <BatchUpload />}
-        {tab === "marca" && <WatermarkTool />}
+        {tab === "marca" && (
+          <WatermarkTool incomingFiles={incomingMarcaFiles} onConsumedIncoming={() => setIncomingMarcaFiles(undefined)} />
+        )}
         {tab === "renomear" && <RenamerTool />}
-        {tab === "comparar" && <FolderCompareTool />}
+        {tab === "comparar" && (
+          <FolderCompareTool
+            onApplyMarca={(files) => {
+              setIncomingMarcaFiles(files);
+              setTab("marca");
+            }}
+          />
+        )}
       </div>
     </div>
   );

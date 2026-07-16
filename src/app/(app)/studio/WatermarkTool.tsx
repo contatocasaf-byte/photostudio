@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { loadImage, canvasToBlob } from "./editor/canvasUtils";
 import { downloadBlob, zipBlobs, pngFilenameFor, jpgFilenameFor } from "./download";
 import { compressImageFromUrl } from "./compress";
@@ -115,9 +115,34 @@ function AssetPicker({
   );
 }
 
-export default function WatermarkTool() {
-  const [items, setItems] = useState<MarcaItem[]>([]);
-  const [warning, setWarning] = useState<string | null>(null);
+type Props = {
+  // Fotos vindas de outra ferramenta (hoje: o Comparador de Pastas manda
+  // os "pendentes" pra cá pra já aplicar a marca neles) — já entram no
+  // lote no primeiro render, sem precisar escolher arquivo de novo.
+  incomingFiles?: File[];
+  onConsumedIncoming?: () => void;
+};
+
+function makeItem(file: File): MarcaItem {
+  return {
+    id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    status: "pendente",
+  };
+}
+
+export default function WatermarkTool({ incomingFiles, onConsumedIncoming }: Props) {
+  // Semeia o lote a partir de incomingFiles já no estado inicial (não
+  // num effect) — como cada troca de aba desmonta/remonta esse
+  // componente do zero, isso é o suficiente pra "entrar já carregado"
+  // vindo do Comparador de Pastas.
+  const [items, setItems] = useState<MarcaItem[]>(() => (incomingFiles ?? []).slice(0, MAX_ITENS).map(makeItem));
+  const [warning, setWarning] = useState<string | null>(() =>
+    incomingFiles && incomingFiles.length > MAX_ITENS
+      ? `Máximo ${MAX_ITENS} fotos por lote — ${incomingFiles.length - MAX_ITENS} arquivo(s) ignorado(s).`
+      : null
+  );
   const [processing, setProcessing] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -129,24 +154,28 @@ export default function WatermarkTool() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-  function handleSelectFiles(fileList: FileList) {
-    let files = Array.from(fileList);
+  function addFiles(files: File[]) {
+    let toAdd = files;
     setWarning(null);
     if (items.length + files.length > MAX_ITENS) {
       const permitido = Math.max(0, MAX_ITENS - items.length);
       setWarning(`Máximo ${MAX_ITENS} fotos por lote — ${files.length - permitido} arquivo(s) ignorado(s).`);
-      files = files.slice(0, permitido);
+      toAdd = files.slice(0, permitido);
     }
-    setItems((prev) => [
-      ...prev,
-      ...files.map((file) => ({
-        id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2)}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-        status: "pendente" as ItemStatus,
-      })),
-    ]);
+    setItems((prev) => [...prev, ...toAdd.map(makeItem)]);
   }
+
+  function handleSelectFiles(fileList: FileList) {
+    addFiles(Array.from(fileList));
+  }
+
+  // Só avisa o componente pai (StudioPage) que o handoff foi consumido,
+  // pra ele limpar o próprio estado — não mexe em nenhum estado local
+  // daqui, o lote já foi semeado acima.
+  useEffect(() => {
+    if (incomingFiles && incomingFiles.length > 0) onConsumedIncoming?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function limparLista() {
     setItems([]);
