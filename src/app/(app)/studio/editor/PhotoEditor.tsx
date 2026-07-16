@@ -19,6 +19,9 @@ const FIT_RATIO = 0.85;
 
 type Props = {
   imageUrl: string;
+  // Foto ANTES da remoção de fundo, se disponível — usada como fonte de
+  // cor pro lápis restaurar de verdade (ver splitImageIntoLayers).
+  originalImageUrl?: string;
   onClose: () => void;
   onSave: (blob: Blob) => Promise<void>;
 };
@@ -41,7 +44,7 @@ function computeOpaqueBBox(maskCanvas: HTMLCanvasElement) {
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
+export default function PhotoEditor({ imageUrl, originalImageUrl, onClose, onSave }: Props) {
   const store = useEditorStore();
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -67,6 +70,10 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
     lastX: 0,
     lastY: 0,
   });
+  // Só pinta/arrasta corte enquanto o botão do mouse está de fato
+  // pressionado — sem isso, mousemove sozinho (só passando o cursor)
+  // já disparava o pincel.
+  const isPointerDown = useRef(false);
 
   const redrawDisplay = useCallback(() => {
     const orig = origCanvasRef.current;
@@ -84,12 +91,14 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
     layerRef.current?.batchDraw();
   }, []);
 
-  // Carrega a imagem processada e separa em camadas (orig RGB + máscara).
+  // Carrega a imagem processada (+ original, se houver) e separa em
+  // camadas (orig RGB + máscara).
   useEffect(() => {
     let cancelled = false;
-    loadImage(imageUrl).then((img) => {
+    const originalPromise = originalImageUrl ? loadImage(originalImageUrl) : Promise.resolve(undefined);
+    Promise.all([loadImage(imageUrl), originalPromise]).then(([img, originalImg]) => {
       if (cancelled) return;
-      const { origCanvas, maskCanvas } = splitImageIntoLayers(img);
+      const { origCanvas, maskCanvas } = splitImageIntoLayers(img, originalImg);
       origCanvasRef.current = origCanvas;
       maskCanvasRef.current = maskCanvas;
       naturalSizeRef.current = { width: img.naturalWidth, height: img.naturalHeight };
@@ -118,7 +127,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrl]);
+  }, [imageUrl, originalImageUrl]);
 
   useEffect(() => {
     if (store.tool === "select" && transformerRef.current && imageNodeRef.current) {
@@ -191,6 +200,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
 
   function handleStageMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
     const tool = store.tool;
+    isPointerDown.current = true;
     if (tool === "pencil" || tool === "eraser") {
       const p = pointerToSource();
       if (!p) return;
@@ -236,6 +246,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
   }
 
   function handleStageMouseMove() {
+    if (!isPointerDown.current) return;
     const tool = store.tool;
     if (tool === "pencil" || tool === "eraser") {
       const p = pointerToSource();
@@ -264,6 +275,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
   }
 
   function handleStageMouseUp() {
+    isPointerDown.current = false;
     const tool = store.tool;
     if (tool === "pencil" || tool === "eraser") {
       // snapshot já foi feito no mousedown (um traço = uma unidade de undo)
@@ -483,6 +495,7 @@ export default function PhotoEditor({ imageUrl, onClose, onSave }: Props) {
                 onMouseDown={handleStageMouseDown}
                 onMouseMove={handleStageMouseMove}
                 onMouseUp={handleStageMouseUp}
+                onMouseLeave={handleStageMouseUp}
                 onWheel={handleWheel}
               >
                 <Layer ref={layerRef}>

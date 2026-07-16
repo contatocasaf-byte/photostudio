@@ -17,6 +17,7 @@ type BatchItem = {
   status: ItemStatus;
   resultKey?: string;
   resultUrl?: string;
+  originalUrl?: string;
   error?: string;
 };
 
@@ -51,10 +52,18 @@ export default function BatchUpload() {
     for (const item of items) {
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: "processando" } : i)));
       try {
-        const resultKey = await removeBackgroundForFile(item.file);
+        const { originalKey, resultKey } = await removeBackgroundForFile(item.file);
         setItems((prev) =>
           prev.map((i) =>
-            i.id === item.id ? { ...i, status: "pronto", resultKey, resultUrl: getPublicUrl(resultKey) } : i
+            i.id === item.id
+              ? {
+                  ...i,
+                  status: "pronto",
+                  resultKey,
+                  resultUrl: getPublicUrl(resultKey),
+                  originalUrl: getPublicUrl(originalKey),
+                }
+              : i
           )
         );
       } catch (err) {
@@ -158,6 +167,7 @@ export default function BatchUpload() {
       {editingItem?.resultUrl && (
         <PhotoEditor
           imageUrl={editingItem.resultUrl}
+          originalImageUrl={editingItem.originalUrl}
           onClose={() => setEditingId(null)}
           onSave={(blob) => handleSaveEdit(editingItem.id, blob)}
         />

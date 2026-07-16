@@ -12,6 +12,7 @@ export default function IndividualUpload() {
   const [status, setStatus] = useState<Status>("idle");
   const [resultKey, setResultKey] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
@@ -19,12 +20,14 @@ export default function IndividualUpload() {
     setError(null);
     setResultUrl(null);
     setResultKey(null);
+    setOriginalUrl(null);
     try {
       setStatus("uploading");
       setStatus("processing");
-      const key = await removeBackgroundForFile(file);
+      const { originalKey, resultKey: key } = await removeBackgroundForFile(file);
       setResultKey(key);
       setResultUrl(getPublicUrl(key));
+      setOriginalUrl(getPublicUrl(originalKey));
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
@@ -75,7 +78,12 @@ export default function IndividualUpload() {
       )}
 
       {editing && resultUrl && (
-        <PhotoEditor imageUrl={resultUrl} onClose={() => setEditing(false)} onSave={handleSaveEdit} />
+        <PhotoEditor
+          imageUrl={resultUrl}
+          originalImageUrl={originalUrl ?? undefined}
+          onClose={() => setEditing(false)}
+          onSave={handleSaveEdit}
+        />
       )}
     </div>
   );

@@ -10,39 +10,58 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-// Separa a foto processada (já sem fundo, vinda do R2) em duas camadas,
-// espelhando ItemState do app original: `origCanvas` = cor RGB opaca
-// (usada como base da composição e como fonte de cor pra varinha mágica),
-// `maskCanvas` = o valor de visibilidade atual guardado no próprio CANAL
-// ALFA do canvas (RGB fica fixo, sem uso) — é isso que
-// `globalCompositeOperation = "destination-in"` consulta em
-// `compositeLayers`; lápis usa "source-over" opaco (restaura o alfa),
-// borracha usa "destination-out" (zera o alfa). Nota: diferente do
-// original, aqui não temos a foto ANTES do
-// rembg — então "restaurar" com o lápis numa área que já estava com alfa
-// zero revela a cor que o rembg deixou ali (que pode ser preto), não a
-// cor real do produto. Isso cobre bem o caso mais comum (apagar resíduo
-// de fundo que ainda está opaco); ver PROJECT_STATUS se isso incomodar na
-// prática.
-export function splitImageIntoLayers(img: HTMLImageElement): {
+// Monta as duas camadas de edição, espelhando ItemState do app original:
+// `origCanvas` = cor RGB opaca (base da composição e fonte de cor pra
+// varinha mágica e pro lápis), `maskCanvas` = o valor de visibilidade
+// atual guardado no próprio CANAL ALFA do canvas (RGB fica fixo, sem
+// uso) — é isso que `globalCompositeOperation = "destination-in"`
+// consulta em `compositeLayers`; lápis usa "source-over" opaco (restaura
+// o alfa), borracha usa "destination-out" (zera o alfa).
+//
+// `originalImg` (opcional) é a foto ANTES da remoção de fundo — quando
+// fornecida, é ela que vira `origCanvas`, não a `processedImg`. Isso
+// importa de verdade: o rembg zera o RGB onde o alfa é zero, então sem a
+// original o lápis "restauraria" revelando essa cor zerada (geralmente
+// preto), não o produto de verdade. Se as duas imagens tiverem tamanhos
+// diferentes (não deveria, mas por segurança), a original é redesenhada
+// no tamanho da processada.
+export function splitImageIntoLayers(
+  processedImg: HTMLImageElement,
+  originalImg?: HTMLImageElement
+): {
   origCanvas: HTMLCanvasElement;
   maskCanvas: HTMLCanvasElement;
 } {
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
+  const w = processedImg.naturalWidth;
+  const h = processedImg.naturalHeight;
 
   const src = document.createElement("canvas");
   src.width = w;
   src.height = h;
   const sctx = src.getContext("2d")!;
-  sctx.drawImage(img, 0, 0);
+  sctx.drawImage(processedImg, 0, 0);
   const srcData = sctx.getImageData(0, 0, w, h).data;
 
   const origCanvas = document.createElement("canvas");
   origCanvas.width = w;
   origCanvas.height = h;
   const octx = origCanvas.getContext("2d")!;
-  const origData = octx.createImageData(w, h);
+
+  if (originalImg) {
+    // Cor vem da foto original — sempre opaca, sem relação com o alfa
+    // do resultado processado.
+    octx.drawImage(originalImg, 0, 0, w, h);
+  } else {
+    const origData = octx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const o = i * 4;
+      origData.data[o] = srcData[o];
+      origData.data[o + 1] = srcData[o + 1];
+      origData.data[o + 2] = srcData[o + 2];
+      origData.data[o + 3] = 255;
+    }
+    octx.putImageData(origData, 0, 0);
+  }
 
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = w;
@@ -52,11 +71,6 @@ export function splitImageIntoLayers(img: HTMLImageElement): {
 
   for (let i = 0; i < w * h; i++) {
     const o = i * 4;
-    origData.data[o] = srcData[o];
-    origData.data[o + 1] = srcData[o + 1];
-    origData.data[o + 2] = srcData[o + 2];
-    origData.data[o + 3] = 255;
-
     // O valor da máscara mora no canal ALFA (não no RGB) — é o que a
     // composição via "destination-in" de fato consulta. RGB fica fixo em
     // branco opaco, irrelevante pra composição.
@@ -65,8 +79,6 @@ export function splitImageIntoLayers(img: HTMLImageElement): {
     maskData.data[o + 2] = 255;
     maskData.data[o + 3] = srcData[o + 3];
   }
-
-  octx.putImageData(origData, 0, 0);
   mctx.putImageData(maskData, 0, 0);
 
   return { origCanvas, maskCanvas };

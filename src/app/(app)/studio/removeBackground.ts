@@ -1,9 +1,16 @@
 import { getUploadUrl } from "./actions";
 
+export type RemoveBackgroundResult = {
+  originalKey: string; // upload cru, antes de remover o fundo — o editor usa
+  // pra restaurar cor de verdade com o lápis, já que o resultado
+  // processado tem RGB zerado onde o rembg removeu.
+  resultKey: string;
+};
+
 // Sobe um arquivo pro R2 (URL presignada) e chama o backend pra remover o
 // fundo. Usado tanto pelo modo individual quanto pelo lote — mesmos dois
 // passos, só muda quem itera sobre a lista de arquivos.
-export async function removeBackgroundForFile(file: File): Promise<string> {
+export async function removeBackgroundForFile(file: File): Promise<RemoveBackgroundResult> {
   const { url, filePath, error: uploadError } = await getUploadUrl({
     fileName: file.name,
     contentType: file.type,
@@ -25,5 +32,5 @@ export async function removeBackgroundForFile(file: File): Promise<string> {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Falha ao remover fundo.");
 
-  return data.resultKey as string;
+  return { originalKey: filePath, resultKey: data.resultKey as string };
 }
