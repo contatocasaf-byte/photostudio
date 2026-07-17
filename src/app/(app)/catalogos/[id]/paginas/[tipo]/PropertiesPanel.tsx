@@ -30,6 +30,8 @@ type Props = {
   onResizeBoundary: (patch: { largura: number; altura: number }) => void;
   margens: Margens;
   onChangeMargens: (patch: Partial<Margens>) => void;
+  fundoUrl: string | null;
+  onChangeFundo: (patch: { key: string | null; url: string | null }) => void;
 };
 
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
@@ -69,6 +71,8 @@ export default function PropertiesPanel({
   onResizeBoundary,
   margens,
   onChangeMargens,
+  fundoUrl,
+  onChangeFundo,
 }: Props) {
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
   const [uploading, setUploading] = useState(false);
@@ -82,6 +86,31 @@ export default function PropertiesPanel({
     return unit === "mm" ? mmToPx(v) : Math.round(v);
   }
 
+  async function uploadAsset(file: File): Promise<{ key: string; url: string }> {
+    const { url: uploadUrl, key, error } = await getPageAssetUploadUrl({ fileName: file.name, contentType: file.type });
+    if (error || !uploadUrl || !key) throw new Error(error ?? "Falha ao gerar URL de upload.");
+
+    const putRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+    if (!putRes.ok) throw new Error("Falha no upload pro R2.");
+
+    return { key, url: getPublicUrl(key) };
+  }
+
+  async function handleUploadFundo(fileList: FileList) {
+    const file = fileList[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { key, url } = await uploadAsset(file);
+      onChangeFundo({ key, url });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleUploadImage(fileList: FileList) {
     if (!selectedKey) return;
     const file = fileList[0];
@@ -89,13 +118,8 @@ export default function PropertiesPanel({
     setUploading(true);
     setUploadError(null);
     try {
-      const { url: uploadUrl, key, error } = await getPageAssetUploadUrl({ fileName: file.name, contentType: file.type });
-      if (error || !uploadUrl || !key) throw new Error(error ?? "Falha ao gerar URL de upload.");
-
-      const putRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!putRes.ok) throw new Error("Falha no upload pro R2.");
-
-      onUpdateField(selectedKey, { key, url: getPublicUrl(key) });
+      const { key, url } = await uploadAsset(file);
+      onUpdateField(selectedKey, { key, url });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
     } finally {
@@ -169,6 +193,30 @@ export default function PropertiesPanel({
         <NumberField label="Base" value={margens.bottom} onCommit={(v) => onChangeMargens({ bottom: Math.max(0, v) })} />
         <NumberField label="Esquerda" value={margens.left} onCommit={(v) => onChangeMargens({ left: Math.max(0, v) })} />
         <NumberField label="Direita" value={margens.right} onCommit={(v) => onChangeMargens({ right: Math.max(0, v) })} />
+      </div>
+
+      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Plano de fundo</p>
+      <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
+        {fundoUrl && (
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fundoUrl} alt="Plano de fundo" className="h-14 w-14 rounded border border-slate-200 object-cover" />
+            <button
+              onClick={() => onChangeFundo({ key: null, url: null })}
+              className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+            >
+              Remover
+            </button>
+          </div>
+        )}
+        <FilePickerZone
+          disabled={uploading}
+          title="Arraste uma imagem aqui ou clique para escolher"
+          subtitle="Cobre a página inteira, atrás dos elementos"
+          buttonLabel={uploading ? "Enviando..." : fundoUrl ? "Trocar arquivo" : "Escolher arquivo"}
+          onFiles={handleUploadFundo}
+        />
+        {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
       </div>
 
       <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Elementos</p>

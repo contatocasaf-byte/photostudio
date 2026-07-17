@@ -139,3 +139,11 @@ to authenticated;
 alter table public.catalogs
   add column pagina_largura numeric not null default 1240,
   add column pagina_altura numeric not null default 1754;
+
+-- Plano de fundo da página inteira (textura, moldura decorativa, arte
+-- de seção) — a especificação original de PageTemplate só previa
+-- cabeçalho/rodapé com campos fixos, sem imagem de fundo cobrindo a
+-- página, diferente do Gerador de Ofertas (onde o "layout" já É uma
+-- imagem de fundo completa). Nullable: nem todo modelo precisa de um.
+alter table public.page_templates
+  add column fundo_key text;

@@ -269,6 +269,33 @@ function BoundaryRect({
   );
 }
 
+// Plano de fundo cobrindo a página inteira (textura, moldura
+// decorativa, arte de seção) — ao contrário dos campos de cabeçalho/
+// rodapé, não é posicionável/redimensionável: sempre preenche o
+// boundary inteiro, esticando se a proporção do arquivo não bater
+// exatamente (mesmo tratamento do "layout" do Gerador de Ofertas, que
+// também sempre preenche o canvas por completo).
+function BackgroundImage({ url, canvasW, canvasH }: { url: string | null; canvasW: number; canvasH: number }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve(url ? loadImage(url) : null)
+      .then((loaded) => {
+        if (!cancelled) setImg(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setImg(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (!img) return null;
+  return <KonvaImage image={img} x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} listening={false} />;
+}
+
 export type PageEditorCanvasProps = {
   layout: PageLayout;
   onLayoutChange: (updater: (prev: PageLayout) => PageLayout) => void;
@@ -277,6 +304,7 @@ export type PageEditorCanvasProps = {
   altura: number;
   onResizeBoundary: (patch: { largura: number; altura: number }) => void;
   margens: Margens;
+  fundoUrl: string | null;
   selectedKey: PageFieldKey | null;
   onSelect: (key: PageFieldKey | null) => void;
 };
@@ -289,6 +317,7 @@ export default function PageEditorCanvas({
   altura,
   onResizeBoundary,
   margens,
+  fundoUrl,
   selectedKey,
   onSelect,
 }: PageEditorCanvasProps) {
@@ -344,6 +373,8 @@ export default function PageEditorCanvas({
           onResize={onResizeBoundary}
           transformerRef={boundaryTransformerRef}
         />
+
+        <BackgroundImage url={fundoUrl} canvasW={canvasW} canvasH={canvasH} />
 
         <Rect {...marginRect} stroke="#f59e0b" strokeWidth={1} dash={[3, 3]} listening={false} />
 

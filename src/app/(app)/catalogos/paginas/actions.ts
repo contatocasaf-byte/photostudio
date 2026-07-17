@@ -5,6 +5,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createR2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 import { createClient } from "@/lib/supabase/server";
+import { getPublicUrl } from "@/lib/storage/public-url";
 import { PAGE_FIELD_DEFS, type Margens, type PageFieldKey, type PageLayout, type PageTipo } from "../core/pageConfig";
 
 const ASSET_PREFIX = "catalogos/assets/";
@@ -27,18 +28,19 @@ export type PageTemplateData = {
   layout: PageLayout;
   elementosHabilitados: PageFieldKey[];
   margens: Margens;
+  fundoKey: string | null;
 };
 
 export async function getPageTemplate(
   catalogId: string,
   tipo: PageTipo
-): Promise<{ template?: PageTemplateData | null; error?: string }> {
+): Promise<{ template?: (PageTemplateData & { fundoUrl: string | null }) | null; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const { data, error } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens")
+    .select("header_json, footer_json, margens, fundo_key")
     .eq("catalog_id", catalogId)
     .eq("tipo", tipo)
     .maybeSingle();
@@ -56,7 +58,15 @@ export async function getPageTemplate(
     ...((data.footer_json as Partial<PageLayout>) ?? {}),
   } as PageLayout;
 
-  return { template: { layout, elementosHabilitados: Object.keys(layout) as PageFieldKey[], margens: data.margens as Margens } };
+  return {
+    template: {
+      layout,
+      elementosHabilitados: Object.keys(layout) as PageFieldKey[],
+      margens: data.margens as Margens,
+      fundoKey: data.fundo_key,
+      fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
+    },
+  };
 }
 
 export async function savePageTemplate(catalogId: string, tipo: PageTipo, data: PageTemplateData): Promise<{ error?: string }> {
@@ -71,7 +81,7 @@ export async function savePageTemplate(catalogId: string, tipo: PageTipo, data: 
     target[def.key] = data.layout[def.key];
   }
 
-  const row = { header_json: header, footer_json: footer, margens: data.margens };
+  const row = { header_json: header, footer_json: footer, margens: data.margens, fundo_key: data.fundoKey };
 
   const { data: existing, error: existingErr } = await supabase
     .from("page_templates")

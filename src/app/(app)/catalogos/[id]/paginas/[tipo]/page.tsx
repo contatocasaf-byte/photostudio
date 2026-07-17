@@ -41,6 +41,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const [largura, setLargura] = useState(DEFAULT_PAGE_WIDTH);
   const [altura, setAltura] = useState(DEFAULT_PAGE_HEIGHT);
   const [margens, setMargens] = useState<Margens>(() => defaultMargens(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT));
+  const [fundoKey, setFundoKey] = useState<string | null>(null);
+  const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
 
   useEffect(() => {
@@ -64,6 +66,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
         setLayout({ ...defaultPageLayout(largura, altura), ...templateRes.template.layout });
         setMargens(templateRes.template.margens);
         setElementosHabilitados(templateRes.template.elementosHabilitados);
+        setFundoKey(templateRes.template.fundoKey);
+        setFundoUrl(templateRes.template.fundoUrl);
       } else if (catalogRes.catalog) {
         setLayout(defaultPageLayout(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
         setMargens(defaultMargens(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
@@ -93,6 +97,11 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     setMargens((prev) => ({ ...prev, ...patch }));
   }
 
+  function handleChangeFundo(patch: { key: string | null; url: string | null }) {
+    setFundoKey(patch.key);
+    setFundoUrl(patch.url);
+  }
+
   async function handleSave() {
     if (!tipo) return;
     setSaving(true);
@@ -100,7 +109,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     try {
       const [sizeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
-        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens }),
+        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey }),
       ]);
       const err = sizeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Modelo de página salvo.");
@@ -144,6 +153,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
             altura={altura}
             onResizeBoundary={handleResizeBoundary}
             margens={margens}
+            fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
           />
@@ -160,6 +170,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           onResizeBoundary={handleResizeBoundary}
           margens={margens}
           onChangeMargens={handleChangeMargens}
+          fundoUrl={fundoUrl}
+          onChangeFundo={handleChangeFundo}
         />
       </div>
     </div>
