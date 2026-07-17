@@ -109,14 +109,19 @@ export default function PropertiesPanel({
       <p className="mt-1 text-[11px] text-slate-400">Vale pra todos os modelos deste catálogo.</p>
       <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
         <select
-          value=""
+          value={
+            PAGE_SIZE_PRESETS.find((p) => {
+              const px = presetToPx(p);
+              return px.largura === Math.round(largura) && px.altura === Math.round(altura);
+            })?.key ?? ""
+          }
           onChange={(e) => {
             const preset = PAGE_SIZE_PRESETS.find((p) => p.key === e.target.value);
             if (preset) onResizeBoundary(presetToPx(preset));
           }}
           className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
         >
-          <option value="">Tamanho pré-definido...</option>
+          <option value="">Personalizado</option>
           {(["Papel", "Redes sociais"] as const).map((group) => (
             <optgroup key={group} label={group}>
               {PAGE_SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
