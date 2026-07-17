@@ -129,3 +129,13 @@ grant select, insert, update, delete on
   public.catalog_pages,
   public.catalog_items
 to authenticated;
+
+-- Fase 5, Parte 3 (Editor de Página): tamanho de página nunca foi
+-- definido em lugar nenhum do modelo de dados original — necessário
+-- pra qualquer posicionamento em pixel fazer sentido, e pro PDF final
+-- (fase futura). Compartilhado por todos os page_templates do mesmo
+-- catálogo (catálogo impresso tem um tamanho de página só). Default
+-- A4 em proporção de pixel.
+alter table public.catalogs
+  add column pagina_largura numeric not null default 1240,
+  add column pagina_altura numeric not null default 1754;

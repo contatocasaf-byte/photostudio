@@ -270,6 +270,13 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
+      <Link
+        href={`/catalogos/${id}/paginas`}
+        className="mt-1 inline-block text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
+      >
+        Modelos de página (capa, abertura de seção, continuação)
+      </Link>
+
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
       <div className="mt-6 flex items-center justify-between">

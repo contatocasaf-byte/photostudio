@@ -276,12 +276,7 @@ export function loadImageToCanvas(url: string): Promise<HTMLCanvasElement> {
   });
 }
 
-export function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
+// Promovido pra src/lib/loadImage.ts (o card-molde/editor de página do
+// Criador de Catálogos também precisa) — reexportado aqui pra não
+// quebrar quem já importa daqui.
+export { loadImage } from "@/lib/loadImage";

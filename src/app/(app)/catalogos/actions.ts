@@ -88,12 +88,25 @@ export async function deleteCatalog(id: string): Promise<{ error?: string }> {
   return {};
 }
 
-export async function getCatalog(id: string): Promise<{ catalog?: { id: string; nome: string }; error?: string }> {
+export type CatalogDetail = { id: string; nome: string; paginaLargura: number; paginaAltura: number };
+
+export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const { data, error } = await supabase.from("catalogs").select("id, nome").eq("id", id).single();
+  const { data, error } = await supabase
+    .from("catalogs")
+    .select("id, nome, pagina_largura, pagina_altura")
+    .eq("id", id)
+    .single();
   if (error) return { error: error.message };
-  return { catalog: data };
+  return {
+    catalog: {
+      id: data.id,
+      nome: data.nome,
+      paginaLargura: data.pagina_largura,
+      paginaAltura: data.pagina_altura,
+    },
+  };
 }
 
 export async function getSection(id: string): Promise<{ section?: Section; error?: string }> {
