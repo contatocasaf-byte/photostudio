@@ -198,8 +198,18 @@ function BoundaryRect({
       />
       <Transformer
         ref={transformerRef}
-        enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+        enabledAnchors={[
+          "top-left",
+          "top-right",
+          "bottom-left",
+          "bottom-right",
+          "top-center",
+          "bottom-center",
+          "middle-left",
+          "middle-right",
+        ]}
         rotateEnabled={false}
+        keepRatio={false}
         boundBoxFunc={(oldBox, newBox) => {
           if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
           return newBox;
@@ -381,10 +391,20 @@ export default function CardEditorCanvas({
           ref={fieldTransformerRef}
           enabledAnchors={
             selectedDef?.type === "image"
-              ? ["top-left", "top-right", "bottom-left", "bottom-right"]
+              ? [
+                  "top-left",
+                  "top-right",
+                  "bottom-left",
+                  "bottom-right",
+                  "top-center",
+                  "bottom-center",
+                  "middle-left",
+                  "middle-right",
+                ]
               : ["middle-left", "middle-right"]
           }
           rotateEnabled={false}
+          keepRatio={false}
           boundBoxFunc={(oldBox, newBox) => {
             if (Math.abs(newBox.width) < MIN_FIELD_SIZE || Math.abs(newBox.height) < MIN_FIELD_SIZE) return oldBox;
             return newBox;
