@@ -79,6 +79,7 @@ export default function PropertiesPanel({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"px" | "mm">("px");
   const [fundoExpanded, setFundoExpanded] = useState(true);
+  const [campoExpanded, setCampoExpanded] = useState(true);
 
   function toDisplay(px: number) {
     return unit === "mm" ? pxToMm(px) : Math.round(px);
@@ -264,9 +265,17 @@ export default function PropertiesPanel({
       <div className="mt-4 border-t border-slate-200 pt-4">
         {!selectedDef && <p className="text-xs text-slate-400">Clique num elemento habilitado (na lista acima ou no canvas) pra editar.</p>}
 
-        {selectedDef && selectedDef.type === "image" && (
-          <div className="flex flex-col gap-2">
+        {selectedDef && (
+          <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
+            <button onClick={() => setCampoExpanded((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
+              {campoExpanded ? "Reduzir" : "Expandir"}
+            </button>
+          </div>
+        )}
+
+        {selectedDef && campoExpanded && selectedDef.type === "image" && (
+          <div className="mt-2 flex flex-col gap-2">
             <FilePickerZone
               disabled={uploading}
               title="Arraste uma imagem aqui ou clique para escolher"
@@ -298,12 +307,13 @@ export default function PropertiesPanel({
           </div>
         )}
 
-        {selectedDef && selectedDef.type === "text" && (
-          <TextProperties
-            label={selectedDef.label}
-            cfg={layout[selectedDef.key] as PageTextElementConfig}
-            onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
-          />
+        {selectedDef && campoExpanded && selectedDef.type === "text" && (
+          <div className="mt-2">
+            <TextProperties
+              cfg={layout[selectedDef.key] as PageTextElementConfig}
+              onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -311,18 +321,14 @@ export default function PropertiesPanel({
 }
 
 function TextProperties({
-  label,
   cfg,
   onUpdate,
 }: {
-  label: string;
   cfg: PageTextElementConfig;
   onUpdate: (patch: Partial<PageTextElementConfig>) => void;
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm font-semibold text-slate-900">{label}</p>
-
       <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
       <NumberField label="Largura máxima" value={cfg.maxW} onCommit={(v) => onUpdate({ maxW: Math.max(40, v) })} />
       <NumberField label="Posição X" value={cfg.x} onCommit={(v) => onUpdate({ x: v })} />
