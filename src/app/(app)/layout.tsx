@@ -14,6 +14,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Link href="/ofertas" className="text-sm text-slate-600 hover:text-slate-900">
               Gerador de Ofertas
             </Link>
+            <Link href="/catalogos" className="text-sm text-slate-600 hover:text-slate-900">
+              Catálogos
+            </Link>
           </nav>
           <form action={logout}>
             <button type="submit" className="text-sm text-slate-500 hover:text-slate-900">
