@@ -1,23 +1,30 @@
 // Porta _wrap_text_to_lines, draw_text_fit, render_canvas (core.py:641-817)
 // pra Canvas 2D. `safe_font` do original (tenta carregar um .ttf, cai
-// pra Arial/DejaVu) não tem equivalente aqui: sem biblioteca de fontes
-// ainda (Fase 4), o navegador já resolve a fonte do sistema via
-// font-family CSS — só precisa saber se é bold ou normal.
+// pra Arial/DejaVu) virou a biblioteca de fontes (ver fonts/googleFonts.ts
+// e fonts/fontLoader.ts): cada elemento de texto guarda um fontFamily
+// real na config, que precisa estar carregado (ensureFontLoaded) ANTES
+// de chamar renderOffer — aqui só monta a string CSS, sem carregar nada.
 import {
   type ElementKey,
   type ImageElementConfig,
   type LayoutConfig,
   type TextAlign,
   type TextElementConfig,
+  DEFAULT_FONT_FAMILY,
   substitutePlaceholders,
 } from "./layoutConfig";
 import { fitImageOnCanvas, type ProductTransform } from "./fitImageOnCanvas";
 import { formatarPrecoBR } from "./priceFormat";
 
-const FONT_FAMILY = "Arial, sans-serif";
+// Fallback genérico ao final da pilha de fontes — se a família
+// configurada ainda não tiver terminado de carregar por algum motivo,
+// o Canvas cai numa fonte parecida em vez de travar/ficar em branco.
+function fontStack(family: string): string {
+  return `"${family}", ${DEFAULT_FONT_FAMILY}, sans-serif`;
+}
 
-function setFont(ctx: CanvasRenderingContext2D, weight: "bold" | "normal", size: number) {
-  ctx.font = `${weight === "bold" ? "bold " : ""}${size}px ${FONT_FAMILY}`;
+function setFont(ctx: CanvasRenderingContext2D, weight: "bold" | "normal", size: number, family: string) {
+  ctx.font = `${weight === "bold" ? "bold " : ""}${size}px ${fontStack(family)}`;
 }
 
 function wrapTextToLines(
@@ -75,6 +82,7 @@ function wrapTextToLines(
 export function drawTextFit(
   ctx: CanvasRenderingContext2D,
   text: string,
+  fontFamily: string,
   fontWeight: "bold" | "normal",
   fontSizeMax: number,
   maxW: number,
@@ -91,7 +99,7 @@ export function drawTextFit(
   let found = false;
 
   for (let size = fontSizeMax; size > minSize; size--) {
-    setFont(ctx, fontWeight, size);
+    setFont(ctx, fontWeight, size, fontFamily);
     const result = wrapTextToLines(ctx, text, maxW, maxLines, false);
     const fits = result.lines.every((ln) => ctx.measureText(ln).width <= maxW);
     if (fits && !result.overflow) {
@@ -103,11 +111,11 @@ export function drawTextFit(
   }
   if (!found) {
     usedSize = minSize;
-    setFont(ctx, fontWeight, minSize);
+    setFont(ctx, fontWeight, minSize, fontFamily);
     lines = wrapTextToLines(ctx, text, maxW, maxLines, true).lines;
   }
 
-  setFont(ctx, fontWeight, usedSize);
+  setFont(ctx, fontWeight, usedSize, fontFamily);
   const metrics = ctx.measureText("Ag");
   const ascent = metrics.actualBoundingBoxAscent || usedSize * 0.8;
   const descent = metrics.actualBoundingBoxDescent || usedSize * 0.2;
@@ -203,6 +211,7 @@ export function renderOffer(params: RenderOfferParams): HTMLCanvasElement {
     drawTextFit(
       ctx,
       text,
+      c.fontFamily ?? DEFAULT_FONT_FAMILY,
       c.fontWeight ?? "normal",
       c.fontSize ?? 24,
       c.maxW ?? 500,

@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Line, Transformer } from "react-konva";
 import type Konva from "konva";
 import {
   ELEMENT_DEFS,
+  fontPairsFromConfig,
   type ElementKey,
   type ImageElementConfig,
   type LayoutConfig,
   type TextElementConfig,
 } from "../core/layoutConfig";
 import { drawTextFit } from "../core/renderOffer";
+import { ensureFontsLoaded } from "../fonts/fontLoader";
 
 const PREVIEW_MAX = 640;
 const MIN_BOX = 20;
@@ -39,7 +41,7 @@ function renderTextPreview(c: TextElementConfig): HTMLCanvasElement {
   canvas.width = Math.max(1, Math.round(c.maxW));
   canvas.height = Math.max(1, Math.ceil(c.maxLines * c.fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
-  drawTextFit(ctx, c.text || " ", c.fontWeight, c.fontSize, c.maxW, 0, 0, c.color, c.align, c.maxLines);
+  drawTextFit(ctx, c.text || " ", c.fontFamily, c.fontWeight, c.fontSize, c.maxW, 0, 0, c.color, c.align, c.maxLines);
   return canvas;
 }
 
@@ -97,14 +99,24 @@ function TextElementNode({
   onSelect,
   onUpdate,
   registerRef,
-}: NodeProps & { nodeKey: ElementKey; cfg: TextElementConfig; onUpdate: (patch: Partial<TextElementConfig>) => void }) {
+  fontsTick,
+}: NodeProps & {
+  nodeKey: ElementKey;
+  cfg: TextElementConfig;
+  onUpdate: (patch: Partial<TextElementConfig>) => void;
+  fontsTick: number;
+}) {
   // Memoiza por campo primitivo de propósito (cfg muda de identidade a
   // cada digitação em qualquer elemento; usar o objeto inteiro faria
-  // recalcular o preview de todo texto a cada tecla).
+  // recalcular o preview de todo texto a cada tecla). fontsTick força
+  // um recálculo quando uma fonte termina de carregar depois do
+  // primeiro desenho (ver ensureFontsLoaded no componente pai) — sem
+  // isso a prévia ficaria presa na fonte de fallback até o usuário
+  // mexer em algum outro campo.
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, fontsTick]
   );
 
   return (
@@ -147,10 +159,21 @@ export default function LayoutEditorCanvas({
 
   const nodeRefs = useRef<Partial<Record<ElementKey, Konva.Node>>>({});
   const transformerRef = useRef<Konva.Transformer>(null);
+  const [fontsTick, setFontsTick] = useState(0);
 
   function registerRef(key: ElementKey, node: Konva.Node | null) {
     if (node) nodeRefs.current[key] = node;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureFontsLoaded(fontPairsFromConfig(config)).then(() => {
+      if (!cancelled) setFontsTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [config]);
 
   useEffect(() => {
     const tr = transformerRef.current;
@@ -229,6 +252,7 @@ export default function LayoutEditorCanvas({
               onSelect={() => onSelect(def.key)}
               onUpdate={(patch) => updateElement(def.key, patch)}
               registerRef={registerRef}
+              fontsTick={fontsTick}
             />
           )
         )}

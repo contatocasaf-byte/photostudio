@@ -10,6 +10,7 @@ import {
   type TextAlign,
   type TextElementConfig,
 } from "../core/layoutConfig";
+import FontPicker from "./FontPicker";
 
 type Props = {
   selectedKey: ElementKey | null;
@@ -162,6 +163,15 @@ function TextProperties({
         ) : (
           <p className="mt-1 text-[11px] text-slate-400">Texto fixo — sem valor dinâmico neste elemento.</p>
         )}
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500">Fonte</label>
+        <FontPicker
+          family={cfg.fontFamily}
+          weight={cfg.fontWeight === "bold" ? 700 : 400}
+          onSelect={(fam, w) => onUpdate({ fontFamily: fam, fontWeight: w === 700 ? "bold" : "normal" })}
+        />
       </div>
 
       <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />

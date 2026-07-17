@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import FilePickerZone from "@/components/FilePickerZone";
 import FolderPickerZone, { type LazyFileEntry } from "@/components/FolderPickerZone";
-import type { LayoutConfig } from "./core/layoutConfig";
+import { fontPairsFromConfig, type LayoutConfig } from "./core/layoutConfig";
 import { loadImage, loadImageToCanvas } from "./core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "./core/renderOffer";
 import { formatarPrecoBR } from "./core/priceFormat";
 import { encontrarFotoProduto, PRODUCT_PHOTO_EXTS } from "./core/findProductPhoto";
 import { parsePlanilha, buscarProduto, type ProdutoRow } from "./core/parsePlanilha";
 import { loadLayoutConfig } from "./layouts/configClient";
+import { ensureFontsLoaded } from "./fonts/fontLoader";
 import LayoutPicker, { type SelectedLayout } from "./LayoutPicker";
 import PhotoAdjustWidget, { type PhotoTransform } from "./PhotoAdjustWidget";
 
@@ -155,6 +156,9 @@ export default function GenerateOfferForm() {
     try {
       const layoutImg = await loadImage(layout!.url);
       const productCanvas = fotoUrl ? await loadImageToCanvas(fotoUrl) : null;
+      // Canvas não dispara @font-face sozinho — precisa garantir que
+      // toda fonte usada pelo layout já baixou antes de desenhar texto.
+      await ensureFontsLoaded(fontPairsFromConfig(layoutCfg!));
 
       const canvas = renderOffer({
         layoutImg,

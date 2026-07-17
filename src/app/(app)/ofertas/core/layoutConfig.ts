@@ -63,10 +63,17 @@ export type TextElementConfig = {
   fontSize: number;
   maxW: number;
   color: string;
+  fontFamily: string;
   fontWeight: "bold" | "normal";
   align: TextAlign;
   maxLines: number;
 };
+
+// Fonte padrão pra layouts antigos (criados antes da biblioteca de
+// fontes existir, sem fontFamily salvo) e pro estado inicial de
+// elemento novo — fonte de sistema, sempre disponível, sem precisar
+// carregar nada.
+export const DEFAULT_FONT_FAMILY = "Arial";
 export type ElementConfig = Partial<ImageElementConfig & TextElementConfig>;
 export type LayoutConfig = Record<ElementKey, ElementConfig>;
 
@@ -183,6 +190,7 @@ export function defaultConfigForSize(width: number, height: number): LayoutConfi
       const maxWFrac = Math.max(0.1, 1.0 - c.x - RIGHT_MARGIN_FRAC);
       entry.maxW = Math.round(maxWFrac * width);
       entry.color = c.color;
+      entry.fontFamily = DEFAULT_FONT_FAMILY;
       entry.fontWeight = c.fontWeight;
       entry.align = c.align;
       entry.maxLines = c.maxLines;
@@ -198,6 +206,23 @@ export function defaultConfigForSize(width: number, height: number): LayoutConfi
 // valor conhecido fica como está (não quebra o texto).
 export function substitutePlaceholders(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? values[key] : match));
+}
+
+// Pares família+peso usados pelos elementos de texto da config — usado
+// pra pré-carregar (ensureFontsLoaded, ver fonts/fontLoader.ts) tudo
+// que uma oferta vai precisar ANTES de desenhar no Canvas, tanto no
+// modo individual quanto no lote.
+export function fontPairsFromConfig(cfg: LayoutConfig): { family: string; weight: number }[] {
+  const pairs: { family: string; weight: number }[] = [];
+  for (const def of ELEMENT_DEFS) {
+    if (def.type !== "text") continue;
+    const c = cfg[def.key] as TextElementConfig;
+    pairs.push({
+      family: c.fontFamily ?? DEFAULT_FONT_FAMILY,
+      weight: c.fontWeight === "bold" ? 700 : 400,
+    });
+  }
+  return pairs;
 }
 
 // Mescla a config salva (parcial, só o que o usuário mudou) por cima

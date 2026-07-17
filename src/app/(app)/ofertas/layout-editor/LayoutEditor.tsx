@@ -4,6 +4,7 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import LayoutPicker, { type SelectedLayout } from "../LayoutPicker";
 import LayoutEditorCanvas from "./LayoutEditorCanvas";
 import PropertiesPanel from "./PropertiesPanel";
+import FontManager from "../fonts/FontManager";
 import { defaultConfigForSize, type ElementKey, type LayoutConfig } from "../core/layoutConfig";
 import { loadLayoutConfig, saveLayoutConfig } from "../layouts/configClient";
 
@@ -99,6 +100,7 @@ export default function LayoutEditor() {
 
       <div className="mt-3">
         <LayoutPicker value={layout} onChange={setLayout} />
+        <FontManager />
       </div>
 
       {loading && <p className="mt-4 text-sm text-slate-400">Carregando layout...</p>}

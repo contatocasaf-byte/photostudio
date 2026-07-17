@@ -10,9 +10,10 @@ import { formatarPrecoBR } from "../core/priceFormat";
 import { loadImage, loadImageToCanvas } from "../core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "../core/renderOffer";
 import { loadLayoutConfig } from "../layouts/configClient";
+import { ensureFontsLoaded } from "../fonts/fontLoader";
 import LayoutPicker, { type SelectedLayout } from "../LayoutPicker";
 import type { PhotoTransform } from "../PhotoAdjustWidget";
-import type { LayoutConfig } from "../core/layoutConfig";
+import { fontPairsFromConfig, type LayoutConfig } from "../core/layoutConfig";
 import BatchItemRow from "./BatchItemRow";
 import { currentFotoUrl, type BatchItem } from "./types";
 
@@ -147,6 +148,9 @@ export default function BatchGenerateForm() {
     setProgress({ done: 0, total: incluidos.length });
     try {
       const layoutImg = await loadImage(layout.url);
+      // Mesmo layout/config pro lote inteiro — carrega as fontes usadas
+      // UMA vez, fora do loop, em vez de a cada item gerado.
+      await ensureFontsLoaded(fontPairsFromConfig(layoutCfg));
       let done = 0;
 
       for (const item of incluidos) {
