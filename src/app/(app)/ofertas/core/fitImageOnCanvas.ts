@@ -1,9 +1,19 @@
 // Porta get_opaque_bbox, get_content_center, fit_image_on_canvas
-// (core.py:339-620): "cover fit" (preenche a caixa sem distorcer e sem
-// cortar o objeto) que ignora a margem transparente e a sombra suave ao
+// (core.py:339-620): ignora a margem transparente e a sombra suave ao
 // redor do produto em fotos PNG, centralizando pelo centro de MASSA do
 // conteúdo sólido — não pelo centro geométrico do retângulo.
 //
+// Diferença deliberada em relação ao original: o original usava "cover
+// fit" (Math.max entre as duas razões box/objeto) — preenche a caixa
+// inteira, mas corta o que sobrar num dos eixos sempre que a proporção
+// do objeto não bate com a da caixa (comum, já que a ROI já é bem
+// justa ao objeto). Na prática isso cortava parte visível do produto,
+// mesmo a ROI já excluindo a margem transparente. Aqui usa "contain
+// fit" (Math.min) com uma margem de respiro (TARGET_FILL_RATIO) — o
+// objeto sempre cabe inteiro dentro da caixa, ocupando ~85-90% dela,
+// nunca cortado.
+const TARGET_FILL_RATIO = 0.875;
+
 // Sem o branch de crop_box manual do original (core.py:541-552): não é
 // usado por nenhuma tela desta entrega (só o ajuste de
 // rotação/zoom/posição do PhotoAdjustWidget, que usa a detecção
@@ -174,12 +184,13 @@ function computeRoiUncached(productCanvas: HTMLCanvasElement, rotation: number):
   return roi;
 }
 
-// Redimensiona e recorta a foto do produto pra preencher COMPLETAMENTE
-// a caixa (boxW x boxH), sem distorcer a proporção (equivalente a
-// "object-fit: cover") e sem cortar o objeto principal — a escala
-// "cover" é calculada sobre a bounding box do conteúdo opaco, não sobre
-// o retângulo inteiro do arquivo, senão o corte poderia invadir o
-// objeto enquanto ainda sobra transparência nas bordas.
+// Redimensiona a foto do produto pra caber inteira dentro da caixa
+// (boxW x boxH), sem distorcer a proporção (equivalente a
+// "object-fit: contain") e sem NUNCA cortar o objeto — a escala é
+// calculada sobre a bounding box do conteúdo opaco, não sobre o
+// retângulo inteiro do arquivo (ignora a margem transparente ao redor),
+// com uma margem de respiro (TARGET_FILL_RATIO ~87,5%) em vez de
+// encostar exatamente nas bordas da caixa.
 export function fitImageOnCanvas(
   productCanvas: HTMLCanvasElement,
   boxW: number,
@@ -203,7 +214,7 @@ export function fitImageOnCanvas(
     return empty;
   }
 
-  const baseScale = Math.max(boxW / rw, boxH / rh);
+  const baseScale = Math.min(boxW / rw, boxH / rh) * TARGET_FILL_RATIO;
   const zoom = Math.max(0.1, transform.zoom ?? 1.0);
   const scale = baseScale * zoom;
 
