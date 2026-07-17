@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import type { CardFieldKey, CardLayout } from "./core/cardConfig";
 
 // Primeiro módulo da suite que lê/escreve Postgres além de autenticação
 // (Studio e Ofertas usam só R2) — ver esquema em
@@ -95,6 +96,18 @@ export async function getCatalog(id: string): Promise<{ catalog?: { id: string; 
   return { catalog: data };
 }
 
+export async function getSection(id: string): Promise<{ section?: Section; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { data, error } = await supabase
+    .from("sections")
+    .select("id, catalog_id, numero, titulo, ordem, colunas")
+    .eq("id", id)
+    .single();
+  if (error) return { error: error.message };
+  return { section: data };
+}
+
 export async function listSections(catalogId: string): Promise<{ sections?: Section[]; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -185,5 +198,93 @@ export async function reorderSections(orderedIds: string[]): Promise<{ error?: s
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return { error: failed.error.message };
+  return {};
+}
+
+// Card-molde de uma seção (Fase 5, Parte 2). Sem versionamento ainda
+// (spec seção 3.5, "aplicar a todos vs. só novos") — só faz sentido
+// quando existem produtos posicionados numa seção pra divergir de
+// versão, o que só existe a partir de uma fase futura. Por enquanto
+// `versao` fica sempre 1 e salvar é sempre um UPDATE na mesma linha
+// (ou INSERT na primeira vez).
+export type CardTemplateData = {
+  layout: CardLayout;
+  largura: number;
+  alturaMinima: number;
+  alturaCresceCom: CardFieldKey | null;
+  camposHabilitados: CardFieldKey[];
+  gutterX: number | null;
+  gutterY: number | null;
+};
+
+export async function getCardTemplate(sectionId: string): Promise<{ template?: CardTemplateData | null; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const { data, error } = await supabase
+    .from("card_templates")
+    .select("layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y")
+    .eq("section_id", sectionId)
+    .order("versao", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { template: null };
+
+  return {
+    template: {
+      layout: data.layout_json as CardLayout,
+      largura: data.largura,
+      alturaMinima: data.altura_minima,
+      alturaCresceCom: data.altura_cresce_com as CardFieldKey | null,
+      camposHabilitados: (data.campos_habilitados ?? []) as CardFieldKey[],
+      gutterX: data.gutter_x,
+      gutterY: data.gutter_y,
+    },
+  };
+}
+
+export async function saveCardTemplate(sectionId: string, data: CardTemplateData): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const row = {
+    layout_json: data.layout,
+    largura: data.largura,
+    altura_minima: data.alturaMinima,
+    altura_cresce_com: data.alturaCresceCom,
+    campos_habilitados: data.camposHabilitados,
+    gutter_x: data.gutterX,
+    gutter_y: data.gutterY,
+  };
+
+  const { data: existing, error: existingErr } = await supabase
+    .from("card_templates")
+    .select("id")
+    .eq("section_id", sectionId)
+    .order("versao", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingErr) return { error: existingErr.message };
+
+  if (existing) {
+    const { error } = await supabase.from("card_templates").update(row).eq("id", existing.id);
+    if (error) return { error: error.message };
+    return {};
+  }
+
+  const { data: inserted, error: insertErr } = await supabase
+    .from("card_templates")
+    .insert({ section_id: sectionId, ...row })
+    .select("id")
+    .single();
+  if (insertErr) return { error: insertErr.message };
+
+  const { error: linkErr } = await supabase
+    .from("sections")
+    .update({ card_template_id: inserted.id })
+    .eq("id", sectionId);
+  if (linkErr) return { error: linkErr.message };
+
   return {};
 }

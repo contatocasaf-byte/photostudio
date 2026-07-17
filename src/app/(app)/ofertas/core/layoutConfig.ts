@@ -13,6 +13,12 @@
 // de gerar (ver substitutePlaceholders). Isso é o que permite o usuário
 // trocar o rótulo "Preço SP" por "DE", por exemplo.
 
+// TextAlign mora em src/lib/canvasText.ts (reaproveitado pelo
+// card-molde do Criador de Catálogos) — re-exportado aqui pra não
+// quebrar quem já importa daqui.
+import type { TextAlign } from "@/lib/canvasText";
+export type { TextAlign };
+
 export type ElementKey =
   | "product_box"
   | "ref_pos"
@@ -24,7 +30,6 @@ export type ElementKey =
   | "validity_pos";
 
 export type ElementType = "image" | "text";
-export type TextAlign = "left" | "center" | "right" | "justify";
 
 export type ElementDef = {
   key: ElementKey;

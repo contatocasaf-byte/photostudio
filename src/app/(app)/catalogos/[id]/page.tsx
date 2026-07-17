@@ -91,10 +91,12 @@ function SectionForm({
 }
 
 function SectionRow({
+  catalogId,
   section,
   onSave,
   onDelete,
 }: {
+  catalogId: string;
   section: Section;
   onSave: (values: { numero: string; titulo: string; colunas: number }) => Promise<void>;
   onDelete: () => void;
@@ -126,6 +128,12 @@ function SectionRow({
           <span className="w-8 shrink-0 text-xs font-semibold text-slate-400">{section.numero || "—"}</span>
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{section.titulo}</span>
           <span className="shrink-0 text-xs text-slate-400">{section.colunas} colunas</span>
+          <Link
+            href={`/catalogos/${catalogId}/secoes/${section.id}`}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Editar card
+          </Link>
           <button
             onClick={() => setEditing(true)}
             className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
@@ -298,6 +306,7 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
               {sections.map((s) => (
                 <SectionRow
                   key={s.id}
+                  catalogId={id}
                   section={s}
                   onSave={(values) => handleSaveSection(s.id, values)}
                   onDelete={() => handleDeleteSection(s)}
