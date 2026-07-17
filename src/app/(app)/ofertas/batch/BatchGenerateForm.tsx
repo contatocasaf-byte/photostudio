@@ -334,6 +334,19 @@ export default function BatchGenerateForm() {
               ? `Gerando ${progress?.done ?? 0}/${progress?.total ?? items.length}...`
               : "⚡ Gerar todas as ofertas"}
           </button>
+
+          {/* Repetido aqui embaixo (além do cabeçalho da lista) — depois
+              de clicar em "Gerar", é aqui que a atenção do usuário já
+              está, sem precisar rolar de volta pro topo da lista. */}
+          {prontos > 0 && !generating && (
+            <button
+              onClick={handleDownloadAll}
+              disabled={downloadingAll}
+              className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {downloadingAll ? "Compactando..." : `Baixar todas as ${prontos} ofertas prontas (.zip)`}
+            </button>
+          )}
         </div>
       )}
     </div>
