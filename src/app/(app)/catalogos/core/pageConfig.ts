@@ -60,6 +60,52 @@ export const PAGE_TIPOS: { value: PageTipo; label: string }[] = [
 export const DEFAULT_PAGE_WIDTH = 1240;
 export const DEFAULT_PAGE_HEIGHT = 1754;
 
+// Conversão mm↔px fixa em 150dpi — mesma proporção já usada pro
+// default A4 acima (210mm/297mm × 150/25.4 ≈ 1240×1754px). Não é uma
+// escolha nova: só torna explícita a conversão que já estava embutida
+// nos números default, pra poder oferecer "mm" como unidade
+// alternativa no editor sem inventar outra proporção.
+export const PX_PER_MM = 150 / 25.4;
+
+export function mmToPx(mm: number): number {
+  return Math.round(mm * PX_PER_MM);
+}
+
+export function pxToMm(px: number): number {
+  return Math.round(px / PX_PER_MM);
+}
+
+// Tamanhos pré-definidos populares: papel (definido em mm, convertido
+// via PX_PER_MM) e redes sociais (já nativamente em px — essas
+// plataformas definem o tamanho exato do arquivo, não um tamanho
+// físico de impressão).
+export type PageSizePreset = {
+  key: string;
+  label: string;
+  group: "Papel" | "Redes sociais";
+  larguraMm?: number;
+  alturaMm?: number;
+  larguraPx?: number;
+  alturaPx?: number;
+};
+
+export const PAGE_SIZE_PRESETS: PageSizePreset[] = [
+  { key: "a4", label: "A4 (210 × 297 mm)", group: "Papel", larguraMm: 210, alturaMm: 297 },
+  { key: "a5", label: "A5 (148 × 210 mm)", group: "Papel", larguraMm: 148, alturaMm: 210 },
+  { key: "carta", label: "Carta (216 × 279 mm)", group: "Papel", larguraMm: 216, alturaMm: 279 },
+  { key: "ig-feed", label: "Instagram Feed (1080 × 1080 px)", group: "Redes sociais", larguraPx: 1080, alturaPx: 1080 },
+  { key: "ig-story", label: "Instagram Stories (1080 × 1920 px)", group: "Redes sociais", larguraPx: 1080, alturaPx: 1920 },
+  { key: "fb-post", label: "Facebook Post (1200 × 630 px)", group: "Redes sociais", larguraPx: 1200, alturaPx: 630 },
+  { key: "pinterest", label: "Pinterest Pin (1000 × 1500 px)", group: "Redes sociais", larguraPx: 1000, alturaPx: 1500 },
+];
+
+export function presetToPx(preset: PageSizePreset): { largura: number; altura: number } {
+  if (preset.larguraPx !== undefined && preset.alturaPx !== undefined) {
+    return { largura: preset.larguraPx, altura: preset.alturaPx };
+  }
+  return { largura: mmToPx(preset.larguraMm ?? 0), altura: mmToPx(preset.alturaMm ?? 0) };
+}
+
 export const DEFAULT_ELEMENTOS_HABILITADOS: PageFieldKey[] = ["banner_titulo", "ilustracao", "logo", "numeracao", "contato"];
 
 export type Margens = { top: number; right: number; bottom: number; left: number };

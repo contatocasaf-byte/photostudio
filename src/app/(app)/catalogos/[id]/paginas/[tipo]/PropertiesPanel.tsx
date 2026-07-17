@@ -3,6 +3,10 @@
 import { useState } from "react";
 import {
   PAGE_FIELD_DEFS,
+  PAGE_SIZE_PRESETS,
+  mmToPx,
+  presetToPx,
+  pxToMm,
   type Margens,
   type PageFieldKey,
   type PageImageElementConfig,
@@ -69,6 +73,14 @@ export default function PropertiesPanel({
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [unit, setUnit] = useState<"px" | "mm">("px");
+
+  function toDisplay(px: number) {
+    return unit === "mm" ? pxToMm(px) : Math.round(px);
+  }
+  function fromDisplay(v: number) {
+    return unit === "mm" ? mmToPx(v) : Math.round(v);
+  }
 
   async function handleUploadImage(fileList: FileList) {
     if (!selectedKey) return;
@@ -96,8 +108,54 @@ export default function PropertiesPanel({
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tamanho da página</p>
       <p className="mt-1 text-[11px] text-slate-400">Vale pra todos os modelos deste catálogo.</p>
       <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
-        <NumberField label="Largura" value={largura} onCommit={(v) => onResizeBoundary({ largura: Math.max(200, v), altura })} />
-        <NumberField label="Altura" value={altura} onCommit={(v) => onResizeBoundary({ largura, altura: Math.max(200, v) })} />
+        <select
+          value=""
+          onChange={(e) => {
+            const preset = PAGE_SIZE_PRESETS.find((p) => p.key === e.target.value);
+            if (preset) onResizeBoundary(presetToPx(preset));
+          }}
+          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+        >
+          <option value="">Tamanho pré-definido...</option>
+          {(["Papel", "Redes sociais"] as const).map((group) => (
+            <optgroup key={group} label={group}>
+              {PAGE_SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-slate-500">Unidade</label>
+          <div className="flex gap-1">
+            {(["px", "mm"] as const).map((u) => (
+              <button
+                key={u}
+                onClick={() => setUnit(u)}
+                className={
+                  "rounded-md px-2 py-1 text-xs font-medium " +
+                  (unit === u ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+                }
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <NumberField
+          label={`Largura (${unit})`}
+          value={toDisplay(largura)}
+          onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 200), altura })}
+        />
+        <NumberField
+          label={`Altura (${unit})`}
+          value={toDisplay(altura)}
+          onCommit={(v) => onResizeBoundary({ largura, altura: Math.max(fromDisplay(v), 200) })}
+        />
       </div>
 
       <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Margens</p>
