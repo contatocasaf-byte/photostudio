@@ -227,6 +227,8 @@ function GhostCard({
   layout,
   camposHabilitados,
   scale,
+  canvasW,
+  canvasH,
   x,
   y,
   onDragEnd,
@@ -234,12 +236,28 @@ function GhostCard({
   layout: CardLayout;
   camposHabilitados: CardFieldKey[];
   scale: number;
+  canvasW: number;
+  canvasH: number;
   x: number;
   y: number;
   onDragEnd: (pos: { x: number; y: number }) => void;
 }) {
   return (
     <Group x={x} y={y} draggable opacity={0.55} onDragEnd={(e) => onDragEnd({ x: e.target.x(), y: e.target.y() })}>
+      {/* Fundo cobrindo o card inteiro — sem isso, os campos internos
+          (todos listening=false, de propósito, pra não permitir seleção
+          individual) deixavam a maior parte da área do card sem nenhuma
+          forma "clicável", e o grupo não recebia o gesto de arrastar. */}
+      <Rect
+        x={0}
+        y={0}
+        width={canvasW}
+        height={canvasH}
+        fill="rgba(15,23,42,0.04)"
+        stroke="#64748b"
+        strokeWidth={1.5}
+        dash={[4, 4]}
+      />
       {CARD_FIELD_DEFS.filter((d) => camposHabilitados.includes(d.key)).map((def) => {
         const cfg = layout[def.key];
         if (def.type === "image") {
@@ -416,6 +434,8 @@ export default function CardEditorCanvas({
             layout={layout}
             camposHabilitados={camposHabilitados}
             scale={scale}
+            canvasW={canvasW}
+            canvasH={canvasH}
             x={ghostPos.x}
             y={ghostPos.y}
             onDragEnd={(pos) =>
