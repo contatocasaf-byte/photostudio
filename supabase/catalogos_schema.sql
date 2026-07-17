@@ -112,3 +112,20 @@ create policy "authenticated full access" on public.card_templates for all to au
 create policy "authenticated full access" on public.page_templates for all to authenticated using (true) with check (true);
 create policy "authenticated full access" on public.catalog_pages for all to authenticated using (true) with check (true);
 create policy "authenticated full access" on public.catalog_items for all to authenticated using (true) with check (true);
+
+-- GRANT de tabela — nível ABAIXO do RLS. RLS decide quais LINHAS
+-- aparecem, mas sem esse GRANT o Postgres já barra o acesso à tabela
+-- inteira pro role "authenticated" (o que o PostgREST/Supabase usa nas
+-- queries de um usuário logado), retornando "permission denied for
+-- table X" mesmo com a policy certa. Tabelas criadas via SQL Editor não
+-- herdam esse grant automaticamente.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on
+  public.products,
+  public.catalogs,
+  public.sections,
+  public.card_templates,
+  public.page_templates,
+  public.catalog_pages,
+  public.catalog_items
+to authenticated;
