@@ -78,6 +78,7 @@ export default function PropertiesPanel({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"px" | "mm">("px");
+  const [fundoExpanded, setFundoExpanded] = useState(true);
 
   function toDisplay(px: number) {
     return unit === "mm" ? pxToMm(px) : Math.round(px);
@@ -195,29 +196,39 @@ export default function PropertiesPanel({
         <NumberField label="Direita" value={margens.right} onCommit={(v) => onChangeMargens({ right: Math.max(0, v) })} />
       </div>
 
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Plano de fundo</p>
-      <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
-        {fundoUrl && (
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={fundoUrl} alt="Plano de fundo" className="h-14 w-14 rounded border border-slate-200 object-cover" />
-            <button
-              onClick={() => onChangeFundo({ key: null, url: null })}
-              className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
-            >
-              Remover
-            </button>
-          </div>
-        )}
-        <FilePickerZone
-          disabled={uploading}
-          title="Arraste uma imagem aqui ou clique para escolher"
-          subtitle="Cobre a página inteira, atrás dos elementos"
-          buttonLabel={uploading ? "Enviando..." : fundoUrl ? "Trocar arquivo" : "Escolher arquivo"}
-          onFiles={handleUploadFundo}
-        />
-        {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Plano de fundo</p>
+        <button
+          onClick={() => setFundoExpanded((v) => !v)}
+          className="text-xs text-slate-400 hover:text-slate-700"
+        >
+          {fundoExpanded ? "Reduzir" : "Expandir"}
+        </button>
       </div>
+      {fundoExpanded && (
+        <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
+          {fundoUrl && (
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={fundoUrl} alt="Plano de fundo" className="h-14 w-14 rounded border border-slate-200 object-cover" />
+              <button
+                onClick={() => onChangeFundo({ key: null, url: null })}
+                className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+              >
+                Remover
+              </button>
+            </div>
+          )}
+          <FilePickerZone
+            disabled={uploading}
+            title="Arraste uma imagem aqui ou clique para escolher"
+            subtitle="Cobre a página inteira, atrás dos elementos"
+            buttonLabel={uploading ? "Enviando..." : fundoUrl ? "Trocar arquivo" : "Escolher arquivo"}
+            onFiles={handleUploadFundo}
+          />
+          {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+        </div>
+      )}
 
       <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Elementos</p>
       <div className="mt-2 flex flex-col gap-1">
