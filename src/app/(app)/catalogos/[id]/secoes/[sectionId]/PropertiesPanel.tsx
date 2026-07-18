@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   CARD_FIELD_DEFS,
   CARD_SHAPE_TYPES,
@@ -11,6 +12,7 @@ import {
   type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
+import { mmToPx, pxToMm } from "../../../core/pageConfig";
 import type { TextAlign } from "@/lib/canvasText";
 
 type SelectMode = "replace" | "add" | "remove";
@@ -79,15 +81,44 @@ export function CardStructurePanel({
   borda,
   onUpdateBorda,
 }: CardStructurePanelProps) {
+  const [unit, setUnit] = useState<"px" | "mm">("px");
+
+  function toDisplay(px: number) {
+    return unit === "mm" ? pxToMm(px) : Math.round(px);
+  }
+  function fromDisplay(v: number) {
+    return unit === "mm" ? mmToPx(v) : Math.round(v);
+  }
+
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tamanho do card</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tamanho do card</p>
+        <div className="flex gap-1">
+          {(["px", "mm"] as const).map((u) => (
+            <button
+              key={u}
+              onClick={() => setUnit(u)}
+              className={
+                "rounded-md px-2 py-1 text-xs font-medium " +
+                (unit === u ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+              }
+            >
+              {u}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
-        <NumberField label="Largura" value={largura} onCommit={(v) => onResizeBoundary({ largura: Math.max(60, v), alturaMinima })} />
         <NumberField
-          label="Altura mínima"
-          value={alturaMinima}
-          onCommit={(v) => onResizeBoundary({ largura, alturaMinima: Math.max(60, v) })}
+          label={`Largura (${unit})`}
+          value={toDisplay(largura)}
+          onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 60), alturaMinima })}
+        />
+        <NumberField
+          label={`Altura mínima (${unit})`}
+          value={toDisplay(alturaMinima)}
+          onCommit={(v) => onResizeBoundary({ largura, alturaMinima: Math.max(fromDisplay(v), 60) })}
         />
       </div>
 
@@ -103,14 +134,14 @@ export function CardStructurePanel({
         )}
         <div className="mt-2 flex flex-col gap-2">
           <NumberField
-            label="Espaçamento X"
-            value={gutterX ?? 0}
-            onCommit={(v) => onGutterChange({ gutterX: v, gutterY: gutterY ?? 0 })}
+            label={`Espaçamento X (${unit})`}
+            value={toDisplay(gutterX ?? 0)}
+            onCommit={(v) => onGutterChange({ gutterX: fromDisplay(v), gutterY: gutterY ?? 0 })}
           />
           <NumberField
-            label="Espaçamento Y"
-            value={gutterY ?? 0}
-            onCommit={(v) => onGutterChange({ gutterX: gutterX ?? 0, gutterY: v })}
+            label={`Espaçamento Y (${unit})`}
+            value={toDisplay(gutterY ?? 0)}
+            onCommit={(v) => onGutterChange({ gutterX: gutterX ?? 0, gutterY: fromDisplay(v) })}
           />
         </div>
       </div>
