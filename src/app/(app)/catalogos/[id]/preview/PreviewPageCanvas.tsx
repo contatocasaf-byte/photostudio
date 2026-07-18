@@ -10,16 +10,19 @@ import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
 import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
 
-// Página inteira (com muitos cards pequenos) cabendo num preview de
-// 700px deixava o texto minúsculo — usuário reportou "praticamente
-// ilegível". 1000px dá mais espaço de desenho sem estourar a maioria
-// das telas (o container já tem overflow-auto, então cabe rolar se
-// precisar). `STAGE_PIXEL_RATIO` força uma resolução de desenho mais
-// alta que o tamanho visual (efeito "retina") — sem isso, o Konva usa
-// só o devicePixelRatio do navegador, que em monitor comum (não
-// retina, escala 100%) é 1, deixando texto e traços borrados mesmo
-// num preview grande.
-const PREVIEW_MAX = 1000;
+// 1000px ainda encolhia a página padrão (1240x1754) pra ~57% do
+// tamanho de desenho — uma fonte de 16px virava ~9px reais, pequena
+// demais pra ler por mais nítido que o traço fosse. Usuário confirmou
+// que só aumentar a nitidez (pixelRatio) não resolveu, o problema era
+// tamanho mesmo. 2200px cobre o tamanho de página padrão (e a maioria
+// dos tamanhos customizados razoáveis) em escala 1:1 — sem encolher
+// nada, cada pixel de fonte do card-molde vira 1 pixel real na tela
+// (mais o `STAGE_PIXEL_RATIO` por cima, pra nitidez tipo retina). O
+// teto continua existindo só como proteção contra alguém configurar um
+// tamanho de página absurdamente grande (canvas gigante = trava o
+// navegador) — o container já tem overflow-auto, então uma página em
+// tamanho real normalmente cabe rolando.
+const PREVIEW_MAX = 2200;
 const STAGE_PIXEL_RATIO = 2;
 const ORIGIN = 20;
 
