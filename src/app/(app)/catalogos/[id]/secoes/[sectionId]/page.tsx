@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { getSection, getCardTemplate, saveCardTemplate, type Section } from "../../../actions";
+import { getSection, getCardTemplate, listSections, saveCardTemplate, type Section } from "../../../actions";
 import {
   defaultCardBorda,
   defaultCardLayout,
@@ -47,37 +47,82 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
   const [gutterMode, setGutterMode] = useState(false);
 
+  // Reaproveitar configuração de outra seção do mesmo catálogo — lista
+  // as demais seções pra um seletor; "Copiar" só carrega os valores no
+  // estado local (igual a abrir o card-molde da outra seção e trazer
+  // pra cá), não persiste nada nem religa as duas seções ao mesmo
+  // card_templates — o usuário ainda precisa clicar Salvar, e depois
+  // disso as duas seções voltam a ser independentes (cada uma com sua
+  // própria linha, editável separadamente).
+  const [otherSections, setOtherSections] = useState<Section[]>([]);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [copying, setCopying] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getSection(sectionId), getCardTemplate(sectionId)]).then(([sectionRes, templateRes]) => {
-      if (cancelled) return;
-      if (sectionRes.error) setError(sectionRes.error);
-      else setSection(sectionRes.section ?? null);
-      if (templateRes.error) setError(templateRes.error);
-      else if (templateRes.template) {
-        const t = templateRes.template;
-        // Mescla por cima dos padrões (mesmo padrão já usado no editor
-        // de página) — sem isso, um card-molde salvo com uma versão
-        // antiga dos campos (ex.: antes da Parte 6a renomear nome/sku/
-        // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
-        // com config `undefined`, quebrando o canvas inteiro ao tentar
-        // desenhar um campo sem posição/tamanho.
-        setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
-        setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
-        setLargura(t.largura);
-        setAlturaMinima(t.alturaMinima);
-        setAlturaCresceCom(t.alturaCresceCom);
-        setGutterX(t.gutterX);
-        setGutterY(t.gutterY);
-        setShapes(t.shapes);
-        setBorda(t.borda ?? defaultCardBorda());
+    Promise.all([getSection(sectionId), getCardTemplate(sectionId), listSections(catalogId)]).then(
+      ([sectionRes, templateRes, sectionsRes]) => {
+        if (cancelled) return;
+        if (sectionRes.error) setError(sectionRes.error);
+        else setSection(sectionRes.section ?? null);
+        if (templateRes.error) setError(templateRes.error);
+        else if (templateRes.template) {
+          const t = templateRes.template;
+          // Mescla por cima dos padrões (mesmo padrão já usado no editor
+          // de página) — sem isso, um card-molde salvo com uma versão
+          // antiga dos campos (ex.: antes da Parte 6a renomear nome/sku/
+          // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
+          // com config `undefined`, quebrando o canvas inteiro ao tentar
+          // desenhar um campo sem posição/tamanho.
+          setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
+          setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+          setLargura(t.largura);
+          setAlturaMinima(t.alturaMinima);
+          setAlturaCresceCom(t.alturaCresceCom);
+          setGutterX(t.gutterX);
+          setGutterY(t.gutterY);
+          setShapes(t.shapes);
+          setBorda(t.borda ?? defaultCardBorda());
+        }
+        if (!sectionsRes.error) setOtherSections((sectionsRes.sections ?? []).filter((s) => s.id !== sectionId));
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
     return () => {
       cancelled = true;
     };
-  }, [sectionId]);
+  }, [sectionId, catalogId]);
+
+  async function handleCopyFrom() {
+    if (!copySourceId) return;
+    setCopying(true);
+    setStatus(null);
+    try {
+      const res = await getCardTemplate(copySourceId);
+      if (res.error) {
+        setStatus(`⚠ ${res.error}`);
+        return;
+      }
+      if (!res.template) {
+        setStatus("⚠ Essa seção ainda não tem um card-molde configurado.");
+        return;
+      }
+      const t = res.template;
+      setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
+      setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+      setLargura(t.largura);
+      setAlturaMinima(t.alturaMinima);
+      setAlturaCresceCom(t.alturaCresceCom);
+      setGutterX(t.gutterX);
+      setGutterY(t.gutterY);
+      setShapes(t.shapes);
+      setBorda(t.borda ?? defaultCardBorda());
+      handleClearSelection();
+      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar nesta seção.");
+    } finally {
+      setCopying(false);
+    }
+  }
 
   function handleToggleCampo(key: CardFieldKey, habilitado: boolean) {
     setCamposHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
@@ -225,6 +270,31 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       <p className="mt-1 text-sm text-slate-500">
         Desenhado com dados de exemplo — a foto e os textos reais entram quando os produtos forem vinculados.
       </p>
+
+      {otherSections.length > 0 && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <label className="text-xs text-slate-500">Reaproveitar configuração de:</label>
+          <select
+            value={copySourceId}
+            onChange={(e) => setCopySourceId(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">Selecione uma seção...</option>
+            {otherSections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.numero ? `${s.numero} — ${s.titulo}` : s.titulo}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleCopyFrom}
+            disabled={!copySourceId || copying}
+            className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+          >
+            {copying ? "Copiando..." : "Copiar"}
+          </button>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}
