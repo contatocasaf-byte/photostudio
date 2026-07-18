@@ -19,12 +19,19 @@ function computeScale(largura: number, altura: number) {
   return { scale, canvasW: Math.round(largura * scale), canvasH: Math.round(altura * scale) };
 }
 
-function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextElementConfig): HTMLCanvasElement {
+// `contentScale` encolhe maxW/fontSize antes de desenhar — usado só
+// pelos campos de CARD (ver `cardScale` em PreviewPage), pra manter a
+// proporção do texto quando a grade inteira precisa encolher pra caber
+// na largura da página. Campos de página (header/footer) não usam
+// (ficam no valor padrão 1).
+function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextElementConfig, contentScale = 1): HTMLCanvasElement {
+  const maxW = cfg.maxW * contentScale;
+  const fontSize = cfg.fontSize * contentScale;
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(cfg.maxW));
-  canvas.height = Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
+  canvas.width = Math.max(1, Math.round(maxW));
+  canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
-  drawTextFit(ctx, text, "Arial", cfg.fontWeight, cfg.fontSize, cfg.maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines);
+  drawTextFit(ctx, text, "Arial", cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines);
   return canvas;
 }
 
@@ -111,24 +118,26 @@ function CardTextField({
   originX,
   originY,
   scale,
+  cardScale,
 }: {
   cfg: CardTextElementConfig;
   text: string;
   originX: number;
   originY: number;
   scale: number;
+  cardScale: number;
 }) {
   const canvas = useMemo(
-    () => renderTextCanvas(text, cfg),
+    () => renderTextCanvas(text, cfg, cardScale),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight]
+    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cardScale]
   );
   return (
     <KonvaImage
       image={canvas}
-      x={ORIGIN + (originX + cfg.x) * scale}
-      y={ORIGIN + (originY + cfg.y) * scale}
-      width={cfg.maxW * scale}
+      x={ORIGIN + (originX + cfg.x * cardScale) * scale}
+      y={ORIGIN + (originY + cfg.y * cardScale) * scale}
+      width={cfg.maxW * cardScale * scale}
       height={canvas.height * scale}
       listening={false}
     />
@@ -138,11 +147,23 @@ function CardTextField({
 // Forma decorativa de um card posicionado na grade — mesmo desenho do
 // ShapeNode do editor (retângulo nativo do Konva; elipse/triângulo via
 // sceneFunc de Canvas 2D), só que somente leitura (sem drag/Transformer).
-function PreviewCardShape({ shape, originX, originY, scale }: { shape: CardShape; originX: number; originY: number; scale: number }) {
-  const x = ORIGIN + (originX + shape.x) * scale;
-  const y = ORIGIN + (originY + shape.y) * scale;
-  const width = shape.w * scale;
-  const height = shape.h * scale;
+function PreviewCardShape({
+  shape,
+  originX,
+  originY,
+  scale,
+  cardScale,
+}: {
+  shape: CardShape;
+  originX: number;
+  originY: number;
+  scale: number;
+  cardScale: number;
+}) {
+  const x = ORIGIN + (originX + shape.x * cardScale) * scale;
+  const y = ORIGIN + (originY + shape.y * cardScale) * scale;
+  const width = shape.w * cardScale * scale;
+  const height = shape.h * cardScale * scale;
   const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
 
   if (shape.type === "retangulo") {
@@ -237,7 +258,14 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
             return page.cardTemplate!.shapes.map((shape) => (
-              <PreviewCardShape key={`${card.product.id}-${shape.id}`} shape={shape} originX={originX} originY={originY} scale={scale} />
+              <PreviewCardShape
+                key={`${card.product.id}-${shape.id}`}
+                shape={shape}
+                originX={originX}
+                originY={originY}
+                scale={scale}
+                cardScale={page.cardScale}
+              />
             ));
           })}
 
@@ -256,10 +284,10 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 return (
                   <Rect
                     key={key}
-                    x={ORIGIN + (originX + imgCfg.x) * scale}
-                    y={ORIGIN + (originY + imgCfg.y) * scale}
-                    width={imgCfg.w * scale}
-                    height={imgCfg.h * scale}
+                    x={ORIGIN + (originX + imgCfg.x * page.cardScale) * scale}
+                    y={ORIGIN + (originY + imgCfg.y * page.cardScale) * scale}
+                    width={imgCfg.w * page.cardScale * scale}
+                    height={imgCfg.h * page.cardScale * scale}
                     stroke="#94a3b8"
                     dash={[6, 4]}
                     fill="rgba(148,163,184,0.12)"
@@ -278,6 +306,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                   originX={originX}
                   originY={originY}
                   scale={scale}
+                  cardScale={page.cardScale}
                 />
               );
             });

@@ -42,10 +42,24 @@ function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTML
   return canvas;
 }
 
+// Modo de seleção de um clique: simples = substitui a seleção inteira;
+// Ctrl/Cmd+clique = adiciona à seleção; Alt+clique = retira da seleção
+// (sem afetar o resto). Mesma convenção usada em editores gráficos
+// (Figma/Canva). Toque (onTap) não tem noção de modificador — cai
+// sempre em "replace".
+type SelectMode = "replace" | "add" | "remove";
+
+function getSelectMode(e: Konva.KonvaEventObject<MouseEvent | TouchEvent>): SelectMode {
+  const evt = e.evt as MouseEvent;
+  if (evt.altKey) return "remove";
+  if (evt.ctrlKey || evt.metaKey) return "add";
+  return "replace";
+}
+
 type NodeProps = {
   scale: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   registerRef: (key: string, node: Konva.Node | null) => void;
 };
 
@@ -167,7 +181,7 @@ function ShapeNode({
   shape: CardShape;
   scale: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onUpdate: (patch: Partial<CardShape>) => void;
   registerRef: (key: string, node: Konva.Node | null) => void;
 }) {
@@ -408,10 +422,14 @@ export type CardEditorCanvasProps = {
   largura: number;
   alturaMinima: number;
   onResizeBoundary: (patch: { largura: number; alturaMinima: number }) => void;
-  selectedKey: CardFieldKey | null;
-  onSelect: (key: CardFieldKey | null) => void;
-  selectedShapeId: string | null;
-  onSelectShape: (id: string | null) => void;
+  // Seleção múltipla: array em vez de valor único — Ctrl+clique
+  // adiciona um campo/forma à seleção, Alt+clique retira, clique
+  // simples substitui tudo por só o item clicado (ver `SelectMode`).
+  selectedKeys: CardFieldKey[];
+  onSelectField: (key: CardFieldKey, mode: SelectMode) => void;
+  selectedShapeIds: string[];
+  onSelectShape: (id: string, mode: SelectMode) => void;
+  onClearSelection: () => void;
   gutterMode: boolean;
   gutterX: number | null;
   gutterY: number | null;
@@ -427,10 +445,11 @@ export default function CardEditorCanvas({
   largura,
   alturaMinima,
   onResizeBoundary,
-  selectedKey,
-  onSelect,
-  selectedShapeId,
+  selectedKeys,
+  onSelectField,
+  selectedShapeIds,
   onSelectShape,
+  onClearSelection,
   gutterMode,
   gutterX,
   gutterY,
@@ -449,9 +468,10 @@ export default function CardEditorCanvas({
   useEffect(() => {
     const tr = fieldTransformerRef.current;
     if (!tr) return;
-    const activeKey = selectedShapeId ?? selectedKey;
-    const node = activeKey ? nodeRefs.current[activeKey] : undefined;
-    tr.nodes(node ? [node] : []);
+    const nodes = [...selectedKeys, ...selectedShapeIds]
+      .map((key) => nodeRefs.current[key])
+      .filter((n): n is Konva.Node => !!n);
+    tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
   });
 
@@ -463,14 +483,12 @@ export default function CardEditorCanvas({
     onShapesChange((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  function selectField(key: CardFieldKey) {
-    onSelectShape(null);
-    onSelect(key);
+  function selectField(key: CardFieldKey, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    onSelectField(key, getSelectMode(e));
   }
 
-  function selectShape(id: string) {
-    onSelect(null);
-    onSelectShape(id);
+  function selectShape(id: string, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    onSelectShape(id, getSelectMode(e));
   }
 
   // Posição da cópia fantasma é derivada direto de gutterX/gutterY (sem
@@ -482,10 +500,22 @@ export default function CardEditorCanvas({
     y: gutterY !== null ? ORIGIN + gutterY * scale : ORIGIN,
   };
 
-  const selectedDef = selectedKey ? CARD_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
+  const selectionCount = selectedKeys.length + selectedShapeIds.length;
+  const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
   // Forma selecionada usa o mesmo conjunto de âncoras livres (8 pontos)
   // já usado pro campo de imagem — redimensiona livre em qualquer eixo.
-  const isFreeResize = selectedShapeId !== null || selectedDef?.type === "image";
+  const isFreeResize = selectedShapeIds.length === 1 || selectedDef?.type === "image";
+  // Com mais de um elemento selecionado, o Transformer só mostra o
+  // contorno da seleção (sem alças de redimensionar) — redimensionar
+  // vários elementos de tipos/tamanhos diferentes ao mesmo tempo não foi
+  // pedido e produziria distorção imprevisível; mover com as setas do
+  // teclado (ver page.tsx) continua funcionando pra qualquer nº de itens.
+  const enabledAnchors =
+    selectionCount > 1
+      ? []
+      : isFreeResize
+        ? (["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "middle-left", "middle-right"] as const)
+        : (["middle-left", "middle-right"] as const);
   const stageW = gutterMode ? ghostDefaultX + canvasW + ORIGIN : canvasW + ORIGIN * 2;
   const stageH = canvasH + ORIGIN * 2;
 
@@ -494,16 +524,10 @@ export default function CardEditorCanvas({
       width={stageW}
       height={stageH}
       onMouseDown={(e) => {
-        if (e.target === e.target.getStage()) {
-          onSelect(null);
-          onSelectShape(null);
-        }
+        if (e.target === e.target.getStage()) onClearSelection();
       }}
       onTap={(e) => {
-        if (e.target === e.target.getStage()) {
-          onSelect(null);
-          onSelectShape(null);
-        }
+        if (e.target === e.target.getStage()) onClearSelection();
       }}
     >
       <Layer>
@@ -520,8 +544,8 @@ export default function CardEditorCanvas({
             key={shape.id}
             shape={shape}
             scale={scale}
-            selected={selectedShapeId === shape.id}
-            onSelect={() => selectShape(shape.id)}
+            selected={selectedShapeIds.includes(shape.id)}
+            onSelect={(e) => selectShape(shape.id, e)}
             onUpdate={(patch) => updateShape(shape.id, patch)}
             registerRef={registerRef}
           />
@@ -534,8 +558,8 @@ export default function CardEditorCanvas({
               fieldKey={def.key}
               cfg={layout[def.key] as CardImageElementConfig}
               scale={scale}
-              selected={selectedKey === def.key}
-              onSelect={() => selectField(def.key)}
+              selected={selectedKeys.includes(def.key)}
+              onSelect={(e) => selectField(def.key, e)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
             />
@@ -546,8 +570,8 @@ export default function CardEditorCanvas({
               cfg={layout[def.key] as CardTextElementConfig}
               sampleText={def.sampleText ?? ""}
               scale={scale}
-              selected={selectedKey === def.key}
-              onSelect={() => selectField(def.key)}
+              selected={selectedKeys.includes(def.key)}
+              onSelect={(e) => selectField(def.key, e)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
             />
@@ -556,20 +580,7 @@ export default function CardEditorCanvas({
 
         <Transformer
           ref={fieldTransformerRef}
-          enabledAnchors={
-            isFreeResize
-              ? [
-                  "top-left",
-                  "top-right",
-                  "bottom-left",
-                  "bottom-right",
-                  "top-center",
-                  "bottom-center",
-                  "middle-left",
-                  "middle-right",
-                ]
-              : ["middle-left", "middle-right"]
-          }
+          enabledAnchors={[...enabledAnchors]}
           rotateEnabled={false}
           keepRatio={true}
           boundBoxFunc={(oldBox, newBox) => {

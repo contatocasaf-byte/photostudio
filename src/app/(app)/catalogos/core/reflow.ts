@@ -57,6 +57,11 @@ export type PreviewPage = {
   sectionTitulo: string | null;
   pageTemplate: PageTemplateInput | null;
   cardTemplate: CardTemplateInput | null;
+  // Fator (<=1) aplicado a todo valor em pixel relativo ao card (boundary
+  // + cada campo/forma dentro dele) quando a grade, no tamanho de
+  // desenho do card-molde, não cabe na largura útil da página pro nº de
+  // colunas configurado — ver cálculo em reflowSection. 1 = sem ajuste.
+  cardScale: number;
   cards: PositionedCard[];
 };
 
@@ -152,6 +157,15 @@ function reflowSection(
     const tipoPagina: PageTipo = primeiraPagina ? "abertura_secao" : "continuacao";
     const pageTemplate = pageTemplates[tipoPagina] ?? null;
     const areaUtilAltura = pageTemplate ? paginaAltura - pageTemplate.margens.top - pageTemplate.margens.bottom : paginaAltura;
+    const areaUtilLargura = pageTemplate ? paginaLargura - pageTemplate.margens.left - pageTemplate.margens.right : paginaLargura;
+
+    // Largura que a grade ocupa no tamanho "de desenho" do card-molde —
+    // se estourar a área útil da página (card largo demais pro nº de
+    // colunas configurado na seção), a grade inteira (boundary + cada
+    // campo/forma dentro do card) encolhe proporcionalmente até caber,
+    // em vez de vazar pra fora da página como acontecia antes.
+    const larguraNecessaria = (section.colunas - 1) * cardTemplate.gutterX + cardTemplate.largura;
+    const cardScale = larguraNecessaria > areaUtilLargura && larguraNecessaria > 0 ? areaUtilLargura / larguraNecessaria : 1;
 
     const page: PreviewPage = {
       tipo: tipoPagina,
@@ -159,6 +173,7 @@ function reflowSection(
       sectionTitulo: section.titulo,
       pageTemplate,
       cardTemplate,
+      cardScale,
       cards: [],
     };
 
@@ -178,10 +193,10 @@ function reflowSection(
 
       linha.forEach((produto, col) => {
         page.cards.push({
-          x: col * cardTemplate.gutterX,
+          x: col * cardTemplate.gutterX * cardScale,
           y: cursorY,
-          width: cardTemplate.largura,
-          height: alturaLinha,
+          width: cardTemplate.largura * cardScale,
+          height: alturaLinha * cardScale,
           product: produto,
         });
       });
@@ -209,6 +224,7 @@ export function reflowCatalog(input: ReflowInput): PreviewPage[] {
       sectionTitulo: null,
       pageTemplate: input.pageTemplates.capa,
       cardTemplate: null,
+      cardScale: 1,
       cards: [],
     });
   }

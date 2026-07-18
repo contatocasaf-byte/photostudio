@@ -12,12 +12,23 @@ import {
 } from "../../../core/cardConfig";
 import type { TextAlign } from "@/lib/canvasText";
 
+type SelectMode = "replace" | "add" | "remove";
+
+function getClickMode(e: React.MouseEvent): SelectMode {
+  if (e.altKey) return "remove";
+  if (e.ctrlKey || e.metaKey) return "add";
+  return "replace";
+}
+
 type Props = {
   layout: CardLayout;
   camposHabilitados: CardFieldKey[];
   onToggleCampo: (key: CardFieldKey, habilitado: boolean) => void;
-  selectedKey: CardFieldKey | null;
-  onSelectKey: (key: CardFieldKey | null) => void;
+  // Seleção múltipla — Ctrl+clique numa linha da lista adiciona,
+  // Alt+clique retira, clique simples substitui (mesma convenção do
+  // canvas, ver SelectMode em CardEditorCanvas.tsx).
+  selectedKeys: CardFieldKey[];
+  onSelectField: (key: CardFieldKey, mode: SelectMode) => void;
   onUpdateField: (key: CardFieldKey, patch: Partial<CardImageElementConfig & CardTextElementConfig>) => void;
   largura: number;
   alturaMinima: number;
@@ -29,8 +40,8 @@ type Props = {
   gutterX: number | null;
   gutterY: number | null;
   shapes: CardShape[];
-  selectedShapeId: string | null;
-  onSelectShape: (id: string | null) => void;
+  selectedShapeIds: string[];
+  onSelectShape: (id: string, mode: SelectMode) => void;
   onAddShape: (type: CardShapeType) => void;
   onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
   onRemoveShape: (id: string) => void;
@@ -65,8 +76,8 @@ export default function PropertiesPanel({
   layout,
   camposHabilitados,
   onToggleCampo,
-  selectedKey,
-  onSelectKey,
+  selectedKeys,
+  onSelectField,
   onUpdateField,
   largura,
   alturaMinima,
@@ -78,14 +89,15 @@ export default function PropertiesPanel({
   gutterX,
   gutterY,
   shapes,
-  selectedShapeId,
+  selectedShapeIds,
   onSelectShape,
   onAddShape,
   onUpdateShape,
   onRemoveShape,
 }: Props) {
-  const selectedDef = selectedKey ? CARD_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
-  const selectedShape = selectedShapeId ? shapes.find((s) => s.id === selectedShapeId) : null;
+  const selectionCount = selectedKeys.length + selectedShapeIds.length;
+  const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
+  const selectedShape = selectedShapeIds.length === 1 ? shapes.find((s) => s.id === selectedShapeIds[0]) : null;
   const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
 
   return (
@@ -109,7 +121,7 @@ export default function PropertiesPanel({
               key={def.key}
               className={
                 "flex items-center gap-2 rounded-md px-2 py-1.5 " +
-                (selectedKey === def.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                (selectedKeys.includes(def.key) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
               }
             >
               <input
@@ -119,7 +131,7 @@ export default function PropertiesPanel({
                 className="shrink-0"
               />
               <button
-                onClick={() => habilitado && onSelectKey(def.key)}
+                onClick={(e) => habilitado && onSelectField(def.key, getClickMode(e))}
                 disabled={!habilitado}
                 className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
               >
@@ -181,10 +193,10 @@ export default function PropertiesPanel({
               return (
                 <button
                   key={shape.id}
-                  onClick={() => onSelectShape(shape.id)}
+                  onClick={(e) => onSelectShape(shape.id, getClickMode(e))}
                   className={
                     "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
-                    (selectedShapeId === shape.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                    (selectedShapeIds.includes(shape.id) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
                   }
                 >
                   <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
@@ -197,15 +209,21 @@ export default function PropertiesPanel({
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
-        {!selectedDef && !selectedShape && (
+        {selectionCount === 0 && (
           <p className="text-xs text-slate-400">Clique num campo ou forma (na lista acima ou no canvas) pra editar.</p>
         )}
 
-        {selectedShape && (
+        {selectionCount > 1 && (
+          <p className="text-xs text-slate-500">
+            {selectionCount} elementos selecionados. Use as setas do teclado pra mover todos juntos (Shift+seta move 10px).
+          </p>
+        )}
+
+        {selectionCount === 1 && selectedShape && (
           <ShapeProperties shape={selectedShape} onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)} onRemove={() => onRemoveShape(selectedShape.id)} />
         )}
 
-        {selectedDef && selectedDef.type === "image" && (
+        {selectionCount === 1 && selectedDef && selectedDef.type === "image" && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
             <NumberField
@@ -231,7 +249,7 @@ export default function PropertiesPanel({
           </div>
         )}
 
-        {selectedDef && selectedDef.type === "text" && (
+        {selectionCount === 1 && selectedDef && selectedDef.type === "text" && (
           <TextProperties
             label={selectedDef.label}
             cfg={layout[selectedDef.key] as CardTextElementConfig}

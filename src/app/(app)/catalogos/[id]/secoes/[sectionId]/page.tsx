@@ -37,8 +37,11 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [gutterY, setGutterY] = useState<number | null>(null);
   const [shapes, setShapes] = useState<CardShape[]>([]);
 
-  const [selectedKey, setSelectedKey] = useState<CardFieldKey | null>(null);
-  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
+  // Seleção múltipla (Ctrl+clique adiciona, Alt+clique retira, clique
+  // simples substitui — ver SelectMode em CardEditorCanvas.tsx) — um
+  // campo/forma pode estar selecionado junto com outros de qualquer tipo.
+  const [selectedKeys, setSelectedKeys] = useState<CardFieldKey[]>([]);
+  const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
   const [gutterMode, setGutterMode] = useState(false);
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
   function handleToggleCampo(key: CardFieldKey, habilitado: boolean) {
     setCamposHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
-    if (!habilitado && selectedKey === key) setSelectedKey(null);
+    if (!habilitado) setSelectedKeys((prev) => prev.filter((k) => k !== key));
     if (!habilitado && alturaCresceCom === key) setAlturaCresceCom(null);
   }
 
@@ -82,23 +85,42 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setLayout((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
-  // Campo e forma são seleções mutuamente exclusivas (um Transformer só,
-  // compartilhado) — selecionar um sempre limpa o outro, não importa se
-  // veio de um clique no canvas ou na lista do painel.
-  function handleSelectKey(key: CardFieldKey | null) {
-    setSelectedShapeId(null);
-    setSelectedKey(key);
+  // "replace" (clique simples) troca a seleção inteira por só o item
+  // clicado, limpando a seleção do OUTRO tipo também — igual ao
+  // comportamento de antes da multi-seleção. "add"/"remove" (Ctrl/Alt)
+  // só mexem no próprio array, permitindo misturar campos e formas na
+  // mesma seleção.
+  function handleSelectField(key: CardFieldKey, mode: "replace" | "add" | "remove") {
+    if (mode === "replace") {
+      setSelectedShapeIds([]);
+      setSelectedKeys([key]);
+    } else if (mode === "add") {
+      setSelectedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    } else {
+      setSelectedKeys((prev) => prev.filter((k) => k !== key));
+    }
   }
 
-  function handleSelectShape(id: string | null) {
-    setSelectedKey(null);
-    setSelectedShapeId(id);
+  function handleSelectShape(id: string, mode: "replace" | "add" | "remove") {
+    if (mode === "replace") {
+      setSelectedKeys([]);
+      setSelectedShapeIds([id]);
+    } else if (mode === "add") {
+      setSelectedShapeIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    } else {
+      setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
+    }
+  }
+
+  function handleClearSelection() {
+    setSelectedKeys([]);
+    setSelectedShapeIds([]);
   }
 
   function handleAddShape(type: CardShapeType) {
     const shape = defaultCardShape(type, crypto.randomUUID());
     setShapes((prev) => [...prev, shape]);
-    handleSelectShape(shape.id);
+    handleSelectShape(shape.id, "replace");
   }
 
   function handleUpdateShape(id: string, patch: Partial<CardShape>) {
@@ -107,8 +129,41 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
   function handleRemoveShape(id: string) {
     setShapes((prev) => prev.filter((s) => s.id !== id));
-    if (selectedShapeId === id) setSelectedShapeId(null);
+    setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
   }
+
+  // Move todo campo/forma selecionado com as setas do teclado (1px, ou
+  // 10px com Shift) — ignora quando o foco está num campo de texto do
+  // painel de propriedades, senão roubaria a digitação de número/texto.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+      if (selectedKeys.length === 0 && selectedShapeIds.length === 0) return;
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+      const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+
+      if (selectedKeys.length > 0) {
+        setLayout((prev) => {
+          const next = { ...prev };
+          for (const key of selectedKeys) {
+            const cfg = next[key];
+            next[key] = { ...cfg, x: (cfg?.x ?? 0) + dx, y: (cfg?.y ?? 0) + dy };
+          }
+          return next;
+        });
+      }
+      if (selectedShapeIds.length > 0) {
+        setShapes((prev) => prev.map((s) => (selectedShapeIds.includes(s.id) ? { ...s, x: s.x + dx, y: s.y + dy } : s)));
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedKeys, selectedShapeIds]);
 
   function handleResizeBoundary(patch: { largura: number; alturaMinima: number }) {
     setLargura(patch.largura);
@@ -174,24 +229,25 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             largura={largura}
             alturaMinima={alturaMinima}
             onResizeBoundary={handleResizeBoundary}
-            selectedKey={selectedKey}
-            onSelect={handleSelectKey}
+            selectedKeys={selectedKeys}
+            onSelectField={handleSelectField}
             gutterMode={gutterMode}
             gutterX={gutterX}
             gutterY={gutterY}
             onGutterChange={handleGutterChange}
             shapes={shapes}
             onShapesChange={setShapes}
-            selectedShapeId={selectedShapeId}
+            selectedShapeIds={selectedShapeIds}
             onSelectShape={handleSelectShape}
+            onClearSelection={handleClearSelection}
           />
         </div>
         <PropertiesPanel
           layout={layout}
           camposHabilitados={camposHabilitados}
           onToggleCampo={handleToggleCampo}
-          selectedKey={selectedKey}
-          onSelectKey={handleSelectKey}
+          selectedKeys={selectedKeys}
+          onSelectField={handleSelectField}
           onUpdateField={handleUpdateField}
           largura={largura}
           alturaMinima={alturaMinima}
@@ -203,7 +259,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           gutterX={gutterX}
           gutterY={gutterY}
           shapes={shapes}
-          selectedShapeId={selectedShapeId}
+          selectedShapeIds={selectedShapeIds}
           onSelectShape={handleSelectShape}
           onAddShape={handleAddShape}
           onUpdateShape={handleUpdateShape}
