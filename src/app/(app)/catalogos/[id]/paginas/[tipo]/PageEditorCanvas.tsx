@@ -53,13 +53,11 @@ type NodeProps = {
 // card-molde, só que aqui é temporário até o usuário enviar o
 // arquivo, não permanente).
 //
-// `contentFit` (só a Ilustração usa) reaproveita o mesmo encaixe
-// "sem cortar o objeto visível" já usado nas fotos de produto do
-// Gerador de Ofertas (fitImageOnCanvas, agora em src/lib/) — ignora a
-// margem transparente ao redor do objeto num PNG e centraliza pelo
-// conteúdo opaco, ocupando ~85-90% do quadro. Sem isso (Logo, por
-// exemplo), a imagem só estica pra preencher x/y/w/h do campo, sem
-// preservar proporção.
+// `contentFit` (Ilustração e Logo) reaproveita o mesmo encaixe "sem
+// cortar o objeto visível" já usado nas fotos de produto do Gerador de
+// Ofertas (fitImageOnCanvas, agora em src/lib/) — ignora a margem
+// transparente ao redor do objeto num PNG e centraliza pelo conteúdo
+// opaco, ocupando ~85-90% do quadro, sem esticar/distorcer.
 function ImageFieldNode({
   fieldKey,
   cfg,
@@ -418,7 +416,7 @@ export default function PageEditorCanvas({
               onSelect={() => onSelect(def.key)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
-              contentFit={def.key === "ilustracao"}
+              contentFit={def.key === "ilustracao" || def.key === "logo"}
             />
           ) : (
             <TextFieldNode
