@@ -107,7 +107,15 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
           </div>
 
           <div className="mt-4 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-4">
+            {/* key={current} força remontar o Stage/Layer do zero a
+                cada troca de página — sem isso, sobrava um nó "fantasma"
+                do Konva da página anterior (ex.: placeholder de foto
+                desenhado duas vezes, em escalas diferentes) quando os
+                dados de uma página pra outra mudavam bastante (cardScale
+                diferente entre abertura_secao/continuação, nº de cards
+                diferente etc.) — usuário reportou isso na página 4. */}
             <PreviewPageCanvas
+              key={current}
               page={pages[current]}
               paginaLargura={paginaLargura}
               paginaAltura={paginaAltura}

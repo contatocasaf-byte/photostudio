@@ -10,7 +10,17 @@ import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
 import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
 
-const PREVIEW_MAX = 700;
+// Página inteira (com muitos cards pequenos) cabendo num preview de
+// 700px deixava o texto minúsculo — usuário reportou "praticamente
+// ilegível". 1000px dá mais espaço de desenho sem estourar a maioria
+// das telas (o container já tem overflow-auto, então cabe rolar se
+// precisar). `STAGE_PIXEL_RATIO` força uma resolução de desenho mais
+// alta que o tamanho visual (efeito "retina") — sem isso, o Konva usa
+// só o devicePixelRatio do navegador, que em monitor comum (não
+// retina, escala 100%) é 1, deixando texto e traços borrados mesmo
+// num preview grande.
+const PREVIEW_MAX = 1000;
+const STAGE_PIXEL_RATIO = 2;
 const ORIGIN = 20;
 
 function computeScale(largura: number, altura: number) {
@@ -225,7 +235,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
   };
 
   return (
-    <Stage width={canvasW + ORIGIN * 2} height={canvasH + ORIGIN * 2}>
+    <Stage width={canvasW + ORIGIN * 2} height={canvasH + ORIGIN * 2} pixelRatio={STAGE_PIXEL_RATIO}>
       <Layer>
         <Rect x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} fill="#ffffff" stroke="#e2e8f0" strokeWidth={1} />
 
