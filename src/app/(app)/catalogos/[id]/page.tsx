@@ -135,6 +135,12 @@ function SectionRow({
           >
             Editar card
           </Link>
+          <Link
+            href={`/catalogos/${catalogId}/secoes/${section.id}/produtos`}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Produtos
+          </Link>
           <button
             onClick={() => setEditing(true)}
             className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
