@@ -160,10 +160,20 @@ function PreviewCardShape({
   scale: number;
   cardScale: number;
 }) {
-  const x = ORIGIN + (originX + shape.x * cardScale) * scale;
-  const y = ORIGIN + (originY + shape.y * cardScale) * scale;
-  const width = shape.w * cardScale * scale;
-  const height = shape.h * cardScale * scale;
+  // "Sangria" de 1px em volta — sem isso, uma forma desenhada pra
+  // encostar exatamente na vizinha do card ao lado (ex.: barra de cor
+  // contínua atravessando vários cards) deixa uma linha fina visível na
+  // costura: as coordenadas de cada card passam por várias
+  // multiplicações (cardScale, scale) e raramente caem num pixel
+  // inteiro igual nos dois lados, então o canvas antialiasa a borda de
+  // cada forma separadamente e sobra um fio de fundo branco entre elas.
+  // Estender 1px pra cada lado garante sobreposição (imperceptível a
+  // olho nu) em vez de depender de arredondamento coincidir.
+  const BLEED = 1;
+  const x = ORIGIN + (originX + shape.x * cardScale) * scale - BLEED / 2;
+  const y = ORIGIN + (originY + shape.y * cardScale) * scale - BLEED / 2;
+  const width = shape.w * cardScale * scale + BLEED;
+  const height = shape.h * cardScale * scale + BLEED;
   const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
 
   if (shape.type === "retangulo") {
