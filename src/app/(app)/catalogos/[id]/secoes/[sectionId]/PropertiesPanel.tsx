@@ -21,36 +21,6 @@ function getClickMode(e: React.MouseEvent): SelectMode {
   return "replace";
 }
 
-type Props = {
-  layout: CardLayout;
-  camposHabilitados: CardFieldKey[];
-  onToggleCampo: (key: CardFieldKey, habilitado: boolean) => void;
-  // Seleção múltipla — Ctrl+clique numa linha da lista adiciona,
-  // Alt+clique retira, clique simples substitui (mesma convenção do
-  // canvas, ver SelectMode em CardEditorCanvas.tsx).
-  selectedKeys: CardFieldKey[];
-  onSelectField: (key: CardFieldKey, mode: SelectMode) => void;
-  onUpdateField: (key: CardFieldKey, patch: Partial<CardImageElementConfig & CardTextElementConfig>) => void;
-  largura: number;
-  alturaMinima: number;
-  onResizeBoundary: (patch: { largura: number; alturaMinima: number }) => void;
-  alturaCresceCom: CardFieldKey | null;
-  onChangeAlturaCresceCom: (key: CardFieldKey | null) => void;
-  gutterMode: boolean;
-  onToggleGutterMode: (v: boolean) => void;
-  gutterX: number | null;
-  gutterY: number | null;
-  onGutterChange: (patch: { gutterX: number; gutterY: number }) => void;
-  shapes: CardShape[];
-  selectedShapeIds: string[];
-  onSelectShape: (id: string, mode: SelectMode) => void;
-  onAddShape: (type: CardShapeType) => void;
-  onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
-  onRemoveShape: (id: string) => void;
-  borda: CardBorda;
-  onUpdateBorda: (patch: Partial<CardBorda>) => void;
-};
-
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
   { value: "left", label: "Esquerda" },
   { value: "center", label: "Centro" },
@@ -76,39 +46,41 @@ function NumberField({ label, value, onCommit }: { label: string; value: number;
   );
 }
 
-export default function PropertiesPanel({
-  layout,
-  camposHabilitados,
-  onToggleCampo,
-  selectedKeys,
-  onSelectField,
-  onUpdateField,
+// Painel dividido em 3 blocos posicionados separadamente pelo container
+// (page.tsx, grid 2x2: canvas+estrutura na linha de cima, campos+
+// propriedades do selecionado na linha de baixo) — pedido do usuário
+// pra melhorar usabilidade: ajustes estruturais do card (tamanho/
+// gutter/contorno) ficam ao lado do canvas, a lista de elementos fica
+// embaixo do canvas, e as propriedades do item selecionado ficam ao
+// lado dessa lista, não mais tudo empilhado numa coluna só.
+
+export type CardStructurePanelProps = {
+  largura: number;
+  alturaMinima: number;
+  onResizeBoundary: (patch: { largura: number; alturaMinima: number }) => void;
+  gutterMode: boolean;
+  onToggleGutterMode: (v: boolean) => void;
+  gutterX: number | null;
+  gutterY: number | null;
+  onGutterChange: (patch: { gutterX: number; gutterY: number }) => void;
+  borda: CardBorda;
+  onUpdateBorda: (patch: Partial<CardBorda>) => void;
+};
+
+export function CardStructurePanel({
   largura,
   alturaMinima,
   onResizeBoundary,
-  alturaCresceCom,
-  onChangeAlturaCresceCom,
   gutterMode,
   onToggleGutterMode,
   gutterX,
   gutterY,
   onGutterChange,
-  shapes,
-  selectedShapeIds,
-  onSelectShape,
-  onAddShape,
-  onUpdateShape,
-  onRemoveShape,
   borda,
   onUpdateBorda,
-}: Props) {
-  const selectionCount = selectedKeys.length + selectedShapeIds.length;
-  const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
-  const selectedShape = selectedShapeIds.length === 1 ? shapes.find((s) => s.id === selectedShapeIds[0]) : null;
-  const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
-
+}: CardStructurePanelProps) {
   return (
-    <div className="w-72 shrink-0">
+    <div>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tamanho do card</p>
       <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
         <NumberField label="Largura" value={largura} onCommit={(v) => onResizeBoundary({ largura: Math.max(60, v), alturaMinima })} />
@@ -192,8 +164,40 @@ export default function PropertiesPanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Campos</p>
+export type ElementsPanelProps = {
+  camposHabilitados: CardFieldKey[];
+  onToggleCampo: (key: CardFieldKey, habilitado: boolean) => void;
+  selectedKeys: CardFieldKey[];
+  onSelectField: (key: CardFieldKey, mode: SelectMode) => void;
+  alturaCresceCom: CardFieldKey | null;
+  onChangeAlturaCresceCom: (key: CardFieldKey | null) => void;
+  shapes: CardShape[];
+  selectedShapeIds: string[];
+  onSelectShape: (id: string, mode: SelectMode) => void;
+  onAddShape: (type: CardShapeType) => void;
+};
+
+export function ElementsPanel({
+  camposHabilitados,
+  onToggleCampo,
+  selectedKeys,
+  onSelectField,
+  alturaCresceCom,
+  onChangeAlturaCresceCom,
+  shapes,
+  selectedShapeIds,
+  onSelectShape,
+  onAddShape,
+}: ElementsPanelProps) {
+  const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Campos</p>
       <div className="mt-2 flex flex-col gap-1">
         {CARD_FIELD_DEFS.map((def) => {
           const habilitado = camposHabilitados.includes(def.key);
@@ -273,56 +277,82 @@ export default function PropertiesPanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        {selectionCount === 0 && (
-          <p className="text-xs text-slate-400">Clique num campo ou forma (na lista acima ou no canvas) pra editar.</p>
-        )}
+export type SelectedElementPanelProps = {
+  layout: CardLayout;
+  selectedKeys: CardFieldKey[];
+  onUpdateField: (key: CardFieldKey, patch: Partial<CardImageElementConfig & CardTextElementConfig>) => void;
+  shapes: CardShape[];
+  selectedShapeIds: string[];
+  onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
+  onRemoveShape: (id: string) => void;
+};
 
-        {selectionCount > 1 && (
-          <p className="text-xs text-slate-500">
-            {selectionCount} elementos selecionados. Use as setas do teclado pra mover todos juntos (Shift+seta move 10px).
-          </p>
-        )}
+export function SelectedElementPanel({
+  layout,
+  selectedKeys,
+  onUpdateField,
+  shapes,
+  selectedShapeIds,
+  onUpdateShape,
+  onRemoveShape,
+}: SelectedElementPanelProps) {
+  const selectionCount = selectedKeys.length + selectedShapeIds.length;
+  const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
+  const selectedShape = selectedShapeIds.length === 1 ? shapes.find((s) => s.id === selectedShapeIds[0]) : null;
 
-        {selectionCount === 1 && selectedShape && (
-          <ShapeProperties shape={selectedShape} onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)} onRemove={() => onRemoveShape(selectedShape.id)} />
-        )}
+  return (
+    <div>
+      {selectionCount === 0 && (
+        <p className="text-xs text-slate-400">Clique num campo ou forma (na lista ao lado ou no canvas) pra editar.</p>
+      )}
 
-        {selectionCount === 1 && selectedDef && selectedDef.type === "image" && (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
-            <NumberField
-              label="Posição X"
-              value={(layout[selectedDef.key] as CardImageElementConfig).x}
-              onCommit={(v) => onUpdateField(selectedDef.key, { x: v })}
-            />
-            <NumberField
-              label="Posição Y"
-              value={(layout[selectedDef.key] as CardImageElementConfig).y}
-              onCommit={(v) => onUpdateField(selectedDef.key, { y: v })}
-            />
-            <NumberField
-              label="Largura"
-              value={(layout[selectedDef.key] as CardImageElementConfig).w}
-              onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, v) })}
-            />
-            <NumberField
-              label="Altura"
-              value={(layout[selectedDef.key] as CardImageElementConfig).h}
-              onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, v) })}
-            />
-          </div>
-        )}
+      {selectionCount > 1 && (
+        <p className="text-xs text-slate-500">
+          {selectionCount} elementos selecionados. Use as setas do teclado pra mover todos juntos (Shift+seta move 10px).
+        </p>
+      )}
 
-        {selectionCount === 1 && selectedDef && selectedDef.type === "text" && (
-          <TextProperties
-            label={selectedDef.label}
-            cfg={layout[selectedDef.key] as CardTextElementConfig}
-            onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
+      {selectionCount === 1 && selectedShape && (
+        <ShapeProperties shape={selectedShape} onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)} onRemove={() => onRemoveShape(selectedShape.id)} />
+      )}
+
+      {selectionCount === 1 && selectedDef && selectedDef.type === "image" && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
+          <NumberField
+            label="Posição X"
+            value={(layout[selectedDef.key] as CardImageElementConfig).x}
+            onCommit={(v) => onUpdateField(selectedDef.key, { x: v })}
           />
-        )}
-      </div>
+          <NumberField
+            label="Posição Y"
+            value={(layout[selectedDef.key] as CardImageElementConfig).y}
+            onCommit={(v) => onUpdateField(selectedDef.key, { y: v })}
+          />
+          <NumberField
+            label="Largura"
+            value={(layout[selectedDef.key] as CardImageElementConfig).w}
+            onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, v) })}
+          />
+          <NumberField
+            label="Altura"
+            value={(layout[selectedDef.key] as CardImageElementConfig).h}
+            onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, v) })}
+          />
+        </div>
+      )}
+
+      {selectionCount === 1 && selectedDef && selectedDef.type === "text" && (
+        <TextProperties
+          label={selectedDef.label}
+          cfg={layout[selectedDef.key] as CardTextElementConfig}
+          onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
+        />
+      )}
     </div>
   );
 }

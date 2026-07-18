@@ -19,7 +19,7 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import CardEditorCanvas from "./CardEditorCanvas";
-import PropertiesPanel from "./PropertiesPanel";
+import { CardStructurePanel, ElementsPanel, SelectedElementPanel } from "./PropertiesPanel";
 
 export default function CardEditorPage({ params }: { params: Promise<{ id: string; sectionId: string }> }) {
   const { id: catalogId, sectionId } = use(params);
@@ -229,7 +229,11 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}
 
-      <div className="mt-4 flex flex-wrap items-start gap-4">
+      {/* Grid 2x2 (pedido do usuário, pra melhorar usabilidade): canvas
+          + ajustes estruturais do card na linha de cima; lista de
+          elementos (embaixo do canvas) + propriedades do item
+          selecionado (ao lado dessa lista) na linha de baixo. */}
+      <div className="mt-4 grid grid-cols-[auto_18rem] items-start gap-4">
         <div className="overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
           <CardEditorCanvas
             layout={layout}
@@ -251,31 +255,41 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             onClearSelection={handleClearSelection}
           />
         </div>
-        <PropertiesPanel
-          layout={layout}
-          camposHabilitados={camposHabilitados}
-          onToggleCampo={handleToggleCampo}
-          selectedKeys={selectedKeys}
-          onSelectField={handleSelectField}
-          onUpdateField={handleUpdateField}
+
+        <CardStructurePanel
           largura={largura}
           alturaMinima={alturaMinima}
           onResizeBoundary={handleResizeBoundary}
-          alturaCresceCom={alturaCresceCom}
-          onChangeAlturaCresceCom={setAlturaCresceCom}
           gutterMode={gutterMode}
           onToggleGutterMode={setGutterMode}
           gutterX={gutterX}
           gutterY={gutterY}
           onGutterChange={handleGutterChange}
+          borda={borda}
+          onUpdateBorda={handleUpdateBorda}
+        />
+
+        <ElementsPanel
+          camposHabilitados={camposHabilitados}
+          onToggleCampo={handleToggleCampo}
+          selectedKeys={selectedKeys}
+          onSelectField={handleSelectField}
+          alturaCresceCom={alturaCresceCom}
+          onChangeAlturaCresceCom={setAlturaCresceCom}
           shapes={shapes}
           selectedShapeIds={selectedShapeIds}
           onSelectShape={handleSelectShape}
           onAddShape={handleAddShape}
+        />
+
+        <SelectedElementPanel
+          layout={layout}
+          selectedKeys={selectedKeys}
+          onUpdateField={handleUpdateField}
+          shapes={shapes}
+          selectedShapeIds={selectedShapeIds}
           onUpdateShape={handleUpdateShape}
           onRemoveShape={handleRemoveShape}
-          borda={borda}
-          onUpdateBorda={handleUpdateBorda}
         />
       </div>
     </div>
