@@ -267,6 +267,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           onToggleGutterMode={setGutterMode}
           gutterX={gutterX}
           gutterY={gutterY}
+          onGutterChange={handleGutterChange}
           shapes={shapes}
           selectedShapeIds={selectedShapeIds}
           onSelectShape={handleSelectShape}

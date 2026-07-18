@@ -40,6 +40,7 @@ type Props = {
   onToggleGutterMode: (v: boolean) => void;
   gutterX: number | null;
   gutterY: number | null;
+  onGutterChange: (patch: { gutterX: number; gutterY: number }) => void;
   shapes: CardShape[];
   selectedShapeIds: string[];
   onSelectShape: (id: string, mode: SelectMode) => void;
@@ -91,6 +92,7 @@ export default function PropertiesPanel({
   onToggleGutterMode,
   gutterX,
   gutterY,
+  onGutterChange,
   shapes,
   selectedShapeIds,
   onSelectShape,
@@ -170,12 +172,21 @@ export default function PropertiesPanel({
         </label>
         {gutterMode && (
           <p className="mt-1 text-[11px] text-slate-400">
-            Arraste a cópia semitransparente pra onde o próximo card da grade deve ficar.
+            Arraste a cópia semitransparente pra onde o próximo card da grade deve ficar, ou digite os valores abaixo.
           </p>
         )}
-        <p className="mt-1 text-xs text-slate-500">
-          Atual: {gutterX !== null ? `${gutterX}px` : "—"} × {gutterY !== null ? `${gutterY}px` : "—"}
-        </p>
+        <div className="mt-2 flex flex-col gap-2">
+          <NumberField
+            label="Espaçamento X"
+            value={gutterX ?? 0}
+            onCommit={(v) => onGutterChange({ gutterX: v, gutterY: gutterY ?? 0 })}
+          />
+          <NumberField
+            label="Espaçamento Y"
+            value={gutterY ?? 0}
+            onCommit={(v) => onGutterChange({ gutterX: gutterX ?? 0, gutterY: v })}
+          />
+        </div>
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
