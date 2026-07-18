@@ -12,7 +12,7 @@
 // que "sobrou" pra próxima página. Resultado final é o mesmo descrito
 // na spec, só a forma de calcular é mais robusta.
 import { wrapTextToLines } from "@/lib/canvasText";
-import type { CardFieldKey, CardLayout, CardTextElementConfig } from "./cardConfig";
+import { substitutePlaceholders, type CardFieldKey, type CardLayout, type CardTextElementConfig } from "./cardConfig";
 import type { PageFieldKey, PageLayout, PageTipo, Margens } from "./pageConfig";
 import type { ProductRow } from "../produtos/actions";
 
@@ -64,9 +64,9 @@ function formatPreco(v: number | null): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-// Mapeia campo do card-molde -> texto real do produto. Reaproveitado
-// também pela tela de preview (renderização), não só pelo cálculo de
-// altura — um lugar só decidindo "o que cada campo mostra".
+// Mapeia campo do card-molde -> valor real do produto (sem o rótulo do
+// template ainda). Reaproveitado também pela tela de preview
+// (renderização), não só pelo cálculo de altura.
 export function resolveProductFieldText(key: CardFieldKey, product: ProductRow): string {
   switch (key) {
     case "codigo":
@@ -82,6 +82,16 @@ export function resolveProductFieldText(key: CardFieldKey, product: ProductRow):
     case "foto":
       return "";
   }
+}
+
+// Texto FINAL a desenhar: valor real do produto já dentro do template
+// `text` do campo (ex.: "{valor}" -> "R$ 99,90", "Preço 1: {valor}" ->
+// "Preço 1: R$ 99,90") — vazio se o produto não tiver valor pra esse
+// campo (evita desenhar só o rótulo sem nada depois).
+export function resolveCardFieldDisplayText(key: CardFieldKey, cfg: CardTextElementConfig, product: ProductRow): string {
+  const valor = resolveProductFieldText(key, product);
+  if (!valor) return "";
+  return substitutePlaceholders(cfg.text ?? "{valor}", valor);
 }
 
 function computeLineHeight(ctx: CanvasRenderingContext2D, fontSize: number, fontWeight: "bold" | "normal"): number {
@@ -104,7 +114,7 @@ export function calcularAlturaCard(cardTemplate: CardTemplateInput, product: Pro
   const cfg = layout[alturaCresceCom] as Partial<CardTextElementConfig> | undefined;
   if (!cfg || cfg.maxW === undefined || cfg.fontSize === undefined || cfg.maxLines === undefined) return alturaMinima;
 
-  const texto = resolveProductFieldText(alturaCresceCom, product);
+  const texto = resolveCardFieldDisplayText(alturaCresceCom, cfg as CardTextElementConfig, product);
   if (!texto) return alturaMinima;
 
   const canvas = document.createElement("canvas");

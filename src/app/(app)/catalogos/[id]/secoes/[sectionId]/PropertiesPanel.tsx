@@ -199,6 +199,20 @@ function TextProperties({
     <div className="flex flex-col gap-3">
       <p className="text-sm font-semibold text-slate-900">{label}</p>
 
+      <div>
+        <label className="text-xs text-slate-500">Texto</label>
+        <input
+          key={cfg.text}
+          defaultValue={cfg.text}
+          onBlur={(e) => onUpdate({ text: e.target.value })}
+          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        />
+        <p className="mt-1 text-[11px] text-slate-400">
+          O valor real do produto entra em <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">{"{valor}"}</code> — pode
+          adicionar um rótulo fixo em volta, ex.: <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">À vista: {"{valor}"}</code>.
+        </p>
+      </div>
+
       <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
       <NumberField label="Largura máxima" value={cfg.maxW} onCommit={(v) => onUpdate({ maxW: Math.max(40, v) })} />
       <NumberField label="Posição X" value={cfg.x} onCommit={(v) => onUpdate({ x: v })} />

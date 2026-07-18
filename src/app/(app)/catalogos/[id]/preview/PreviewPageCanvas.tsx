@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect } from "react-konva";
 import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardTextElementConfig } from "../../core/cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "../../core/pageConfig";
-import { resolveProductFieldText, type PreviewPage } from "../../core/reflow";
+import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
 import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
@@ -102,7 +102,8 @@ function PageBackground({ url, canvasW, canvasH }: { url: string | null; canvasW
 }
 
 // Campo de TEXTO de um card posicionado na grade — dado REAL do
-// produto (resolveProductFieldText), não mais texto de exemplo.
+// produto, já com o rótulo do template aplicado (resolveCardFieldDisplayText),
+// não mais texto de exemplo.
 function CardTextField({
   cfg,
   text,
@@ -218,7 +219,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 );
               }
               const textCfg = cfg as CardTextElementConfig;
-              const text = resolveProductFieldText(def.key, card.product);
+              const text = resolveCardFieldDisplayText(def.key, textCfg, card.product);
               if (!text) return null;
               return (
                 <CardTextField

@@ -5,6 +5,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Group, Transformer } from "rea
 import type Konva from "konva";
 import {
   CARD_FIELD_DEFS,
+  substitutePlaceholders,
   type CardElementConfig,
   type CardFieldKey,
   type CardImageElementConfig,
@@ -110,9 +111,9 @@ function TextFieldNode({
   onUpdate: (patch: Partial<CardTextElementConfig>) => void;
 }) {
   const previewCanvas = useMemo(
-    () => renderTextPreview(cfg, sampleText),
+    () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "{valor}", sampleText)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, sampleText]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, sampleText]
   );
 
   return (
@@ -291,7 +292,7 @@ function GhostCard({
           );
         }
         const tc = cfg as CardTextElementConfig;
-        const preview = renderTextPreview(tc, def.sampleText ?? "");
+        const preview = renderTextPreview(tc, substitutePlaceholders(tc.text ?? "{valor}", def.sampleText ?? ""));
         return (
           <KonvaImage
             key={def.key}

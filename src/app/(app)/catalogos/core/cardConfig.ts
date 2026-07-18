@@ -36,10 +36,19 @@ export const CARD_FIELD_DEFS: CardFieldDef[] = [
   { key: "preco_2", label: "Preço 2", type: "text", sampleText: "R$ 109,90" },
 ];
 
+// Todo campo de texto aceita um rótulo fixo em volta do `{valor}` real
+// do produto (ex.: trocar "Preço 1" por "À vista: {valor}" ou só
+// "{valor}", sem rótulo nenhum) — mesmo mecanismo de template +
+// placeholder já usado no editor de página (`text` + substitutePlaceholders).
+export function substitutePlaceholders(template: string, valor: string): string {
+  return template.replace(/\{valor\}/g, valor);
+}
+
 export type CardImageElementConfig = { x: number; y: number; w: number; h: number };
 export type CardTextElementConfig = {
   x: number;
   y: number;
+  text: string;
   fontSize: number;
   maxW: number;
   color: string;
@@ -73,6 +82,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     codigo: {
       x: margin,
       y: textStartY,
+      text: "{valor}",
       fontSize: 11,
       maxW: contentW,
       color: "#888888",
@@ -83,6 +93,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     ref: {
       x: margin,
       y: textStartY + 16,
+      text: "{valor}",
       fontSize: 16,
       maxW: contentW,
       color: "#1a1a1a",
@@ -93,6 +104,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     descricao: {
       x: margin,
       y: textStartY + 42,
+      text: "{valor}",
       fontSize: 12,
       maxW: contentW,
       color: "#444444",
@@ -103,6 +115,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     preco_1: {
       x: margin,
       y: textStartY + 98,
+      text: "Preço 1: {valor}",
       fontSize: 18,
       maxW: halfW,
       color: "#c0392b",
@@ -113,6 +126,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     preco_2: {
       x: margin + halfW + gap,
       y: textStartY + 98,
+      text: "Preço 2: {valor}",
       fontSize: 18,
       maxW: halfW,
       color: "#ff6b35",
