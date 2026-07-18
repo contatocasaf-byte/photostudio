@@ -119,52 +119,6 @@ export default function PropertiesPanel({
         />
       </div>
 
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Campos</p>
-      <div className="mt-2 flex flex-col gap-1">
-        {CARD_FIELD_DEFS.map((def) => {
-          const habilitado = camposHabilitados.includes(def.key);
-          return (
-            <div
-              key={def.key}
-              className={
-                "flex items-center gap-2 rounded-md px-2 py-1.5 " +
-                (selectedKeys.includes(def.key) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
-              }
-            >
-              <input
-                type="checkbox"
-                checked={habilitado}
-                onChange={(e) => onToggleCampo(def.key, e.target.checked)}
-                className="shrink-0"
-              />
-              <button
-                onClick={(e) => habilitado && onSelectField(def.key, getClickMode(e))}
-                disabled={!habilitado}
-                className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
-              >
-                {def.label}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-4">
-        <label className="text-xs text-slate-500">Campo que cresce em altura</label>
-        <select
-          value={alturaCresceCom ?? ""}
-          onChange={(e) => onChangeAlturaCresceCom((e.target.value || null) as CardFieldKey | null)}
-          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-        >
-          <option value="">Nenhum</option>
-          {camposTexto.map((d) => (
-            <option key={d.key} value={d.key}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
       <div className="mt-4 border-t border-slate-200 pt-4">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={gutterMode} onChange={(e) => onToggleGutterMode(e.target.checked)} />
@@ -237,6 +191,52 @@ export default function PropertiesPanel({
             />
           </div>
         )}
+      </div>
+
+      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Campos</p>
+      <div className="mt-2 flex flex-col gap-1">
+        {CARD_FIELD_DEFS.map((def) => {
+          const habilitado = camposHabilitados.includes(def.key);
+          return (
+            <div
+              key={def.key}
+              className={
+                "flex items-center gap-2 rounded-md px-2 py-1.5 " +
+                (selectedKeys.includes(def.key) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+              }
+            >
+              <input
+                type="checkbox"
+                checked={habilitado}
+                onChange={(e) => onToggleCampo(def.key, e.target.checked)}
+                className="shrink-0"
+              />
+              <button
+                onClick={(e) => habilitado && onSelectField(def.key, getClickMode(e))}
+                disabled={!habilitado}
+                className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
+              >
+                {def.label}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4">
+        <label className="text-xs text-slate-500">Campo que cresce em altura</label>
+        <select
+          value={alturaCresceCom ?? ""}
+          onChange={(e) => onChangeAlturaCresceCom((e.target.value || null) as CardFieldKey | null)}
+          className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">Nenhum</option>
+          {camposTexto.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
