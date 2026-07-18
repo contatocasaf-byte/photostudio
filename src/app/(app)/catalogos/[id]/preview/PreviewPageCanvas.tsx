@@ -288,20 +288,64 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
 
         {page.cardTemplate &&
           page.cardTemplate.shapes.length > 0 &&
-          page.cards.flatMap((card) => {
-            const originX = margens.left + card.x;
-            const originY = margens.top + card.y;
-            return page.cardTemplate!.shapes.map((shape) => (
-              <PreviewCardShape
-                key={`${card.product.id}-${shape.id}`}
-                shape={shape}
-                originX={originX}
-                originY={originY}
-                scale={scale}
-                cardScale={page.cardScale}
-              />
-            ));
-          })}
+          (() => {
+            const cardTemplate = page.cardTemplate!;
+            const cardScale = page.cardScale;
+            const touchingX = Math.abs(cardTemplate.gutterX - cardTemplate.largura) < 0.5;
+
+            // Agrupa por linha (mesmo Y) — quando os cards estão
+            // encostados (gutterX = largura) e um retângulo alcança a
+            // borda do card, desenhar ele uma vez POR CARD deixa uma
+            // costura visível mesmo com sangria: dois preenchimentos
+            // antialiasados desenhados separadamente, mesmo perfeitamente
+            // alinhados/sobrepostos, não se compõem a 100% de cobertura
+            // igual a um preenchimento único — sobra uma linha mais clara
+            // (formas opacas) ou mais escura (formas semitransparentes,
+            // pela dupla composição) bem na emenda. A única forma de
+            // eliminar de vez é desenhar UM retângulo só cobrindo a linha
+            // inteira, em vez de N retângulos encostados.
+            const linhas = new Map<number, typeof page.cards>();
+            for (const card of page.cards) {
+              const grupo = linhas.get(card.y) ?? [];
+              grupo.push(card);
+              linhas.set(card.y, grupo);
+            }
+
+            return [...linhas.entries()].flatMap(([y, linha], li) =>
+              cardTemplate.shapes.flatMap((shape, si) => {
+                const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplate.gutterX - 0.5;
+                if (touchingX && encostaNaBorda && linha.length > 1) {
+                  const primeiro = linha[0];
+                  const ultimo = linha[linha.length - 1];
+                  const x0 = ORIGIN + (margens.left + primeiro.x + shape.x * cardScale) * scale;
+                  const x1 = ORIGIN + (margens.left + ultimo.x + shape.x * cardScale + shape.w * cardScale) * scale;
+                  const yTop = ORIGIN + (margens.top + y + shape.y * cardScale) * scale;
+                  return [
+                    <Rect
+                      key={`${li}-${si}`}
+                      x={x0}
+                      y={yTop}
+                      width={x1 - x0}
+                      height={shape.h * cardScale * scale}
+                      fill={shape.color}
+                      opacity={shape.opacity}
+                      listening={false}
+                    />,
+                  ];
+                }
+                return linha.map((card) => (
+                  <PreviewCardShape
+                    key={`${card.product.id}-${shape.id}`}
+                    shape={shape}
+                    originX={margens.left + card.x}
+                    originY={margens.top + card.y}
+                    scale={scale}
+                    cardScale={cardScale}
+                  />
+                ));
+              })
+            );
+          })()}
 
         {page.cardTemplate &&
           page.cards.flatMap((card) => {
