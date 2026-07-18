@@ -88,14 +88,20 @@ export async function deleteCatalog(id: string): Promise<{ error?: string }> {
   return {};
 }
 
-export type CatalogDetail = { id: string; nome: string; paginaLargura: number; paginaAltura: number };
+export type CatalogDetail = {
+  id: string;
+  nome: string;
+  paginaLargura: number;
+  paginaAltura: number;
+  planilhaId: string | null;
+};
 
 export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("catalogs")
-    .select("id, nome, pagina_largura, pagina_altura")
+    .select("id, nome, pagina_largura, pagina_altura, planilha_id")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -105,6 +111,7 @@ export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail;
       nome: data.nome,
       paginaLargura: data.pagina_largura,
       paginaAltura: data.pagina_altura,
+      planilhaId: data.planilha_id,
     },
   };
 }

@@ -22,6 +22,7 @@ import {
   reorderSections,
   type Section,
 } from "../actions";
+import PlanilhaPicker from "../produtos/PlanilhaPicker";
 
 function SectionForm({
   initial,
@@ -158,6 +159,8 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
   const [catalogNome, setCatalogNome] = useState<string | null>(null);
   const [editingNome, setEditingNome] = useState(false);
   const [nomeDraft, setNomeDraft] = useState("");
+  const [planilhaId, setPlanilhaId] = useState<string | null>(null);
+  const [showPlanilhaPicker, setShowPlanilhaPicker] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +173,10 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
     Promise.all([getCatalog(id), listSections(id)]).then(([catalogRes, sectionsRes]) => {
       if (cancelled) return;
       if (catalogRes.error) setError(catalogRes.error);
-      else setCatalogNome(catalogRes.catalog?.nome ?? "");
+      else {
+        setCatalogNome(catalogRes.catalog?.nome ?? "");
+        setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+      }
       if (sectionsRes.error) setError(sectionsRes.error);
       else setSections(sectionsRes.sections ?? []);
       setLoading(false);
@@ -278,6 +284,23 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
       </Link>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      <div className="mt-4 rounded-lg border border-slate-200 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Planilha de Produtos</p>
+          <button onClick={() => setShowPlanilhaPicker((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
+            {showPlanilhaPicker ? "Fechar" : "Escolher"}
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-slate-600">
+          {planilhaId ? "Planilha selecionada" : "Nenhuma planilha selecionada"}
+        </p>
+        {showPlanilhaPicker && (
+          <div className="mt-2">
+            <PlanilhaPicker catalogId={id} value={planilhaId} onChange={setPlanilhaId} />
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Seções</p>
