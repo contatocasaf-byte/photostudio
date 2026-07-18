@@ -93,11 +93,20 @@ export function drawTextFit(
   // I/J/T saem cortados/corrompidos.
   minSize = 8
 ) {
+  // Piso de verdade não pode passar do próprio máximo pedido — se
+  // fontSizeMax já chega menor que `minSize` (ex.: cardScale encolhendo
+  // a grade inteira pra caber na página deixa o tamanho de fonte
+  // "de desenho" abaixo de 8), o laço abaixo (`size > minSize`)
+  // nunca rodava nem uma vez, e o fallback desenhava direto no
+  // `minSize` ORIGINAL — MAIOR que o fontSizeMax pedido, fazendo o
+  // texto estourar a caixa em vez de encolher. `floor` corrige isso:
+  // nunca desenha maior do que o próprio fontSizeMax permite.
+  const floor = Math.min(minSize, fontSizeMax);
   let lines = [text];
-  let usedSize = minSize;
+  let usedSize = floor;
   let found = false;
 
-  for (let size = fontSizeMax; size > minSize; size--) {
+  for (let size = fontSizeMax; size >= floor; size--) {
     setFont(ctx, fontWeight, size, fontFamily);
     const result = wrapTextToLines(ctx, text, maxW, maxLines, false);
     const fits = result.lines.every((ln) => ctx.measureText(ln).width <= maxW);
@@ -109,8 +118,8 @@ export function drawTextFit(
     }
   }
   if (!found) {
-    usedSize = minSize;
-    setFont(ctx, fontWeight, minSize, fontFamily);
+    usedSize = floor;
+    setFont(ctx, fontWeight, floor, fontFamily);
     lines = wrapTextToLines(ctx, text, maxW, maxLines, true).lines;
   }
 
