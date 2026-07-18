@@ -3,8 +3,13 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { getCatalogPreviewData } from "../../preview/actions";
-import { reflowCatalog, type PreviewPage } from "../../core/reflow";
+import { reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
 import PreviewPageCanvas from "./PreviewPageCanvas";
+
+const MOTIVO_LABEL: Record<SkippedSection["motivo"], string> = {
+  sem_card_molde: "sem card-molde configurado",
+  sem_produtos: "sem produtos adicionados",
+};
 
 export default function CatalogPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: catalogId } = use(params);
@@ -13,6 +18,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   const [paginaLargura, setPaginaLargura] = useState(0);
   const [paginaAltura, setPaginaAltura] = useState(0);
   const [pages, setPages] = useState<PreviewPage[]>([]);
+  const [skipped, setSkipped] = useState<SkippedSection[]>([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,13 +36,14 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
       setCatalogNome(data.catalogNome);
       setPaginaLargura(data.paginaLargura);
       setPaginaAltura(data.paginaAltura);
-      const computed = reflowCatalog({
+      const { pages: computed, skipped: skippedSections } = reflowCatalog({
         paginaLargura: data.paginaLargura,
         paginaAltura: data.paginaAltura,
         pageTemplates: data.pageTemplates,
         sections: data.sections,
       });
       setPages(computed);
+      setSkipped(skippedSections);
       setLoading(false);
     });
     return () => {
@@ -54,6 +61,21 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
       <h1 className="mt-2 text-lg font-semibold text-slate-900">Ver catálogo</h1>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {skipped.length > 0 && (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="font-medium">
+            {skipped.length === 1 ? "1 seção não aparece no catálogo:" : `${skipped.length} seções não aparecem no catálogo:`}
+          </p>
+          <ul className="mt-1 list-disc pl-4">
+            {skipped.map((s) => (
+              <li key={s.id}>
+                {s.titulo} — {MOTIVO_LABEL[s.motivo]}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!loading && pages.length === 0 && !error && (
         <p className="mt-4 text-sm text-slate-400">

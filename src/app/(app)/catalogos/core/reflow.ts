@@ -237,8 +237,18 @@ function reflowSection(
   return paginas;
 }
 
-export function reflowCatalog(input: ReflowInput): PreviewPage[] {
+// Seção que não gerou nenhuma página — sem isso, uma seção sem
+// card-molde configurado ou sem produtos adicionados simplesmente
+// desaparecia do preview sem nenhum aviso (foi assim que o usuário
+// notou: "só aparece a capa e a primeira seção", com a segunda seção
+// sumindo em silêncio).
+export type SkippedSection = { id: string; titulo: string; motivo: "sem_card_molde" | "sem_produtos" };
+
+export type ReflowResult = { pages: PreviewPage[]; skipped: SkippedSection[] };
+
+export function reflowCatalog(input: ReflowInput): ReflowResult {
   const pages: PreviewPage[] = [];
+  const skipped: SkippedSection[] = [];
 
   if (input.pageTemplates.capa) {
     pages.push({
@@ -253,9 +263,16 @@ export function reflowCatalog(input: ReflowInput): PreviewPage[] {
   }
 
   for (const section of input.sections) {
-    if (!section.cardTemplate || section.items.length === 0) continue;
+    if (!section.cardTemplate) {
+      skipped.push({ id: section.id, titulo: section.titulo, motivo: "sem_card_molde" });
+      continue;
+    }
+    if (section.items.length === 0) {
+      skipped.push({ id: section.id, titulo: section.titulo, motivo: "sem_produtos" });
+      continue;
+    }
     pages.push(...reflowSection(section, input.pageTemplates, input.paginaLargura, input.paginaAltura));
   }
 
-  return pages;
+  return { pages, skipped };
 }
