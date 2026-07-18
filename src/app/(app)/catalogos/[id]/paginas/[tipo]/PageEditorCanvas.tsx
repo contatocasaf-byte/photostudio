@@ -246,6 +246,14 @@ function BoundaryRect({
           const newAltura = Math.max(MIN_BOUNDARY, Math.round((node.height() * node.scaleY()) / scale));
           node.scaleX(1);
           node.scaleY(1);
+          // O boundary fica sempre fixo em (ORIGIN, ORIGIN) — arrastar
+          // pelo canto/ponto médio superior-esquerdo faz o Konva mover
+          // x/y pra manter o lado oposto fixo (comportamento padrão de
+          // resize). Sem essa correção a cada tick do arraste, esse
+          // deslocamento se acumula e degringola pra valores absurdos
+          // (largura/altura na casa das dezenas de milhares de px).
+          node.x(ORIGIN);
+          node.y(ORIGIN);
           node.width(newLargura * scale);
           node.height(newAltura * scale);
           onResize({ largura: newLargura, altura: newAltura });
