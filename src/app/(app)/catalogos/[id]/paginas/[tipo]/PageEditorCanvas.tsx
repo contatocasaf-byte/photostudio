@@ -199,8 +199,13 @@ function TextFieldNode({
 
 // Boundary = tamanho da página (compartilhado por todo o catálogo, ver
 // decisão na Parte 3 do plano). Fixo em (0,0), só redimensionável
-// (Transformer próprio, 4 cantos + 4 pontos médios, sem manter
-// proporção) — mesmo padrão já usado no card-molde.
+// (Transformer próprio, 4 cantos + 4 pontos médios) — mesmo padrão já
+// usado no card-molde. `keepRatio` (default do Konva, true) só afeta
+// os cantos: mantêm a proporção altura×largura. Os pontos médios
+// (top-center/bottom-center/middle-left/middle-right) já redimensionam
+// só um eixo por conta própria, com ou sem keepRatio — não precisa (e
+// não deve) desligar via `keepRatio={false}`, senão os CANTOS também
+// perdem o travamento de proporção.
 function BoundaryRect({
   canvasW,
   canvasH,
@@ -259,7 +264,7 @@ function BoundaryRect({
           "middle-right",
         ]}
         rotateEnabled={false}
-        keepRatio={false}
+        keepRatio={true}
         boundBoxFunc={(oldBox, newBox) => {
           if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
           return newBox;
@@ -422,7 +427,7 @@ export default function PageEditorCanvas({
               : ["middle-left", "middle-right"]
           }
           rotateEnabled={false}
-          keepRatio={false}
+          keepRatio={true}
           boundBoxFunc={(oldBox, newBox) => {
             if (Math.abs(newBox.width) < MIN_FIELD_SIZE || Math.abs(newBox.height) < MIN_FIELD_SIZE) return oldBox;
             return newBox;

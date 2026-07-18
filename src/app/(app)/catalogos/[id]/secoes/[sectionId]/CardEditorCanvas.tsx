@@ -148,9 +148,15 @@ function TextFieldNode({
 // Boundary = largura/altura mínima do card (spec seção 3.1). Fica
 // sempre na origem (0,0) do "espaço do card" — posição absoluta na
 // página só importa na Parte 3 (editor de página) — e só é
-// redimensionável (Transformer próprio, 4 cantos), nunca arrastável.
-// Redimensionar NÃO re-escala os campos dentro dele (mesma decisão já
-// usada no product_box do Editor de Layout do Ofertas).
+// redimensionável (Transformer próprio, 4 cantos + 4 pontos médios),
+// nunca arrastável. Redimensionar NÃO re-escala os campos dentro dele
+// (mesma decisão já usada no product_box do Editor de Layout do
+// Ofertas). `keepRatio` (default do Konva, true) só afeta os cantos —
+// mantêm largura×altura proporcionais; os pontos médios já
+// redimensionam um eixo só por conta própria, com ou sem keepRatio.
+// NUNCA desligar via `keepRatio={false}`: isso também destrava os
+// CANTOS, que devem continuar proporcionais (bug já cometido aqui,
+// corrigido — ver mesmo comentário em paginas/[tipo]/PageEditorCanvas.tsx).
 function BoundaryRect({
   canvasW,
   canvasH,
@@ -209,7 +215,7 @@ function BoundaryRect({
           "middle-right",
         ]}
         rotateEnabled={false}
-        keepRatio={false}
+        keepRatio={true}
         boundBoxFunc={(oldBox, newBox) => {
           if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
           return newBox;
@@ -422,7 +428,7 @@ export default function CardEditorCanvas({
               : ["middle-left", "middle-right"]
           }
           rotateEnabled={false}
-          keepRatio={false}
+          keepRatio={true}
           boundBoxFunc={(oldBox, newBox) => {
             if (Math.abs(newBox.width) < MIN_FIELD_SIZE || Math.abs(newBox.height) < MIN_FIELD_SIZE) return oldBox;
             return newBox;
