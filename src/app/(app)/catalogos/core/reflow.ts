@@ -39,8 +39,17 @@ export type SectionReflowInput = {
   id: string;
   titulo: string;
   colunas: number;
+  // Versão MAIS RECENTE do card-molde da seção — usada só pra
+  // estrutura da grade (largura/gutterX/gutterY, spec 3.4: "a largura
+  // de coluna nunca é versionada"). O conteúdo visual de cada card
+  // (layout/altura/campos/formas/contorno) é resolvido por item via
+  // `templateVersions` + `items[].cardTemplateVersao` (spec 3.5).
   cardTemplate: CardTemplateInput | null;
-  items: { product: ProductRow }[]; // já ordenados (ver Parte 5)
+  // Todas as versões de card-molde já salvas pra essa seção — permite
+  // um produto posicionado antes de uma edição "aplicar só aos novos"
+  // continuar desenhando com o molde antigo.
+  templateVersions: { versao: number; template: CardTemplateInput }[];
+  items: { product: ProductRow; cardTemplateVersao: number }[]; // já ordenados (ver Parte 5)
 };
 
 export type PageTemplateInput = {
@@ -63,6 +72,13 @@ export type PositionedCard = {
   width: number;
   height: number;
   product: ProductRow;
+  // Molde resolvido especificamente pra ESTE item (spec 3.5) — pode
+  // divergir do `cardTemplate` da PreviewPage (que é sempre a versão
+  // mais recente da seção, usada só pra estrutura da grade): um
+  // produto posicionado antes de uma edição "aplicar só aos novos"
+  // continua desenhando com o molde antigo, mesmo ao lado de produtos
+  // mais novos na mesma linha da grade.
+  cardTemplate: CardTemplateInput;
   // Posição na LINHA (não na grade inteira) — usado só pra decidir onde
   // desenhar o contorno do card quando os cards estão encostados (ver
   // PreviewPageCanvas.tsx): sem isso, cada card desenharia sua própria
@@ -77,6 +93,9 @@ export type PreviewPage = {
   sectionId: string | null;
   sectionTitulo: string | null;
   pageTemplate: PageTemplateInput | null;
+  // Versão MAIS RECENTE do card-molde da seção — só pra estrutura da
+  // grade (detecção de "encostado", cálculo de cardScale). O conteúdo
+  // visual de cada card usa `card.cardTemplate` (ver PositionedCard).
   cardTemplate: CardTemplateInput | null;
   // Fator (<=1) aplicado a todo valor em pixel relativo ao card (boundary
   // + cada campo/forma dentro dele) quando a grade, no tamanho de
@@ -166,26 +185,37 @@ function reflowSection(
   paginaLargura: number,
   paginaAltura: number
 ): PreviewPage[] {
-  const cardTemplate = section.cardTemplate;
-  if (!cardTemplate) return [];
+  const cardTemplateAtual = section.cardTemplate;
+  if (!cardTemplateAtual) return [];
 
-  const produtos = section.items.map((i) => i.product);
+  // Resolve o molde de CADA item pela versão gravada nele
+  // (`card_template_versao`, spec 3.5) — cai pra versão atual se por
+  // algum motivo a versão específica não estiver na lista (defensivo,
+  // não deveria acontecer em uso normal).
+  const templatesByVersao = new Map(section.templateVersions.map((v) => [v.versao, v.template]));
+  function resolveTemplate(versao: number): CardTemplateInput {
+    return templatesByVersao.get(versao) ?? cardTemplateAtual!;
+  }
+
+  const itens = section.items;
   const paginas: PreviewPage[] = [];
   let indice = 0;
   let primeiraPagina = true;
 
-  while (indice < produtos.length) {
+  while (indice < itens.length) {
     const tipoPagina: PageTipo = primeiraPagina ? "abertura_secao" : "continuacao";
     const pageTemplate = pageTemplates[tipoPagina] ?? null;
     const areaUtilAltura = pageTemplate ? paginaAltura - pageTemplate.margens.top - pageTemplate.margens.bottom : paginaAltura;
     const areaUtilLargura = pageTemplate ? paginaLargura - pageTemplate.margens.left - pageTemplate.margens.right : paginaLargura;
 
-    // Largura que a grade ocupa no tamanho "de desenho" do card-molde —
-    // se estourar a área útil da página (card largo demais pro nº de
-    // colunas configurado na seção), a grade inteira (boundary + cada
-    // campo/forma dentro do card) encolhe proporcionalmente até caber,
-    // em vez de vazar pra fora da página como acontecia antes.
-    const larguraNecessaria = (section.colunas - 1) * cardTemplate.gutterX + cardTemplate.largura;
+    // Largura/gutter da grade vêm sempre da versão ATUAL (mais
+    // recente) da seção, nunca da versão de um item individual — spec
+    // 3.4/3.5: a largura de coluna não é versionada, senão a grade
+    // desalinharia entre produtos com moldes diferentes na mesma
+    // linha. Se estourar a área útil da página (card largo demais pro
+    // nº de colunas configurado), a grade inteira encolhe
+    // proporcionalmente até caber (cardScale), em vez de vazar.
+    const larguraNecessaria = (section.colunas - 1) * cardTemplateAtual.gutterX + cardTemplateAtual.largura;
     const cardScale = larguraNecessaria > areaUtilLargura && larguraNecessaria > 0 ? areaUtilLargura / larguraNecessaria : 1;
 
     const page: PreviewPage = {
@@ -193,7 +223,7 @@ function reflowSection(
       sectionId: section.id,
       sectionTitulo: section.titulo,
       pageTemplate,
-      cardTemplate,
+      cardTemplate: cardTemplateAtual,
       cardScale,
       cards: [],
     };
@@ -202,30 +232,35 @@ function reflowSection(
     let cursorY = 0;
     let progressoNestaPagina = false;
 
-    while (indice < produtos.length) {
-      const fimLinha = Math.min(indice + section.colunas, produtos.length);
-      const linha = produtos.slice(indice, fimLinha);
-      const alturaLinha = Math.max(...linha.map((p) => calcularAlturaCard(cardTemplate, p)));
+    while (indice < itens.length) {
+      const fimLinha = Math.min(indice + section.colunas, itens.length);
+      const linha = itens.slice(indice, fimLinha);
+      // Altura da linha usa a versão do molde de CADA item, não a
+      // versão atual da seção — é isso que permite um produto
+      // posicionado antes de uma edição "só novos" continuar com a
+      // altura/layout do molde antigo (spec 3.5).
+      const alturaLinha = Math.max(...linha.map((it) => calcularAlturaCard(resolveTemplate(it.cardTemplateVersao), it.product)));
 
       // Só recusa a linha se já colocou pelo menos uma nesta página —
       // garante progresso mesmo se uma linha sozinha já estourar a
       // área útil inteira (evita loop infinito nesse caso extremo).
       if (alturaLinha > areaRestante && progressoNestaPagina) break;
 
-      linha.forEach((produto, col) => {
+      linha.forEach((it, col) => {
         page.cards.push({
-          x: col * cardTemplate.gutterX * cardScale,
+          x: col * cardTemplateAtual.gutterX * cardScale,
           y: cursorY,
-          width: cardTemplate.largura * cardScale,
+          width: cardTemplateAtual.largura * cardScale,
           height: alturaLinha * cardScale,
-          product: produto,
+          product: it.product,
+          cardTemplate: resolveTemplate(it.cardTemplateVersao),
           isFirstCol: col === 0,
           isLastCol: col === linha.length - 1,
         });
       });
 
-      cursorY += alturaLinha + cardTemplate.gutterY;
-      areaRestante -= alturaLinha + cardTemplate.gutterY;
+      cursorY += alturaLinha + cardTemplateAtual.gutterY;
+      areaRestante -= alturaLinha + cardTemplateAtual.gutterY;
       indice = fimLinha;
       progressoNestaPagina = true;
     }

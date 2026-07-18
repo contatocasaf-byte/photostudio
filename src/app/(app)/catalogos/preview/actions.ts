@@ -23,6 +23,23 @@ async function requireUser() {
 const DEFAULT_GUTTER_X_EXTRA = 20;
 const DEFAULT_GUTTER_Y = 20;
 
+// Reaproveitado pra mapear TODAS as versões de um card_templates de
+// uma seção (Fase 5, Parte 8 — versionamento), não só a apontada por
+// sections.card_template_id.
+function cardTemplateFromRow(row: Record<string, unknown>): CardTemplateInput {
+  return {
+    layout: row.layout_json as CardTemplateInput["layout"],
+    largura: row.largura as number,
+    alturaMinima: row.altura_minima as number,
+    alturaCresceCom: row.altura_cresce_com as CardTemplateInput["alturaCresceCom"],
+    gutterX: (row.gutter_x as number | null) ?? (row.largura as number) + DEFAULT_GUTTER_X_EXTRA,
+    gutterY: (row.gutter_y as number | null) ?? DEFAULT_GUTTER_Y,
+    camposHabilitados: (row.campos_habilitados as CardTemplateInput["camposHabilitados"]) ?? [],
+    shapes: (row.shapes_json as CardTemplateInput["shapes"]) ?? [],
+    borda: (row.borda_json as CardTemplateInput["borda"]) ?? defaultCardBorda(),
+  };
+}
+
 export type CatalogPreviewData = {
   catalogNome: string;
   paginaLargura: number;
@@ -72,31 +89,38 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     };
   }
 
-  const cardTemplateIds = (sectionRows ?? [])
-    .map((s) => s.card_template_id as string | null)
-    .filter((id): id is string => !!id);
-  const { data: cardTemplateRows, error: ctErr } =
-    cardTemplateIds.length > 0
-      ? await supabase
+  // Busca TODAS as versões de card_templates de cada seção (Fase 5,
+  // Parte 8) — não só a apontada por sections.card_template_id (essa
+  // continua sendo "a atual", usada pra estrutura da grade) — pra
+  // resolver o molde de cada item pela sua própria versão gravada.
+  const sectionIds = (sectionRows ?? []).map((s) => s.id as string);
+  const [{ data: cardTemplateRows, error: ctErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
+    sectionIds.length > 0
+      ? supabase
           .from("card_templates")
           .select(
-            "id, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
+            "id, section_id, versao, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
           )
-          .in("id", cardTemplateIds)
-      : { data: [], error: null };
-  if (ctErr) return { error: ctErr.message };
-  const cardTemplateById = new Map((cardTemplateRows ?? []).map((c) => [c.id as string, c]));
-
-  const sectionIds = (sectionRows ?? []).map((s) => s.id as string);
-  const { data: itemRows, error: itemsErr } =
+          .in("section_id", sectionIds)
+      : Promise.resolve({ data: [], error: null }),
     sectionIds.length > 0
-      ? await supabase
+      ? supabase
           .from("catalog_items")
-          .select("section_id, ordem, product_id")
+          .select("section_id, ordem, product_id, card_template_versao")
           .in("section_id", sectionIds)
           .order("ordem", { ascending: true })
-      : { data: [], error: null };
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (ctErr) return { error: ctErr.message };
   if (itemsErr) return { error: itemsErr.message };
+
+  const templatesBySection = new Map<string, { id: string; versao: number; template: CardTemplateInput }[]>();
+  for (const row of cardTemplateRows ?? []) {
+    const sectionId = row.section_id as string;
+    const list = templatesBySection.get(sectionId) ?? [];
+    list.push({ id: row.id as string, versao: row.versao as number, template: cardTemplateFromRow(row) });
+    templatesBySection.set(sectionId, list);
+  }
 
   const productIds = [...new Set((itemRows ?? []).map((r) => r.product_id as string))];
   const { data: productRows, error: prodErr } =
@@ -123,38 +147,30 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     })
   );
 
-  const itemsBySection = new Map<string, { product: ProductRow }[]>();
+  // Item sem card_template_versao gravado (não deveria acontecer via
+  // addProductToSection, mas todo card_templates existente até a Parte
+  // 8 é sempre versão 1 — fallback seguro pra dado legado).
+  const itemsBySection = new Map<string, { product: ProductRow; cardTemplateVersao: number }[]>();
   for (const row of itemRows ?? []) {
     const product = productById.get(row.product_id as string);
     if (!product) continue;
     const sectionId = row.section_id as string;
     const list = itemsBySection.get(sectionId) ?? [];
-    list.push({ product });
+    list.push({ product, cardTemplateVersao: (row.card_template_versao as number | null) ?? 1 });
     itemsBySection.set(sectionId, list);
   }
 
   const sections: SectionReflowInput[] = (sectionRows ?? []).map((s) => {
     const templateId = s.card_template_id as string | null;
-    const ct = templateId ? cardTemplateById.get(templateId) : undefined;
-    const cardTemplate: CardTemplateInput | null = ct
-      ? {
-          layout: ct.layout_json as CardTemplateInput["layout"],
-          largura: ct.largura as number,
-          alturaMinima: ct.altura_minima as number,
-          alturaCresceCom: ct.altura_cresce_com as CardTemplateInput["alturaCresceCom"],
-          gutterX: (ct.gutter_x as number | null) ?? (ct.largura as number) + DEFAULT_GUTTER_X_EXTRA,
-          gutterY: (ct.gutter_y as number | null) ?? DEFAULT_GUTTER_Y,
-          camposHabilitados: (ct.campos_habilitados as CardTemplateInput["camposHabilitados"]) ?? [],
-          shapes: (ct.shapes_json as CardTemplateInput["shapes"]) ?? [],
-          borda: (ct.borda_json as CardTemplateInput["borda"]) ?? defaultCardBorda(),
-        }
-      : null;
+    const versions = templatesBySection.get(s.id as string) ?? [];
+    const atual = templateId ? versions.find((v) => v.id === templateId) : undefined;
 
     return {
       id: s.id as string,
       titulo: s.titulo as string,
       colunas: s.colunas as number,
-      cardTemplate,
+      cardTemplate: atual?.template ?? null,
+      templateVersions: versions.map(({ versao, template }) => ({ versao, template })),
       items: itemsBySection.get(s.id as string) ?? [],
     };
   });

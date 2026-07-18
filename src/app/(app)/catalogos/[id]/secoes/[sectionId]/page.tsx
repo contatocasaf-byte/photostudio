@@ -2,7 +2,15 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { getSection, getCardTemplate, listSections, saveCardTemplate, type Section } from "../../../actions";
+import {
+  getSection,
+  getCardTemplate,
+  listSections,
+  saveCardTemplate,
+  type SaveCardTemplateMode,
+  type Section,
+} from "../../../actions";
+import { sectionHasItems } from "../../../produtos/actions";
 import {
   defaultCardBorda,
   defaultCardLayout,
@@ -58,36 +66,47 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [copySourceId, setCopySourceId] = useState("");
   const [copying, setCopying] = useState(false);
 
+  // Versionamento pós-criação (Fase 5, Parte 8, spec 3.5) — a pergunta
+  // "aplicar a todos vs. só aos novos" só faz sentido se a seção já
+  // tem produto posicionado; sem isso, Salvar continua direto (sem
+  // gerar versão nova, ver saveCardTemplate).
+  const [hasItems, setHasItems] = useState(false);
+  const [showVersionChoice, setShowVersionChoice] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getSection(sectionId), getCardTemplate(sectionId), listSections(catalogId)]).then(
-      ([sectionRes, templateRes, sectionsRes]) => {
-        if (cancelled) return;
-        if (sectionRes.error) setError(sectionRes.error);
-        else setSection(sectionRes.section ?? null);
-        if (templateRes.error) setError(templateRes.error);
-        else if (templateRes.template) {
-          const t = templateRes.template;
-          // Mescla por cima dos padrões (mesmo padrão já usado no editor
-          // de página) — sem isso, um card-molde salvo com uma versão
-          // antiga dos campos (ex.: antes da Parte 6a renomear nome/sku/
-          // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
-          // com config `undefined`, quebrando o canvas inteiro ao tentar
-          // desenhar um campo sem posição/tamanho.
-          setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
-          setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
-          setLargura(t.largura);
-          setAlturaMinima(t.alturaMinima);
-          setAlturaCresceCom(t.alturaCresceCom);
-          setGutterX(t.gutterX);
-          setGutterY(t.gutterY);
-          setShapes(t.shapes);
-          setBorda(t.borda ?? defaultCardBorda());
-        }
-        if (!sectionsRes.error) setOtherSections((sectionsRes.sections ?? []).filter((s) => s.id !== sectionId));
-        setLoading(false);
+    Promise.all([
+      getSection(sectionId),
+      getCardTemplate(sectionId),
+      listSections(catalogId),
+      sectionHasItems(sectionId),
+    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes]) => {
+      if (cancelled) return;
+      if (sectionRes.error) setError(sectionRes.error);
+      else setSection(sectionRes.section ?? null);
+      if (templateRes.error) setError(templateRes.error);
+      else if (templateRes.template) {
+        const t = templateRes.template;
+        // Mescla por cima dos padrões (mesmo padrão já usado no editor
+        // de página) — sem isso, um card-molde salvo com uma versão
+        // antiga dos campos (ex.: antes da Parte 6a renomear nome/sku/
+        // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
+        // com config `undefined`, quebrando o canvas inteiro ao tentar
+        // desenhar um campo sem posição/tamanho.
+        setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
+        setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+        setLargura(t.largura);
+        setAlturaMinima(t.alturaMinima);
+        setAlturaCresceCom(t.alturaCresceCom);
+        setGutterX(t.gutterX);
+        setGutterY(t.gutterY);
+        setShapes(t.shapes);
+        setBorda(t.borda ?? defaultCardBorda());
       }
-    );
+      if (!sectionsRes.error) setOtherSections((sectionsRes.sections ?? []).filter((s) => s.id !== sectionId));
+      if (!hasItemsRes.error) setHasItems(hasItemsRes.hasItems ?? false);
+      setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
@@ -228,21 +247,38 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setBorda((prev) => ({ ...prev, ...patch }));
   }
 
-  async function handleSave() {
+  // Seção sem produto posicionado ainda: salva direto (modo é
+  // irrelevante — saveCardTemplate nem chega a versionar nesse caso).
+  // Com produto já posicionado: mostra a escolha antes de salvar de
+  // verdade (ver `doSave`).
+  function handleSave() {
+    if (hasItems) {
+      setShowVersionChoice(true);
+      return;
+    }
+    doSave("aplicar_todos");
+  }
+
+  async function doSave(modo: SaveCardTemplateMode) {
     setSaving(true);
     setStatus(null);
+    setShowVersionChoice(false);
     try {
-      const res = await saveCardTemplate(sectionId, {
-        layout,
-        largura,
-        alturaMinima,
-        alturaCresceCom,
-        camposHabilitados,
-        gutterX,
-        gutterY,
-        shapes,
-        borda,
-      });
+      const res = await saveCardTemplate(
+        sectionId,
+        {
+          layout,
+          largura,
+          alturaMinima,
+          alturaCresceCom,
+          camposHabilitados,
+          gutterX,
+          gutterY,
+          shapes,
+          borda,
+        },
+        modo
+      );
       setStatus(res.error ? `⚠ ${res.error}` : "✔ Card-molde salvo.");
     } finally {
       setSaving(false);
@@ -293,6 +329,35 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           >
             {copying ? "Copiando..." : "Copiar"}
           </button>
+        </div>
+      )}
+
+      {showVersionChoice && (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <p className="font-medium">Esta seção já tem produtos posicionados. Aplicar essa alteração a:</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => doSave("aplicar_todos")}
+              disabled={saving}
+              className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              Todos os produtos já posicionados
+            </button>
+            <button
+              onClick={() => doSave("aplicar_novos")}
+              disabled={saving}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Só aos novos a partir de agora
+            </button>
+            <button
+              onClick={() => setShowVersionChoice(false)}
+              disabled={saving}
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-amber-800 hover:underline disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 

@@ -341,8 +341,13 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
 
         {page.cardTemplate &&
           page.cards.flatMap((card, i) => {
-            const cardTemplate = page.cardTemplate!;
-            const borda = cardTemplate.borda;
+            // Estrutura da grade (touching/gutter) sempre vem da versão
+            // ATUAL da seção; o ESTILO do contorno (cor/espessura/ativa)
+            // vem do molde resolvido pra ESTE card (spec 3.5) — um item
+            // antigo pode ter o contorno desligado mesmo que a versão
+            // atual tenha ligado, por exemplo.
+            const cardTemplateAtual = page.cardTemplate!;
+            const borda = card.cardTemplate.borda;
             if (!borda.ativa) return [];
 
             const originX = margens.left + card.x;
@@ -359,7 +364,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             // bem no meio da faixa, quebrando a continuidade. Só a
             // lateral esquerda do primeiro card e a direita do último
             // de cada linha (a moldura externa) continuam aparecendo.
-            const touching = Math.abs(cardTemplate.gutterX - cardTemplate.largura) < 0.5;
+            const touching = Math.abs(cardTemplateAtual.gutterX - cardTemplateAtual.largura) < 0.5;
             const drawLeft = !touching || card.isFirstCol;
             const drawRight = !touching || card.isLastCol;
 
@@ -383,11 +388,11 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
           })}
 
         {page.cardTemplate &&
-          page.cardTemplate.shapes.length > 0 &&
+          page.cards.length > 0 &&
           (() => {
-            const cardTemplate = page.cardTemplate!;
+            const cardTemplateAtual = page.cardTemplate!;
             const cardScale = page.cardScale;
-            const touchingX = Math.abs(cardTemplate.gutterX - cardTemplate.largura) < 0.5;
+            const touchingX = Math.abs(cardTemplateAtual.gutterX - cardTemplateAtual.largura) < 0.5;
 
             // Agrupa por linha (mesmo Y) — quando os cards estão
             // encostados (gutterX = largura) e um retângulo alcança a
@@ -407,9 +412,34 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
               linhas.set(card.y, grupo);
             }
 
-            return [...linhas.entries()].flatMap(([y, linha], li) =>
-              cardTemplate.shapes.flatMap((shape, si) => {
-                const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplate.gutterX - 0.5;
+            return [...linhas.entries()].flatMap(([y, linha], li) => {
+              // Fundir só funciona se a linha inteira compartilha o
+              // MESMO molde (spec 3.5 permite molde v1 ao lado de v2 na
+              // mesma linha, numa seção em transição logo após "aplicar
+              // só aos novos") — reflow.ts resolve por versão a partir
+              // de um Map compartilhado, então cards da mesma versão
+              // têm a mesma instância de cardTemplate (comparável por
+              // referência). Linha mista desenha cada forma por card
+              // (sangria de 1px como fallback, ver PreviewCardShape).
+              const uniforme = linha.every((c) => c.cardTemplate === linha[0].cardTemplate);
+              if (!uniforme) {
+                return linha.flatMap((card) =>
+                  card.cardTemplate.shapes.map((shape) => (
+                    <PreviewCardShape
+                      key={`${card.product.id}-${shape.id}`}
+                      shape={shape}
+                      originX={margens.left + card.x}
+                      originY={margens.top + card.y}
+                      scale={scale}
+                      cardScale={cardScale}
+                    />
+                  ))
+                );
+              }
+
+              const template = linha[0].cardTemplate;
+              return template.shapes.flatMap((shape, si) => {
+                const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
                 if (touchingX && encostaNaBorda && linha.length > 1) {
                   const primeiro = linha[0];
                   const ultimo = linha[linha.length - 1];
@@ -439,13 +469,16 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                     cardScale={cardScale}
                   />
                 ));
-              })
-            );
+              });
+            });
           })()}
 
         {page.cardTemplate &&
           page.cards.flatMap((card) => {
-            const cardTemplate = page.cardTemplate!;
+            // Conteúdo visual (campos habilitados, layout de cada um)
+            // vem do molde resolvido pra ESTE card (spec 3.5), não da
+            // versão atual da seção.
+            const cardTemplate = card.cardTemplate;
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
 

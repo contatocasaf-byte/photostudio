@@ -182,10 +182,9 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
 }
 
 // Grava a versão ATUAL do card-molde da seção no momento em que o
-// produto é adicionado (spec seção 3.5) — hoje sempre 1, já que
-// versionamento ainda não existe (fase futura), mas já é o valor certo
-// pra quando existir: itens antigos mantêm a versão que tinham quando
-// entraram, só o card-molde muda de versão.
+// produto é adicionado (spec seção 3.5, Fase 5 Parte 8) — itens
+// antigos mantêm a versão que tinham quando entraram; só o
+// card-molde muda de versão dali pra frente.
 export async function addProductToSection(sectionId: string, productId: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -218,6 +217,19 @@ export async function addProductToSection(sectionId: string, productId: string):
   });
   if (insertErr) return { error: insertErr.message };
   return {};
+}
+
+// Fase 5, Parte 8 (versionamento) — decide se salvar o card-molde
+// dessa seção precisa perguntar "aplicar a todos vs. só aos novos"
+// (spec 3.5). Sem produto nenhum posicionado ainda, a pergunta não faz
+// sentido: salvar continua sendo update in-place, sem gerar versão
+// nova, enquanto o usuário ainda está iterando no design do card.
+export async function sectionHasItems(sectionId: string): Promise<{ hasItems?: boolean; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { data, error } = await supabase.from("catalog_items").select("id").eq("section_id", sectionId).limit(1);
+  if (error) return { error: error.message };
+  return { hasItems: (data?.length ?? 0) > 0 };
 }
 
 export async function removeSectionItem(itemId: string): Promise<{ error?: string }> {
