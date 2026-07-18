@@ -37,9 +37,21 @@ function computeScale(largura: number, altura: number) {
 // proporção do texto quando a grade inteira precisa encolher pra caber
 // na largura da página. Campos de página (header/footer) não usam
 // (ficam no valor padrão 1).
+//
+// O bitmap é desenhado em resolução STAGE_PIXEL_RATIO vezes maior que
+// o tamanho de exibição (mesma ideia do pixelRatio do Stage, mas
+// aplicada manualmente aqui porque esse canvas é criado à parte,
+// fora do Stage) — sem isso, o Konva precisa AMPLIAR esse bitmap pra
+// caber no Stage (que desenha em alta resolução por causa do
+// pixelRatio), e o algoritmo de suavização do navegador borra ou
+// literalmente apaga traços finos de letras estreitas (I, J, etc.) ao
+// ampliar um bitmap pequeno demais — foi isso que apareceu como
+// "texto com falhas" depois de aumentar o preview pra escala 1:1.
+// canvas.height sai multiplicado por STAGE_PIXEL_RATIO; quem consome
+// o retorno precisa dividir de volta ao calcular a altura de exibição.
 function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextElementConfig, contentScale = 1): HTMLCanvasElement {
-  const maxW = cfg.maxW * contentScale;
-  const fontSize = cfg.fontSize * contentScale;
+  const maxW = cfg.maxW * contentScale * STAGE_PIXEL_RATIO;
+  const fontSize = cfg.fontSize * contentScale * STAGE_PIXEL_RATIO;
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6));
@@ -95,7 +107,7 @@ function PageTextField({ cfg, text, scale }: { cfg: PageTextElementConfig; text:
       x={ORIGIN + cfg.x * scale}
       y={ORIGIN + cfg.y * scale}
       width={cfg.maxW * scale}
-      height={canvas.height * scale}
+      height={(canvas.height / STAGE_PIXEL_RATIO) * scale}
       listening={false}
     />
   );
@@ -151,7 +163,7 @@ function CardTextField({
       x={ORIGIN + (originX + cfg.x * cardScale) * scale}
       y={ORIGIN + (originY + cfg.y * cardScale) * scale}
       width={cfg.maxW * cardScale * scale}
-      height={canvas.height * scale}
+      height={(canvas.height / STAGE_PIXEL_RATIO) * scale}
       listening={false}
     />
   );
