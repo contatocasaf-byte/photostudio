@@ -81,9 +81,18 @@ export function drawTextFit(
   fill: string,
   align: TextAlign,
   maxLines: number,
-  lineSpacing = 1.15
+  lineSpacing = 1.15,
+  // Piso absoluto do encolhimento — 8 é calibrado pro espaço de
+  // desenho normal do card-molde. Quem desenha num canvas "inflado"
+  // (ex.: PreviewPageCanvas.tsx multiplicando fontSizeMax por
+  // STAGE_PIXEL_RATIO pra evitar ampliar o bitmap depois) precisa
+  // passar esse piso multiplicado igual, senão o fallback abaixo
+  // desenha bem menor do que deveria — texto longo demais pra caber
+  // caía nesse piso de 8px absolutos dentro de um espaço 2x maior,
+  // equivalente a ~4px de desenho real: fino demais, glifos como
+  // I/J/T saem cortados/corrompidos.
+  minSize = 8
 ) {
-  const minSize = 8;
   let lines = [text];
   let usedSize = minSize;
   let found = false;

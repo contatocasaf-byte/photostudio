@@ -67,7 +67,14 @@ function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextEle
   canvas.width = Math.max(1, Math.round(maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
-  drawTextFit(ctx, text, "Arial", cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines);
+  // minSize padrão (8) é calibrado pro espaço de desenho normal — aqui
+  // fontSize já veio inflado por STAGE_PIXEL_RATIO, então o piso
+  // precisa acompanhar, senão o fallback de "não coube nem encolhendo"
+  // desenha texto comicamente pequeno (equivalente a uns 4px reais),
+  // fino demais pra renderizar sem corromper glifos estreitos (I/J/T)
+  // — foi o que sobrou de errado depois da correção de resolução do
+  // bitmap: textos longos demais pra caber cain nesse fallback.
+  drawTextFit(ctx, text, "Arial", cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines, 1.15, 8 * STAGE_PIXEL_RATIO);
   return canvas;
 }
 
