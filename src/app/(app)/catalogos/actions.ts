@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { CardFieldKey, CardLayout } from "./core/cardConfig";
+import type { CardFieldKey, CardLayout, CardShape } from "./core/cardConfig";
 
 // Primeiro módulo da suite que lê/escreve Postgres além de autenticação
 // (Studio e Ofertas usam só R2) — ver esquema em
@@ -235,6 +235,7 @@ export type CardTemplateData = {
   camposHabilitados: CardFieldKey[];
   gutterX: number | null;
   gutterY: number | null;
+  shapes: CardShape[];
 };
 
 export async function getCardTemplate(sectionId: string): Promise<{ template?: CardTemplateData | null; error?: string }> {
@@ -243,7 +244,7 @@ export async function getCardTemplate(sectionId: string): Promise<{ template?: C
 
   const { data, error } = await supabase
     .from("card_templates")
-    .select("layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y")
+    .select("layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json")
     .eq("section_id", sectionId)
     .order("versao", { ascending: false })
     .limit(1)
@@ -260,6 +261,7 @@ export async function getCardTemplate(sectionId: string): Promise<{ template?: C
       camposHabilitados: (data.campos_habilitados ?? []) as CardFieldKey[],
       gutterX: data.gutter_x,
       gutterY: data.gutter_y,
+      shapes: (data.shapes_json ?? []) as CardShape[],
     },
   };
 }
@@ -276,6 +278,7 @@ export async function saveCardTemplate(sectionId: string, data: CardTemplateData
     campos_habilitados: data.camposHabilitados,
     gutter_x: data.gutterX,
     gutter_y: data.gutterY,
+    shapes_json: data.shapes,
   };
 
   const { data: existing, error: existingErr } = await supabase

@@ -5,12 +5,15 @@ import Link from "next/link";
 import { getSection, getCardTemplate, saveCardTemplate, type Section } from "../../../actions";
 import {
   defaultCardLayout,
+  defaultCardShape,
   DEFAULT_CAMPOS_HABILITADOS,
   DEFAULT_CARD_WIDTH,
   DEFAULT_CARD_HEIGHT,
   type CardFieldKey,
   type CardImageElementConfig,
   type CardLayout,
+  type CardShape,
+  type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import CardEditorCanvas from "./CardEditorCanvas";
@@ -32,8 +35,10 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [alturaCresceCom, setAlturaCresceCom] = useState<CardFieldKey | null>("descricao");
   const [gutterX, setGutterX] = useState<number | null>(null);
   const [gutterY, setGutterY] = useState<number | null>(null);
+  const [shapes, setShapes] = useState<CardShape[]>([]);
 
   const [selectedKey, setSelectedKey] = useState<CardFieldKey | null>(null);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [gutterMode, setGutterMode] = useState(false);
 
   useEffect(() => {
@@ -58,6 +63,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         setAlturaCresceCom(t.alturaCresceCom);
         setGutterX(t.gutterX);
         setGutterY(t.gutterY);
+        setShapes(t.shapes);
       }
       setLoading(false);
     });
@@ -74,6 +80,34 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
   function handleUpdateField(key: CardFieldKey, patch: Partial<CardImageElementConfig & CardTextElementConfig>) {
     setLayout((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  }
+
+  // Campo e forma são seleções mutuamente exclusivas (um Transformer só,
+  // compartilhado) — selecionar um sempre limpa o outro, não importa se
+  // veio de um clique no canvas ou na lista do painel.
+  function handleSelectKey(key: CardFieldKey | null) {
+    setSelectedShapeId(null);
+    setSelectedKey(key);
+  }
+
+  function handleSelectShape(id: string | null) {
+    setSelectedKey(null);
+    setSelectedShapeId(id);
+  }
+
+  function handleAddShape(type: CardShapeType) {
+    const shape = defaultCardShape(type, crypto.randomUUID());
+    setShapes((prev) => [...prev, shape]);
+    handleSelectShape(shape.id);
+  }
+
+  function handleUpdateShape(id: string, patch: Partial<CardShape>) {
+    setShapes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  function handleRemoveShape(id: string) {
+    setShapes((prev) => prev.filter((s) => s.id !== id));
+    if (selectedShapeId === id) setSelectedShapeId(null);
   }
 
   function handleResizeBoundary(patch: { largura: number; alturaMinima: number }) {
@@ -98,6 +132,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         camposHabilitados,
         gutterX,
         gutterY,
+        shapes,
       });
       setStatus(res.error ? `⚠ ${res.error}` : "✔ Card-molde salvo.");
     } finally {
@@ -140,11 +175,15 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             alturaMinima={alturaMinima}
             onResizeBoundary={handleResizeBoundary}
             selectedKey={selectedKey}
-            onSelect={setSelectedKey}
+            onSelect={handleSelectKey}
             gutterMode={gutterMode}
             gutterX={gutterX}
             gutterY={gutterY}
             onGutterChange={handleGutterChange}
+            shapes={shapes}
+            onShapesChange={setShapes}
+            selectedShapeId={selectedShapeId}
+            onSelectShape={handleSelectShape}
           />
         </div>
         <PropertiesPanel
@@ -152,7 +191,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           camposHabilitados={camposHabilitados}
           onToggleCampo={handleToggleCampo}
           selectedKey={selectedKey}
-          onSelectKey={setSelectedKey}
+          onSelectKey={handleSelectKey}
           onUpdateField={handleUpdateField}
           largura={largura}
           alturaMinima={alturaMinima}
@@ -163,6 +202,12 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           onToggleGutterMode={setGutterMode}
           gutterX={gutterX}
           gutterY={gutterY}
+          shapes={shapes}
+          selectedShapeId={selectedShapeId}
+          onSelectShape={handleSelectShape}
+          onAddShape={handleAddShape}
+          onUpdateShape={handleUpdateShape}
+          onRemoveShape={handleRemoveShape}
         />
       </div>
     </div>

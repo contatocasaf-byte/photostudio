@@ -182,3 +182,10 @@ alter table public.catalogs
 alter table public.planilhas enable row level security;
 create policy "authenticated full access" on public.planilhas for all to authenticated using (true) with check (true);
 grant select, insert, update, delete on public.planilhas to authenticated;
+
+-- Formas decorativas (retângulo/elipse/triângulo) no card-molde — sem
+-- vínculo com dado de produto nenhum, por isso não entram no
+-- layout_json (que é indexado por CardFieldKey, um por campo). Lista
+-- livre, tamanho variável, guardada à parte.
+alter table public.card_templates
+  add column shapes_json jsonb not null default '[]'::jsonb;

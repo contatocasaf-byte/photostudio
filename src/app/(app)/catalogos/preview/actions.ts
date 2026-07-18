@@ -72,7 +72,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     cardTemplateIds.length > 0
       ? await supabase
           .from("card_templates")
-          .select("id, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y")
+          .select("id, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json")
           .in("id", cardTemplateIds)
       : { data: [], error: null };
   if (ctErr) return { error: ctErr.message };
@@ -132,6 +132,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
           gutterX: (ct.gutter_x as number | null) ?? (ct.largura as number) + DEFAULT_GUTTER_X_EXTRA,
           gutterY: (ct.gutter_y as number | null) ?? DEFAULT_GUTTER_Y,
           camposHabilitados: (ct.campos_habilitados as CardTemplateInput["camposHabilitados"]) ?? [],
+          shapes: (ct.shapes_json as CardTemplateInput["shapes"]) ?? [],
         }
       : null;
 

@@ -2,9 +2,12 @@
 
 import {
   CARD_FIELD_DEFS,
+  CARD_SHAPE_TYPES,
   type CardFieldKey,
   type CardImageElementConfig,
   type CardLayout,
+  type CardShape,
+  type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import type { TextAlign } from "@/lib/canvasText";
@@ -25,6 +28,12 @@ type Props = {
   onToggleGutterMode: (v: boolean) => void;
   gutterX: number | null;
   gutterY: number | null;
+  shapes: CardShape[];
+  selectedShapeId: string | null;
+  onSelectShape: (id: string | null) => void;
+  onAddShape: (type: CardShapeType) => void;
+  onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
+  onRemoveShape: (id: string) => void;
 };
 
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
@@ -68,8 +77,15 @@ export default function PropertiesPanel({
   onToggleGutterMode,
   gutterX,
   gutterY,
+  shapes,
+  selectedShapeId,
+  onSelectShape,
+  onAddShape,
+  onUpdateShape,
+  onRemoveShape,
 }: Props) {
   const selectedDef = selectedKey ? CARD_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
+  const selectedShape = selectedShapeId ? shapes.find((s) => s.id === selectedShapeId) : null;
   const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
 
   return (
@@ -146,7 +162,48 @@ export default function PropertiesPanel({
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
-        {!selectedDef && <p className="text-xs text-slate-400">Clique num campo habilitado (na lista acima ou no canvas) pra editar.</p>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Formas</p>
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          {CARD_SHAPE_TYPES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => onAddShape(t.value)}
+              className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            >
+              + {t.label}
+            </button>
+          ))}
+        </div>
+        {shapes.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1">
+            {shapes.map((shape, i) => {
+              const def = CARD_SHAPE_TYPES.find((t) => t.value === shape.type);
+              return (
+                <button
+                  key={shape.id}
+                  onClick={() => onSelectShape(shape.id)}
+                  className={
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+                    (selectedShapeId === shape.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                  }
+                >
+                  <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
+                  {def?.label ?? shape.type} {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        {!selectedDef && !selectedShape && (
+          <p className="text-xs text-slate-400">Clique num campo ou forma (na lista acima ou no canvas) pra editar.</p>
+        )}
+
+        {selectedShape && (
+          <ShapeProperties shape={selectedShape} onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)} onRemove={() => onRemoveShape(selectedShape.id)} />
+        )}
 
         {selectedDef && selectedDef.type === "image" && (
           <div className="flex flex-col gap-2">
@@ -181,6 +238,69 @@ export default function PropertiesPanel({
             onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+function ShapeProperties({
+  shape,
+  onUpdate,
+  onRemove,
+}: {
+  shape: CardShape;
+  onUpdate: (patch: Partial<CardShape>) => void;
+  onRemove: () => void;
+}) {
+  const label = CARD_SHAPE_TYPES.find((t) => t.value === shape.type)?.label ?? shape.type;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-900">{label}</p>
+        <button onClick={onRemove} className="text-xs font-medium text-red-600 hover:text-red-800">
+          Excluir
+        </button>
+      </div>
+
+      <NumberField label="Posição X" value={shape.x} onCommit={(v) => onUpdate({ x: v })} />
+      <NumberField label="Posição Y" value={shape.y} onCommit={(v) => onUpdate({ y: v })} />
+      <NumberField label="Largura" value={shape.w} onCommit={(v) => onUpdate({ w: Math.max(4, v) })} />
+      <NumberField label="Altura" value={shape.h} onCommit={(v) => onUpdate({ h: Math.max(4, v) })} />
+
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-slate-500">Cor</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={shape.color}
+            onChange={(e) => onUpdate({ color: e.target.value })}
+            className="h-7 w-10 cursor-pointer rounded border border-slate-300"
+          />
+          <input
+            key={shape.color}
+            defaultValue={shape.color}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onUpdate({ color: v });
+            }}
+            className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="flex items-center justify-between text-xs text-slate-500">
+          <span>Transparência</span>
+          <span>{Math.round(shape.opacity * 100)}%</span>
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(shape.opacity * 100)}
+          onChange={(e) => onUpdate({ opacity: Number(e.target.value) / 100 })}
+          className="mt-1 w-full"
+        />
       </div>
     </div>
   );

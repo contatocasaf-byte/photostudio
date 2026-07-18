@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect } from "react-konva";
-import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardTextElementConfig } from "../../core/cardConfig";
+import { Stage, Layer, Image as KonvaImage, Rect, Shape as KonvaShape } from "react-konva";
+import type Konva from "konva";
+import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardShape, type CardTextElementConfig } from "../../core/cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "../../core/pageConfig";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
@@ -134,6 +135,44 @@ function CardTextField({
   );
 }
 
+// Forma decorativa de um card posicionado na grade — mesmo desenho do
+// ShapeNode do editor (retângulo nativo do Konva; elipse/triângulo via
+// sceneFunc de Canvas 2D), só que somente leitura (sem drag/Transformer).
+function PreviewCardShape({ shape, originX, originY, scale }: { shape: CardShape; originX: number; originY: number; scale: number }) {
+  const x = ORIGIN + (originX + shape.x) * scale;
+  const y = ORIGIN + (originY + shape.y) * scale;
+  const width = shape.w * scale;
+  const height = shape.h * scale;
+  const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
+
+  if (shape.type === "retangulo") {
+    return <Rect {...common} />;
+  }
+
+  const sceneFunc =
+    shape.type === "elipse"
+      ? (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, Math.max(0.01, w / 2), Math.max(0.01, h / 2), 0, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        }
+      : (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 0);
+          ctx.lineTo(w, h);
+          ctx.lineTo(0, h);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        };
+
+  return <KonvaShape {...common} sceneFunc={sceneFunc} />;
+}
+
 export type PreviewPageCanvasProps = {
   page: PreviewPage;
   paginaLargura: number;
@@ -190,6 +229,16 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 listening={false}
               />
             );
+          })}
+
+        {page.cardTemplate &&
+          page.cardTemplate.shapes.length > 0 &&
+          page.cards.flatMap((card) => {
+            const originX = margens.left + card.x;
+            const originY = margens.top + card.y;
+            return page.cardTemplate!.shapes.map((shape) => (
+              <PreviewCardShape key={`${card.product.id}-${shape.id}`} shape={shape} originX={originX} originY={originY} scale={scale} />
+            ));
           })}
 
         {page.cardTemplate &&

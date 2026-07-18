@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, type RefObject } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Group, Shape as KonvaShape, Transformer } from "react-konva";
 import type Konva from "konva";
 import {
   CARD_FIELD_DEFS,
@@ -10,6 +10,7 @@ import {
   type CardFieldKey,
   type CardImageElementConfig,
   type CardLayout,
+  type CardShape,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { drawTextFit } from "@/lib/canvasText";
@@ -45,7 +46,7 @@ type NodeProps = {
   scale: number;
   selected: boolean;
   onSelect: () => void;
-  registerRef: (key: CardFieldKey, node: Konva.Node | null) => void;
+  registerRef: (key: string, node: Konva.Node | null) => void;
 };
 
 function ImageFieldNode({
@@ -144,6 +145,95 @@ function TextFieldNode({
       }}
     />
   );
+}
+
+// Forma decorativa (retângulo/elipse/triângulo) — sem vínculo com dado
+// de produto, lista livre (não é um CardFieldKey). Mesma mecânica de
+// arraste/redimensionamento dos outros elementos (origem no canto
+// superior-esquerdo, width/height). Retângulo usa o <Rect> nativo do
+// Konva; elipse/triângulo usam <Shape> com sceneFunc custom (desenha
+// via Canvas 2D direto) — assim os três continuam com x()/y()/width()/
+// height() padrão, compatíveis com o mesmo código de drag/Transformer,
+// sem precisar de matemática de origem centralizada (caso do
+// Konva.Ellipse nativo, que usa centro em vez de canto).
+function ShapeNode({
+  shape,
+  scale,
+  selected,
+  onSelect,
+  onUpdate,
+  registerRef,
+}: {
+  shape: CardShape;
+  scale: number;
+  selected: boolean;
+  onSelect: () => void;
+  onUpdate: (patch: Partial<CardShape>) => void;
+  registerRef: (key: string, node: Konva.Node | null) => void;
+}) {
+  const x = ORIGIN + shape.x * scale;
+  const y = ORIGIN + shape.y * scale;
+  const width = shape.w * scale;
+  const height = shape.h * scale;
+
+  function handleDrag(e: Konva.KonvaEventObject<DragEvent>) {
+    onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) });
+  }
+
+  function handleTransform(e: Konva.KonvaEventObject<Event>) {
+    const node = e.target;
+    const newW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale));
+    const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale));
+    node.scaleX(1);
+    node.scaleY(1);
+    node.width(newW * scale);
+    node.height(newH * scale);
+    onUpdate({ w: newW, h: newH, x: Math.round((node.x() - ORIGIN) / scale), y: Math.round((node.y() - ORIGIN) / scale) });
+  }
+
+  const common = {
+    x,
+    y,
+    width,
+    height,
+    fill: shape.color,
+    opacity: shape.opacity,
+    stroke: selected ? "#4fc3f7" : undefined,
+    strokeWidth: selected ? 2 : 0,
+    draggable: true,
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragMove: handleDrag,
+    onDragEnd: handleDrag,
+    onTransform: handleTransform,
+  };
+
+  if (shape.type === "retangulo") {
+    return <Rect ref={(node) => registerRef(shape.id, node)} {...common} />;
+  }
+
+  const sceneFunc =
+    shape.type === "elipse"
+      ? (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, Math.max(0.01, w / 2), Math.max(0.01, h / 2), 0, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        }
+      : (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 0);
+          ctx.lineTo(w, h);
+          ctx.lineTo(0, h);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        };
+
+  return <KonvaShape ref={(node) => registerRef(shape.id, node)} {...common} sceneFunc={sceneFunc} />;
 }
 
 // Boundary = largura/altura mínima do card (spec seção 3.1). Fica
@@ -313,11 +403,15 @@ export type CardEditorCanvasProps = {
   layout: CardLayout;
   onLayoutChange: (updater: (prev: CardLayout) => CardLayout) => void;
   camposHabilitados: CardFieldKey[];
+  shapes: CardShape[];
+  onShapesChange: (updater: (prev: CardShape[]) => CardShape[]) => void;
   largura: number;
   alturaMinima: number;
   onResizeBoundary: (patch: { largura: number; alturaMinima: number }) => void;
   selectedKey: CardFieldKey | null;
   onSelect: (key: CardFieldKey | null) => void;
+  selectedShapeId: string | null;
+  onSelectShape: (id: string | null) => void;
   gutterMode: boolean;
   gutterX: number | null;
   gutterY: number | null;
@@ -328,11 +422,15 @@ export default function CardEditorCanvas({
   layout,
   onLayoutChange,
   camposHabilitados,
+  shapes,
+  onShapesChange,
   largura,
   alturaMinima,
   onResizeBoundary,
   selectedKey,
   onSelect,
+  selectedShapeId,
+  onSelectShape,
   gutterMode,
   gutterX,
   gutterY,
@@ -340,24 +438,39 @@ export default function CardEditorCanvas({
 }: CardEditorCanvasProps) {
   const { scale, canvasW, canvasH } = computeScale(largura, alturaMinima);
 
-  const nodeRefs = useRef<Partial<Record<CardFieldKey, Konva.Node>>>({});
+  const nodeRefs = useRef<Partial<Record<string, Konva.Node>>>({});
   const fieldTransformerRef = useRef<Konva.Transformer>(null);
   const boundaryTransformerRef = useRef<Konva.Transformer>(null);
 
-  function registerRef(key: CardFieldKey, node: Konva.Node | null) {
+  function registerRef(key: string, node: Konva.Node | null) {
     if (node) nodeRefs.current[key] = node;
   }
 
   useEffect(() => {
     const tr = fieldTransformerRef.current;
     if (!tr) return;
-    const node = selectedKey ? nodeRefs.current[selectedKey] : undefined;
+    const activeKey = selectedShapeId ?? selectedKey;
+    const node = activeKey ? nodeRefs.current[activeKey] : undefined;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
   });
 
   function updateField<K extends CardFieldKey>(key: K, patch: CardElementConfig) {
     onLayoutChange((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  }
+
+  function updateShape(id: string, patch: Partial<CardShape>) {
+    onShapesChange((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  function selectField(key: CardFieldKey) {
+    onSelectShape(null);
+    onSelect(key);
+  }
+
+  function selectShape(id: string) {
+    onSelect(null);
+    onSelectShape(id);
   }
 
   // Posição da cópia fantasma é derivada direto de gutterX/gutterY (sem
@@ -370,6 +483,9 @@ export default function CardEditorCanvas({
   };
 
   const selectedDef = selectedKey ? CARD_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
+  // Forma selecionada usa o mesmo conjunto de âncoras livres (8 pontos)
+  // já usado pro campo de imagem — redimensiona livre em qualquer eixo.
+  const isFreeResize = selectedShapeId !== null || selectedDef?.type === "image";
   const stageW = gutterMode ? ghostDefaultX + canvasW + ORIGIN : canvasW + ORIGIN * 2;
   const stageH = canvasH + ORIGIN * 2;
 
@@ -378,10 +494,16 @@ export default function CardEditorCanvas({
       width={stageW}
       height={stageH}
       onMouseDown={(e) => {
-        if (e.target === e.target.getStage()) onSelect(null);
+        if (e.target === e.target.getStage()) {
+          onSelect(null);
+          onSelectShape(null);
+        }
       }}
       onTap={(e) => {
-        if (e.target === e.target.getStage()) onSelect(null);
+        if (e.target === e.target.getStage()) {
+          onSelect(null);
+          onSelectShape(null);
+        }
       }}
     >
       <Layer>
@@ -393,6 +515,18 @@ export default function CardEditorCanvas({
           transformerRef={boundaryTransformerRef}
         />
 
+        {shapes.map((shape) => (
+          <ShapeNode
+            key={shape.id}
+            shape={shape}
+            scale={scale}
+            selected={selectedShapeId === shape.id}
+            onSelect={() => selectShape(shape.id)}
+            onUpdate={(patch) => updateShape(shape.id, patch)}
+            registerRef={registerRef}
+          />
+        ))}
+
         {CARD_FIELD_DEFS.filter((d) => camposHabilitados.includes(d.key)).map((def) =>
           def.type === "image" ? (
             <ImageFieldNode
@@ -401,7 +535,7 @@ export default function CardEditorCanvas({
               cfg={layout[def.key] as CardImageElementConfig}
               scale={scale}
               selected={selectedKey === def.key}
-              onSelect={() => onSelect(def.key)}
+              onSelect={() => selectField(def.key)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
             />
@@ -413,7 +547,7 @@ export default function CardEditorCanvas({
               sampleText={def.sampleText ?? ""}
               scale={scale}
               selected={selectedKey === def.key}
-              onSelect={() => onSelect(def.key)}
+              onSelect={() => selectField(def.key)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
             />
@@ -423,7 +557,7 @@ export default function CardEditorCanvas({
         <Transformer
           ref={fieldTransformerRef}
           enabledAnchors={
-            selectedDef?.type === "image"
+            isFreeResize
               ? [
                   "top-left",
                   "top-right",

@@ -136,3 +136,30 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
     },
   };
 }
+
+// Formas decorativas — sem vínculo com dado de produto nenhum (por
+// isso não são um CardFieldKey, ficam numa lista à parte, tamanho
+// livre, não um por card). "Quadrado" não é um tipo próprio: é só um
+// retângulo com largura = altura, o usuário ajusta redimensionando.
+export type CardShapeType = "retangulo" | "elipse" | "triangulo";
+
+export const CARD_SHAPE_TYPES: { value: CardShapeType; label: string }[] = [
+  { value: "retangulo", label: "Retângulo" },
+  { value: "elipse", label: "Elipse" },
+  { value: "triangulo", label: "Triângulo" },
+];
+
+export type CardShape = {
+  id: string;
+  type: CardShapeType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+  opacity: number; // 0-1
+};
+
+export function defaultCardShape(type: CardShapeType, id: string): CardShape {
+  return { id, type, x: 20, y: 20, w: 80, h: 80, color: "#4fc3f7", opacity: 0.5 };
+}
