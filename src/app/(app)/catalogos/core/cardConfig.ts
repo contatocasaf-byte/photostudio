@@ -6,7 +6,13 @@
 // valor de exemplo (`sampleText`) usado no preview WYSIWYG do editor.
 import type { TextAlign } from "@/lib/canvasText";
 
-export type CardFieldKey = "foto" | "nome" | "preco" | "sku" | "descricao";
+// Campos 1:1 com as colunas reais de `products` (Parte 4: codigo, ref,
+// descricao, preco_1, preco_2, foto_key) — sem inventar campo que não
+// existe no dado real (versão anterior tinha "nome"/"sku"/um "preco"
+// só, que não correspondiam a nenhuma coluna da planilha de catálogo;
+// corrigido na Parte 6a, antes do motor de reflow precisar substituir
+// dado real nesses campos).
+export type CardFieldKey = "foto" | "codigo" | "ref" | "descricao" | "preco_1" | "preco_2";
 export type CardFieldType = "image" | "text";
 
 export type CardFieldDef = {
@@ -18,15 +24,16 @@ export type CardFieldDef = {
 
 export const CARD_FIELD_DEFS: CardFieldDef[] = [
   { key: "foto", label: "Foto do Produto", type: "image", sampleText: null },
-  { key: "nome", label: "Nome", type: "text", sampleText: "Nome do Produto" },
-  { key: "preco", label: "Preço", type: "text", sampleText: "R$ 99,90" },
-  { key: "sku", label: "SKU", type: "text", sampleText: "SKU 00000" },
+  { key: "codigo", label: "Código", type: "text", sampleText: "00000" },
+  { key: "ref", label: "Referência", type: "text", sampleText: "Referência do Produto" },
   {
     key: "descricao",
     label: "Descrição",
     type: "text",
     sampleText: "Descrição breve do produto, podendo ocupar até três linhas.",
   },
+  { key: "preco_1", label: "Preço 1", type: "text", sampleText: "R$ 99,90" },
+  { key: "preco_2", label: "Preço 2", type: "text", sampleText: "R$ 109,90" },
 ];
 
 export type CardImageElementConfig = { x: number; y: number; w: number; h: number };
@@ -46,7 +53,7 @@ export type CardLayout = Record<CardFieldKey, CardElementConfig>;
 export const DEFAULT_CARD_WIDTH = 300;
 export const DEFAULT_CARD_HEIGHT = 380;
 
-export const DEFAULT_CAMPOS_HABILITADOS: CardFieldKey[] = ["foto", "nome", "preco", "sku", "descricao"];
+export const DEFAULT_CAMPOS_HABILITADOS: CardFieldKey[] = ["foto", "codigo", "ref", "descricao", "preco_1", "preco_2"];
 
 // Posições de partida razoáveis pra um card em branco — diferente do
 // Editor de Layout do Ofertas (que deriva posições em FRAÇÃO do
@@ -58,32 +65,14 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
   const contentW = width - margin * 2;
   const fotoH = Math.round(height * 0.5);
   const textStartY = margin + fotoH + 12;
+  const gap = 10;
+  const halfW = Math.round((contentW - gap) / 2);
 
   return {
     foto: { x: margin, y: margin, w: contentW, h: fotoH },
-    nome: {
+    codigo: {
       x: margin,
       y: textStartY,
-      fontSize: 16,
-      maxW: contentW,
-      color: "#1a1a1a",
-      fontWeight: "bold",
-      align: "left",
-      maxLines: 1,
-    },
-    preco: {
-      x: margin,
-      y: textStartY + 26,
-      fontSize: 20,
-      maxW: contentW,
-      color: "#c0392b",
-      fontWeight: "bold",
-      align: "left",
-      maxLines: 1,
-    },
-    sku: {
-      x: margin,
-      y: textStartY + 58,
       fontSize: 11,
       maxW: contentW,
       color: "#888888",
@@ -91,15 +80,45 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       align: "left",
       maxLines: 1,
     },
+    ref: {
+      x: margin,
+      y: textStartY + 16,
+      fontSize: 16,
+      maxW: contentW,
+      color: "#1a1a1a",
+      fontWeight: "bold",
+      align: "left",
+      maxLines: 1,
+    },
     descricao: {
       x: margin,
-      y: textStartY + 78,
+      y: textStartY + 42,
       fontSize: 12,
       maxW: contentW,
       color: "#444444",
       fontWeight: "normal",
       align: "left",
       maxLines: 3,
+    },
+    preco_1: {
+      x: margin,
+      y: textStartY + 98,
+      fontSize: 18,
+      maxW: halfW,
+      color: "#c0392b",
+      fontWeight: "bold",
+      align: "left",
+      maxLines: 1,
+    },
+    preco_2: {
+      x: margin + halfW + gap,
+      y: textStartY + 98,
+      fontSize: 18,
+      maxW: halfW,
+      color: "#ff6b35",
+      fontWeight: "bold",
+      align: "left",
+      maxLines: 1,
     },
   };
 }
