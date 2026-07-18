@@ -238,6 +238,9 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
 
+            const borda = page.cardTemplate!.borda;
+            if (!borda.ativa) return null;
+
             return (
               <Rect
                 key={i}
@@ -245,8 +248,9 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 y={ORIGIN + originY * scale}
                 width={card.width * scale}
                 height={card.height * scale}
-                stroke="#e2e8f0"
-                strokeWidth={1}
+                stroke={borda.cor}
+                strokeWidth={borda.espessura * page.cardScale * scale}
+                opacity={borda.opacidade}
                 listening={false}
               />
             );

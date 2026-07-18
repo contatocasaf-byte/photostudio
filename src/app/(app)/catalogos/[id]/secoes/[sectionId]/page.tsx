@@ -4,11 +4,13 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { getSection, getCardTemplate, saveCardTemplate, type Section } from "../../../actions";
 import {
+  defaultCardBorda,
   defaultCardLayout,
   defaultCardShape,
   DEFAULT_CAMPOS_HABILITADOS,
   DEFAULT_CARD_WIDTH,
   DEFAULT_CARD_HEIGHT,
+  type CardBorda,
   type CardFieldKey,
   type CardImageElementConfig,
   type CardLayout,
@@ -36,6 +38,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [gutterX, setGutterX] = useState<number | null>(null);
   const [gutterY, setGutterY] = useState<number | null>(null);
   const [shapes, setShapes] = useState<CardShape[]>([]);
+  const [borda, setBorda] = useState<CardBorda>(() => defaultCardBorda());
 
   // Seleção múltipla (Ctrl+clique adiciona, Alt+clique retira, clique
   // simples substitui — ver SelectMode em CardEditorCanvas.tsx) — um
@@ -67,6 +70,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         setGutterX(t.gutterX);
         setGutterY(t.gutterY);
         setShapes(t.shapes);
+        setBorda(t.borda ?? defaultCardBorda());
       }
       setLoading(false);
     });
@@ -175,6 +179,10 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setGutterY(patch.gutterY);
   }
 
+  function handleUpdateBorda(patch: Partial<CardBorda>) {
+    setBorda((prev) => ({ ...prev, ...patch }));
+  }
+
   async function handleSave() {
     setSaving(true);
     setStatus(null);
@@ -188,6 +196,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         gutterX,
         gutterY,
         shapes,
+        borda,
       });
       setStatus(res.error ? `⚠ ${res.error}` : "✔ Card-molde salvo.");
     } finally {
@@ -264,6 +273,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           onAddShape={handleAddShape}
           onUpdateShape={handleUpdateShape}
           onRemoveShape={handleRemoveShape}
+          borda={borda}
+          onUpdateBorda={handleUpdateBorda}
         />
       </div>
     </div>

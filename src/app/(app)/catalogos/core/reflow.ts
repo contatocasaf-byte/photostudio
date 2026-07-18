@@ -12,7 +12,14 @@
 // que "sobrou" pra próxima página. Resultado final é o mesmo descrito
 // na spec, só a forma de calcular é mais robusta.
 import { wrapTextToLines } from "@/lib/canvasText";
-import { substitutePlaceholders, type CardFieldKey, type CardLayout, type CardShape, type CardTextElementConfig } from "./cardConfig";
+import {
+  substitutePlaceholders,
+  type CardBorda,
+  type CardFieldKey,
+  type CardLayout,
+  type CardShape,
+  type CardTextElementConfig,
+} from "./cardConfig";
 import type { PageFieldKey, PageLayout, PageTipo, Margens } from "./pageConfig";
 import type { ProductRow } from "../produtos/actions";
 
@@ -25,6 +32,7 @@ export type CardTemplateInput = {
   gutterY: number;
   camposHabilitados: CardFieldKey[];
   shapes: CardShape[];
+  borda: CardBorda;
 };
 
 export type SectionReflowInput = {

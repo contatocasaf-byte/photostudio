@@ -3,6 +3,7 @@
 import {
   CARD_FIELD_DEFS,
   CARD_SHAPE_TYPES,
+  type CardBorda,
   type CardFieldKey,
   type CardImageElementConfig,
   type CardLayout,
@@ -45,6 +46,8 @@ type Props = {
   onAddShape: (type: CardShapeType) => void;
   onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
   onRemoveShape: (id: string) => void;
+  borda: CardBorda;
+  onUpdateBorda: (patch: Partial<CardBorda>) => void;
 };
 
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
@@ -94,6 +97,8 @@ export default function PropertiesPanel({
   onAddShape,
   onUpdateShape,
   onRemoveShape,
+  borda,
+  onUpdateBorda,
 }: Props) {
   const selectionCount = selectedKeys.length + selectedShapeIds.length;
   const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
@@ -171,6 +176,56 @@ export default function PropertiesPanel({
         <p className="mt-1 text-xs text-slate-500">
           Atual: {gutterX !== null ? `${gutterX}px` : "—"} × {gutterY !== null ? `${gutterY}px` : "—"}
         </p>
+      </div>
+
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input type="checkbox" checked={borda.ativa} onChange={(e) => onUpdateBorda({ ativa: e.target.checked })} />
+          Contorno do card na grade
+        </label>
+        {borda.ativa && (
+          <div className="mt-2 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-slate-500">Cor</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={borda.cor}
+                  onChange={(e) => onUpdateBorda({ cor: e.target.value })}
+                  className="h-7 w-10 cursor-pointer rounded border border-slate-300"
+                />
+                <input
+                  key={borda.cor}
+                  defaultValue={borda.cor}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onUpdateBorda({ cor: v });
+                  }}
+                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs text-slate-500">
+                <span>Transparência</span>
+                <span>{Math.round(borda.opacidade * 100)}%</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(borda.opacidade * 100)}
+                onChange={(e) => onUpdateBorda({ opacidade: Number(e.target.value) / 100 })}
+                className="mt-1 w-full"
+              />
+            </div>
+            <NumberField
+              label="Espessura"
+              value={borda.espessura}
+              onCommit={(v) => onUpdateBorda({ espessura: Math.max(0.5, v) })}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">

@@ -189,3 +189,10 @@ grant select, insert, update, delete on public.planilhas to authenticated;
 -- livre, tamanho variável, guardada à parte.
 alter table public.card_templates
   add column shapes_json jsonb not null default '[]'::jsonb;
+
+-- Contorno do card na grade do catálogo montado — configurável
+-- (liga/desliga, cor, transparência, espessura). Default reproduz a
+-- aparência antiga (contorno cinza claro fixo, sempre ligado), pra não
+-- mudar a aparência de card-molde já salvo.
+alter table public.card_templates
+  add column borda_json jsonb not null default '{"ativa":true,"cor":"#e2e8f0","opacidade":1,"espessura":1}'::jsonb;

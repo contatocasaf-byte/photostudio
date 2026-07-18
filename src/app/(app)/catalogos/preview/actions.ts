@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
+import { defaultCardBorda } from "../core/cardConfig";
 import type { PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, SectionReflowInput } from "../core/reflow";
 import type { ProductRow } from "../produtos/actions";
@@ -72,7 +73,9 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     cardTemplateIds.length > 0
       ? await supabase
           .from("card_templates")
-          .select("id, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json")
+          .select(
+            "id, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
+          )
           .in("id", cardTemplateIds)
       : { data: [], error: null };
   if (ctErr) return { error: ctErr.message };
@@ -133,6 +136,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
           gutterY: (ct.gutter_y as number | null) ?? DEFAULT_GUTTER_Y,
           camposHabilitados: (ct.campos_habilitados as CardTemplateInput["camposHabilitados"]) ?? [],
           shapes: (ct.shapes_json as CardTemplateInput["shapes"]) ?? [],
+          borda: (ct.borda_json as CardTemplateInput["borda"]) ?? defaultCardBorda(),
         }
       : null;
 

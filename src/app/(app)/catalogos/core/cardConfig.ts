@@ -163,3 +163,21 @@ export type CardShape = {
 export function defaultCardShape(type: CardShapeType, id: string): CardShape {
   return { id, type, x: 20, y: 20, w: 80, h: 80, color: "#4fc3f7", opacity: 0.5 };
 }
+
+// Contorno desenhado ao redor de cada card na grade do catálogo
+// montado (spec não previa isso — pedido do usuário depois de ver o
+// preview: o contorno cinza fino que já existia sempre fixo virou
+// configurável). `ativa: true` como padrão reproduz exatamente a
+// aparência antiga (contorno cinza claro, 1px, sempre ligado) — sem
+// isso, todo card-molde salvo antes dessa mudança perderia o contorno
+// ao carregar.
+export type CardBorda = {
+  ativa: boolean;
+  cor: string;
+  opacidade: number; // 0-1
+  espessura: number; // px, no mesmo espaço de desenho do card (encolhe junto com o cardScale do reflow)
+};
+
+export function defaultCardBorda(): CardBorda {
+  return { ativa: true, cor: "#e2e8f0", opacidade: 1, espessura: 1 };
+}
