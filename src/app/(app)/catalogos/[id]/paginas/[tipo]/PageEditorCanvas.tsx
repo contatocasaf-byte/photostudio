@@ -14,6 +14,7 @@ import {
 } from "../../../core/pageConfig";
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
+import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
 
 const PREVIEW_MAX = 480;
 const MIN_BOUNDARY = 200;
@@ -51,6 +52,14 @@ type NodeProps = {
 // placeholder tracejado (mesmo tratamento visual do campo "foto" do
 // card-molde, só que aqui é temporário até o usuário enviar o
 // arquivo, não permanente).
+//
+// `contentFit` (só a Ilustração usa) reaproveita o mesmo encaixe
+// "sem cortar o objeto visível" já usado nas fotos de produto do
+// Gerador de Ofertas (fitImageOnCanvas, agora em src/lib/) — ignora a
+// margem transparente ao redor do objeto num PNG e centraliza pelo
+// conteúdo opaco, ocupando ~85-90% do quadro. Sem isso (Logo, por
+// exemplo), a imagem só estica pra preencher x/y/w/h do campo, sem
+// preservar proporção.
 function ImageFieldNode({
   fieldKey,
   cfg,
@@ -59,12 +68,14 @@ function ImageFieldNode({
   onSelect,
   onUpdate,
   registerRef,
+  contentFit = false,
 }: NodeProps & {
   fieldKey: PageFieldKey;
   cfg: PageImageElementConfig;
   onUpdate: (patch: Partial<PageImageElementConfig>) => void;
+  contentFit?: boolean;
 }) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [img, setImg] = useState<HTMLImageElement | HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +83,12 @@ function ImageFieldNode({
     // Tudo dentro do .then() (mesmo o caso "sem url") — setState direto
     // no corpo do efeito, mesmo condicional, dispara
     // react-hooks/set-state-in-effect.
-    Promise.resolve(url ? loadImage(url) : null)
+    const task: Promise<HTMLImageElement | HTMLCanvasElement | null> = !url
+      ? Promise.resolve(null)
+      : contentFit
+        ? loadImageToCanvas(url).then((source) => fitImageOnCanvas(source, cfg.w, cfg.h))
+        : loadImage(url);
+    task
       .then((loaded) => {
         if (!cancelled) setImg(loaded);
       })
@@ -82,7 +98,7 @@ function ImageFieldNode({
     return () => {
       cancelled = true;
     };
-  }, [cfg.url]);
+  }, [cfg.url, cfg.w, cfg.h, contentFit]);
 
   const x = ORIGIN + cfg.x * scale;
   const y = ORIGIN + cfg.y * scale;
@@ -402,6 +418,7 @@ export default function PageEditorCanvas({
               onSelect={() => onSelect(def.key)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
+              contentFit={def.key === "ilustracao"}
             />
           ) : (
             <TextFieldNode
