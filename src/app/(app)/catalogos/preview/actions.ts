@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import { defaultCardBorda } from "../core/cardConfig";
+import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
+import { listGaleriaImages } from "../galeria/actions";
 import type { PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, SectionReflowInput } from "../core/reflow";
 import type { ProductRow } from "../produtos/actions";
@@ -43,16 +45,20 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     .single();
   if (catalogErr) return { error: catalogErr.message };
 
-  const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }] = await Promise.all([
+  const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }, galeriaRes] = await Promise.all([
     supabase.from("page_templates").select("tipo, header_json, footer_json, margens, fundo_key").eq("catalog_id", catalogId),
     supabase
       .from("sections")
       .select("id, titulo, ordem, colunas, card_template_id")
       .eq("catalog_id", catalogId)
       .order("ordem", { ascending: true }),
+    listGaleriaImages(),
   ]);
   if (ptErr) return { error: ptErr.message };
   if (secErr) return { error: secErr.message };
+  // Erro na galeria não derruba o preview inteiro — só os cards ficam
+  // sem foto real (volta pro placeholder tracejado de sempre).
+  const galeriaIndex = buildGaleriaIndex(galeriaRes.files ?? []);
 
   const pageTemplates: Partial<Record<PageTipo, PageTemplateInput>> = {};
   for (const row of pageTemplateRows ?? []) {
@@ -100,17 +106,21 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   if (prodErr) return { error: prodErr.message };
 
   const productById = new Map(
-    (productRows ?? []).map((p) => [
-      p.id as string,
-      {
-        id: p.id as string,
-        codigo: p.codigo as string,
-        ref: p.ref,
-        descricao: p.descricao,
-        preco1: p.preco_1,
-        preco2: p.preco_2,
-      } as ProductRow,
-    ])
+    (productRows ?? []).map((p) => {
+      const fileId = resolveGaleriaFoto(galeriaIndex, p.codigo as string);
+      return [
+        p.id as string,
+        {
+          id: p.id as string,
+          codigo: p.codigo as string,
+          ref: p.ref,
+          descricao: p.descricao,
+          preco1: p.preco_1,
+          preco2: p.preco_2,
+          fotoUrl: fileId ? `/api/catalogos/galeria/${fileId}` : null,
+        } as ProductRow,
+      ];
+    })
   );
 
   const itemsBySection = new Map<string, { product: ProductRow }[]>();

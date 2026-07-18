@@ -64,7 +64,12 @@ export default function CatalogosPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-slate-900">Criador de Catálogos</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-slate-900">Criador de Catálogos</h1>
+        <Link href="/catalogos/galeria" className="text-xs text-slate-500 hover:text-slate-700 hover:underline">
+          Galeria de Fotos
+        </Link>
+      </div>
       <p className="mt-1 text-sm text-slate-500">
         Cada catálogo é dividido em seções, com um card-molde próprio por seção.
       </p>

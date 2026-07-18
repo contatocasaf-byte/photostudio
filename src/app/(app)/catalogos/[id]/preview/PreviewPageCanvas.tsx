@@ -131,6 +131,59 @@ function PageTextField({ cfg, text, scale }: { cfg: PageTextElementConfig; text:
   );
 }
 
+// Foto real do produto (Fase 5, Parte 7 — galeria via Google Drive) —
+// mesmo padrão de carregar+encaixar sem cortar de PageImageField.
+// Enquanto carrega ou se o carregamento falhar (foto removida da
+// pasta, sessão expirada, etc.), cai pro mesmo placeholder tracejado
+// que já existia — nunca deixa o card sem nada nessa área.
+function CardPhotoField({
+  fotoUrl,
+  imgCfg,
+  originX,
+  originY,
+  scale,
+  cardScale,
+}: {
+  fotoUrl: string;
+  imgCfg: CardImageElementConfig;
+  originX: number;
+  originY: number;
+  scale: number;
+  cardScale: number;
+}) {
+  const [img, setImg] = useState<HTMLImageElement | HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const w = imgCfg.w * cardScale;
+    const h = imgCfg.h * cardScale;
+    loadImageToCanvas(fotoUrl)
+      .then((source) => fitImageOnCanvas(source, w, h))
+      .then((loaded) => {
+        if (!cancelled) setImg(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setImg(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fotoUrl, imgCfg.w, imgCfg.h, cardScale]);
+
+  const x = ORIGIN + (originX + imgCfg.x * cardScale) * scale;
+  const y = ORIGIN + (originY + imgCfg.y * cardScale) * scale;
+  const width = imgCfg.w * cardScale * scale;
+  const height = imgCfg.h * cardScale * scale;
+
+  if (!img) {
+    return (
+      <Rect x={x} y={y} width={width} height={height} stroke="#94a3b8" dash={[6, 4]} fill="rgba(148,163,184,0.12)" listening={false} />
+    );
+  }
+
+  return <KonvaImage image={img} x={x} y={y} width={width} height={height} listening={false} />;
+}
+
 function PageBackground({ url, canvasW, canvasH }: { url: string | null; canvasW: number; canvasH: number }) {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -402,17 +455,30 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
               const key = `${card.product.id}-${def.key}`;
               if (def.type === "image") {
                 const imgCfg = cfg as CardImageElementConfig;
+                if (!card.product.fotoUrl) {
+                  return (
+                    <Rect
+                      key={key}
+                      x={ORIGIN + (originX + imgCfg.x * page.cardScale) * scale}
+                      y={ORIGIN + (originY + imgCfg.y * page.cardScale) * scale}
+                      width={imgCfg.w * page.cardScale * scale}
+                      height={imgCfg.h * page.cardScale * scale}
+                      stroke="#94a3b8"
+                      dash={[6, 4]}
+                      fill="rgba(148,163,184,0.12)"
+                      listening={false}
+                    />
+                  );
+                }
                 return (
-                  <Rect
+                  <CardPhotoField
                     key={key}
-                    x={ORIGIN + (originX + imgCfg.x * page.cardScale) * scale}
-                    y={ORIGIN + (originY + imgCfg.y * page.cardScale) * scale}
-                    width={imgCfg.w * page.cardScale * scale}
-                    height={imgCfg.h * page.cardScale * scale}
-                    stroke="#94a3b8"
-                    dash={[6, 4]}
-                    fill="rgba(148,163,184,0.12)"
-                    listening={false}
+                    fotoUrl={card.product.fotoUrl}
+                    imgCfg={imgCfg}
+                    originX={originX}
+                    originY={originY}
+                    scale={scale}
+                    cardScale={page.cardScale}
                   />
                 );
               }

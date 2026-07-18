@@ -106,6 +106,12 @@ export type ProductRow = {
   descricao: string | null;
   preco1: number | null;
   preco2: number | null;
+  // URL da rota-proxy da galeria (Fase 5, Parte 7), resolvida por
+  // código a partir da pasta do Drive configurada — null se a galeria
+  // não estiver configurada ou nenhuma foto bater com esse código.
+  // Só populado em catalogos/preview/actions.ts (onde a foto real
+  // importa de fato); aqui fica sempre null, ver decisão na Parte 7.
+  fotoUrl: string | null;
 };
 
 export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produtos?: ProductRow[]; error?: string }> {
@@ -125,6 +131,7 @@ export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produt
       descricao: p.descricao,
       preco1: p.preco_1,
       preco2: p.preco_2,
+      fotoUrl: null,
     })),
   };
 }
@@ -165,7 +172,8 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
           descricao: p.descricao,
           preco1: p.preco_1,
           preco2: p.preco_2,
-        },
+          fotoUrl: null,
+        } as ProductRow,
       };
     })
     .filter((x): x is SectionItem => x !== null);

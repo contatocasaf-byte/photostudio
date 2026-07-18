@@ -196,3 +196,18 @@ alter table public.card_templates
 -- mudar a aparência de card-molde já salvo.
 alter table public.card_templates
   add column borda_json jsonb not null default '{"ativa":true,"cor":"#e2e8f0","opacidade":1,"espessura":1}'::jsonb;
+
+-- Galeria de fotos via Google Drive (Fase 5, Parte 7) — configuração
+-- global (não por catálogo), sempre uma linha só. O casamento
+-- foto<->produto por código roda em memória a cada carregamento do
+-- preview (sem gravar nada em products.foto_key) — ver
+-- catalogos/galeria/actions.ts e catalogos/core/matchGaleriaFoto.ts.
+create table public.galeria_config (
+  id uuid primary key default gen_random_uuid(),
+  drive_folder_id text not null,
+  atualizado_em timestamptz not null default now()
+);
+
+alter table public.galeria_config enable row level security;
+create policy "authenticated full access" on public.galeria_config for all to authenticated using (true) with check (true);
+grant select, insert, update, delete on public.galeria_config to authenticated;
