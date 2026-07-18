@@ -32,6 +32,17 @@ function computeScale(largura: number, altura: number) {
   return { scale, canvasW: Math.round(largura * scale), canvasH: Math.round(altura * scale) };
 }
 
+// Tamanho real (sem zoom) do Stage — o container (page.tsx) usa isso
+// pra dimensionar o wrapper que aplica o zoom via CSS, já que o Stage
+// sempre desenha em resolução verdadeira/nítida e quem encolhe/amplia
+// pra caber na tela é só a apresentação (transform:scale), não o
+// desenho em si (ver STAGE_PIXEL_RATIO acima — reaplicar esse encolher/
+// ampliar DENTRO do Konva de novo reintroduziria o borrão de texto).
+export function computeStageSize(paginaLargura: number, paginaAltura: number) {
+  const { canvasW, canvasH } = computeScale(paginaLargura, paginaAltura);
+  return { width: canvasW + ORIGIN * 2, height: canvasH + ORIGIN * 2 };
+}
+
 // `contentScale` encolhe maxW/fontSize antes de desenhar — usado só
 // pelos campos de CARD (ver `cardScale` em PreviewPage), pra manter a
 // proporção do texto quando a grade inteira precisa encolher pra caber
