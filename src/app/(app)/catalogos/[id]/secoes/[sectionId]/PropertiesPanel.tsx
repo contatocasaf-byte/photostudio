@@ -322,6 +322,25 @@ export type SelectedElementPanelProps = {
   onRemoveShape: (id: string) => void;
 };
 
+function UnitToggle({ unit, onChange }: { unit: "px" | "mm"; onChange: (u: "px" | "mm") => void }) {
+  return (
+    <div className="flex gap-1">
+      {(["px", "mm"] as const).map((u) => (
+        <button
+          key={u}
+          onClick={() => onChange(u)}
+          className={
+            "rounded-md px-2 py-1 text-xs font-medium " +
+            (unit === u ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+          }
+        >
+          {u}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function SelectedElementPanel({
   layout,
   selectedKeys,
@@ -331,9 +350,17 @@ export function SelectedElementPanel({
   onUpdateShape,
   onRemoveShape,
 }: SelectedElementPanelProps) {
+  const [unit, setUnit] = useState<"px" | "mm">("px");
   const selectionCount = selectedKeys.length + selectedShapeIds.length;
   const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
   const selectedShape = selectedShapeIds.length === 1 ? shapes.find((s) => s.id === selectedShapeIds[0]) : null;
+
+  function toDisplay(px: number) {
+    return unit === "mm" ? pxToMm(px) : Math.round(px);
+  }
+  function fromDisplay(v: number) {
+    return unit === "mm" ? mmToPx(v) : Math.round(v);
+  }
 
   return (
     <div>
@@ -347,32 +374,46 @@ export function SelectedElementPanel({
         </p>
       )}
 
+      {selectionCount === 1 && (
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs text-slate-500">Unidade</label>
+          <UnitToggle unit={unit} onChange={setUnit} />
+        </div>
+      )}
+
       {selectionCount === 1 && selectedShape && (
-        <ShapeProperties shape={selectedShape} onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)} onRemove={() => onRemoveShape(selectedShape.id)} />
+        <ShapeProperties
+          shape={selectedShape}
+          unit={unit}
+          toDisplay={toDisplay}
+          fromDisplay={fromDisplay}
+          onUpdate={(patch) => onUpdateShape(selectedShape.id, patch)}
+          onRemove={() => onRemoveShape(selectedShape.id)}
+        />
       )}
 
       {selectionCount === 1 && selectedDef && selectedDef.type === "image" && (
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
           <NumberField
-            label="Posição X"
-            value={(layout[selectedDef.key] as CardImageElementConfig).x}
-            onCommit={(v) => onUpdateField(selectedDef.key, { x: v })}
+            label={`Posição X (${unit})`}
+            value={toDisplay((layout[selectedDef.key] as CardImageElementConfig).x)}
+            onCommit={(v) => onUpdateField(selectedDef.key, { x: fromDisplay(v) })}
           />
           <NumberField
-            label="Posição Y"
-            value={(layout[selectedDef.key] as CardImageElementConfig).y}
-            onCommit={(v) => onUpdateField(selectedDef.key, { y: v })}
+            label={`Posição Y (${unit})`}
+            value={toDisplay((layout[selectedDef.key] as CardImageElementConfig).y)}
+            onCommit={(v) => onUpdateField(selectedDef.key, { y: fromDisplay(v) })}
           />
           <NumberField
-            label="Largura"
-            value={(layout[selectedDef.key] as CardImageElementConfig).w}
-            onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, v) })}
+            label={`Largura (${unit})`}
+            value={toDisplay((layout[selectedDef.key] as CardImageElementConfig).w)}
+            onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, fromDisplay(v)) })}
           />
           <NumberField
-            label="Altura"
-            value={(layout[selectedDef.key] as CardImageElementConfig).h}
-            onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, v) })}
+            label={`Altura (${unit})`}
+            value={toDisplay((layout[selectedDef.key] as CardImageElementConfig).h)}
+            onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, fromDisplay(v)) })}
           />
         </div>
       )}
@@ -381,6 +422,9 @@ export function SelectedElementPanel({
         <TextProperties
           label={selectedDef.label}
           cfg={layout[selectedDef.key] as CardTextElementConfig}
+          unit={unit}
+          toDisplay={toDisplay}
+          fromDisplay={fromDisplay}
           onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
         />
       )}
@@ -390,10 +434,16 @@ export function SelectedElementPanel({
 
 function ShapeProperties({
   shape,
+  unit,
+  toDisplay,
+  fromDisplay,
   onUpdate,
   onRemove,
 }: {
   shape: CardShape;
+  unit: "px" | "mm";
+  toDisplay: (px: number) => number;
+  fromDisplay: (v: number) => number;
   onUpdate: (patch: Partial<CardShape>) => void;
   onRemove: () => void;
 }) {
@@ -407,10 +457,18 @@ function ShapeProperties({
         </button>
       </div>
 
-      <NumberField label="Posição X" value={shape.x} onCommit={(v) => onUpdate({ x: v })} />
-      <NumberField label="Posição Y" value={shape.y} onCommit={(v) => onUpdate({ y: v })} />
-      <NumberField label="Largura" value={shape.w} onCommit={(v) => onUpdate({ w: Math.max(4, v) })} />
-      <NumberField label="Altura" value={shape.h} onCommit={(v) => onUpdate({ h: Math.max(4, v) })} />
+      <NumberField label={`Posição X (${unit})`} value={toDisplay(shape.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
+      <NumberField label={`Posição Y (${unit})`} value={toDisplay(shape.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
+      <NumberField
+        label={`Largura (${unit})`}
+        value={toDisplay(shape.w)}
+        onCommit={(v) => onUpdate({ w: Math.max(4, fromDisplay(v)) })}
+      />
+      <NumberField
+        label={`Altura (${unit})`}
+        value={toDisplay(shape.h)}
+        onCommit={(v) => onUpdate({ h: Math.max(4, fromDisplay(v)) })}
+      />
 
       <div className="flex items-center justify-between">
         <label className="text-xs text-slate-500">Cor</label>
@@ -454,10 +512,16 @@ function ShapeProperties({
 function TextProperties({
   label,
   cfg,
+  unit,
+  toDisplay,
+  fromDisplay,
   onUpdate,
 }: {
   label: string;
   cfg: CardTextElementConfig;
+  unit: "px" | "mm";
+  toDisplay: (px: number) => number;
+  fromDisplay: (v: number) => number;
   onUpdate: (patch: Partial<CardTextElementConfig>) => void;
 }) {
   return (
@@ -478,10 +542,14 @@ function TextProperties({
         </p>
       </div>
 
-      <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
-      <NumberField label="Largura máxima" value={cfg.maxW} onCommit={(v) => onUpdate({ maxW: Math.max(40, v) })} />
-      <NumberField label="Posição X" value={cfg.x} onCommit={(v) => onUpdate({ x: v })} />
-      <NumberField label="Posição Y" value={cfg.y} onCommit={(v) => onUpdate({ y: v })} />
+      <NumberField label="Tamanho da fonte (px)" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
+      <NumberField
+        label={`Largura máxima (${unit})`}
+        value={toDisplay(cfg.maxW)}
+        onCommit={(v) => onUpdate({ maxW: Math.max(40, fromDisplay(v)) })}
+      />
+      <NumberField label={`Posição X (${unit})`} value={toDisplay(cfg.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
+      <NumberField label={`Posição Y (${unit})`} value={toDisplay(cfg.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
 
       <div>
         <label className="text-xs text-slate-500">Número de linhas</label>
