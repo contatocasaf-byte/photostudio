@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Shape as KonvaShape } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Line, Rect, Shape as KonvaShape } from "react-konva";
 import type Konva from "konva";
 import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardShape, type CardTextElementConfig } from "../../core/cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "../../core/pageConfig";
@@ -244,26 +244,46 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
           })}
 
         {page.cardTemplate &&
-          page.cards.map((card, i) => {
+          page.cards.flatMap((card, i) => {
+            const cardTemplate = page.cardTemplate!;
+            const borda = cardTemplate.borda;
+            if (!borda.ativa) return [];
+
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
+            const x0 = ORIGIN + originX * scale;
+            const y0 = ORIGIN + originY * scale;
+            const x1 = x0 + card.width * scale;
+            const y1 = y0 + card.height * scale;
 
-            const borda = page.cardTemplate!.borda;
-            if (!borda.ativa) return null;
+            // Cards desenhados encostados (gutterX = largura, sem
+            // espaço visível entre colunas — usado pra criar faixas de
+            // cor contínuas com formas) não podem ter a lateral
+            // interna desenhada: cada card desenharia sua própria borda
+            // bem no meio da faixa, quebrando a continuidade. Só a
+            // lateral esquerda do primeiro card e a direita do último
+            // de cada linha (a moldura externa) continuam aparecendo.
+            const touching = Math.abs(cardTemplate.gutterX - cardTemplate.largura) < 0.5;
+            const drawLeft = !touching || card.isFirstCol;
+            const drawRight = !touching || card.isLastCol;
 
-            return (
-              <Rect
-                key={i}
-                x={ORIGIN + originX * scale}
-                y={ORIGIN + originY * scale}
-                width={card.width * scale}
-                height={card.height * scale}
+            const segments: [number, number, number, number][] = [
+              [x0, y0, x1, y0],
+              [x0, y1, x1, y1],
+            ];
+            if (drawLeft) segments.push([x0, y0, x0, y1]);
+            if (drawRight) segments.push([x1, y0, x1, y1]);
+
+            return segments.map((points, si) => (
+              <Line
+                key={`${i}-${si}`}
+                points={points}
                 stroke={borda.cor}
                 strokeWidth={borda.espessura * page.cardScale * scale}
                 opacity={borda.opacidade}
                 listening={false}
               />
-            );
+            ));
           })}
 
         {page.cardTemplate &&

@@ -57,7 +57,20 @@ export type ReflowInput = {
   sections: SectionReflowInput[];
 };
 
-export type PositionedCard = { x: number; y: number; width: number; height: number; product: ProductRow };
+export type PositionedCard = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  product: ProductRow;
+  // Posição na LINHA (não na grade inteira) — usado só pra decidir onde
+  // desenhar o contorno do card quando os cards estão encostados (ver
+  // PreviewPageCanvas.tsx): sem isso, cada card desenharia sua própria
+  // lateral esquerda/direita e sobraria uma linha bem no meio de uma
+  // faixa de cor pensada pra ser contínua entre os cards.
+  isFirstCol: boolean;
+  isLastCol: boolean;
+};
 
 export type PreviewPage = {
   tipo: PageTipo;
@@ -206,6 +219,8 @@ function reflowSection(
           width: cardTemplate.largura * cardScale,
           height: alturaLinha * cardScale,
           product: produto,
+          isFirstCol: col === 0,
+          isLastCol: col === linha.length - 1,
         });
       });
 
