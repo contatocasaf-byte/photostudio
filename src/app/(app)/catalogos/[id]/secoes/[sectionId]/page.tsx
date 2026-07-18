@@ -45,7 +45,13 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       if (templateRes.error) setError(templateRes.error);
       else if (templateRes.template) {
         const t = templateRes.template;
-        setLayout(t.layout);
+        // Mescla por cima dos padrões (mesmo padrão já usado no editor
+        // de página) — sem isso, um card-molde salvo com uma versão
+        // antiga dos campos (ex.: antes da Parte 6a renomear nome/sku/
+        // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
+        // com config `undefined`, quebrando o canvas inteiro ao tentar
+        // desenhar um campo sem posição/tamanho.
+        setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
         setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
         setLargura(t.largura);
         setAlturaMinima(t.alturaMinima);
