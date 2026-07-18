@@ -5,6 +5,7 @@ import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konv
 import type Konva from "konva";
 import {
   PAGE_FIELD_DEFS,
+  substitutePlaceholders,
   type Margens,
   type PageElementConfig,
   type PageFieldKey,
@@ -20,6 +21,11 @@ const PREVIEW_MAX = 480;
 const MIN_BOUNDARY = 200;
 const MIN_FIELD_SIZE = 20;
 const ORIGIN = 24;
+
+// Valores de exemplo só pro preview WYSIWYG do editor (banner_titulo e
+// numeração não têm um valor fixo — dependem da seção/página real, só
+// existentes na tela de preview de verdade, não aqui).
+const PAGE_PREVIEW_SAMPLE_VALUES: Record<string, string> = { secao_titulo: "Nome da Seção", pagina: "1" };
 
 function computeScale(largura: number, altura: number) {
   const maior = Math.max(largura, altura);
@@ -163,7 +169,6 @@ function ImageFieldNode({
 function TextFieldNode({
   fieldKey,
   cfg,
-  sampleText,
   scale,
   selected,
   onSelect,
@@ -172,13 +177,12 @@ function TextFieldNode({
 }: NodeProps & {
   fieldKey: PageFieldKey;
   cfg: PageTextElementConfig;
-  sampleText: string;
   onUpdate: (patch: Partial<PageTextElementConfig>) => void;
 }) {
   const previewCanvas = useMemo(
-    () => renderTextPreview(cfg, sampleText),
+    () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "", PAGE_PREVIEW_SAMPLE_VALUES)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, sampleText]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight]
   );
 
   return (
@@ -423,7 +427,6 @@ export default function PageEditorCanvas({
               key={def.key}
               fieldKey={def.key}
               cfg={layout[def.key] as PageTextElementConfig}
-              sampleText={def.sampleText ?? ""}
               scale={scale}
               selected={selectedKey === def.key}
               onSelect={() => onSelect(def.key)}

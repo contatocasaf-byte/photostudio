@@ -282,12 +282,20 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
         )}
       </div>
 
-      <Link
-        href={`/catalogos/${id}/paginas`}
-        className="mt-1 inline-block text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
-      >
-        Modelos de página (capa, abertura de seção, continuação)
-      </Link>
+      <div className="mt-1 flex items-center gap-3">
+        <Link
+          href={`/catalogos/${id}/paginas`}
+          className="inline-block text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
+        >
+          Modelos de página (capa, abertura de seção, continuação)
+        </Link>
+        <Link
+          href={`/catalogos/${id}/preview`}
+          className="inline-block text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
+        >
+          Ver catálogo
+        </Link>
+      </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 

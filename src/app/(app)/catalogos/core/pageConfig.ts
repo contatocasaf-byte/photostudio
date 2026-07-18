@@ -30,6 +30,26 @@ export const PAGE_FIELD_DEFS: PageFieldDef[] = [
   { key: "contato", label: "Contato", type: "text", zone: "footer", sampleText: "(11) 1234-5678 · loja.com.br" },
 ];
 
+// Placeholders disponíveis pra cada campo de texto — banner_titulo e
+// numeração não são texto fixo digitado uma vez (cada seção/página é
+// diferente), precisam de substituição na hora de montar o preview/PDF
+// de verdade (mesmo mecanismo já usado no Editor de Layout do Gerador
+// de Ofertas, `substitutePlaceholders`). "Contato" não tem placeholder
+// — é texto fixo mesmo, o mesmo em toda página.
+export const PAGE_PLACEHOLDERS: Partial<Record<PageFieldKey, string[]>> = {
+  banner_titulo: ["{secao_titulo}"],
+  numeracao: ["{pagina}"],
+};
+
+// Substitui {placeholder} pelo valor correspondente — placeholder sem
+// valor conhecido fica como está (não quebra o texto). Cópia
+// intencionalmente independente da de ofertas/core/layoutConfig.ts —
+// mesma lógica de 1 linha, sem motivo real pra acoplar os dois módulos
+// por isso.
+export function substitutePlaceholders(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? values[key] : match));
+}
+
 // Campos de imagem sobem arquivo de verdade pro R2 (prefixo
 // catalogos/assets/) — são assets de marca fixos, preparados de
 // antemão, o mesmo em toda página daquele tipo. Diferente do campo
@@ -39,6 +59,7 @@ export type PageImageElementConfig = { x: number; y: number; w: number; h: numbe
 export type PageTextElementConfig = {
   x: number;
   y: number;
+  text: string;
   fontSize: number;
   maxW: number;
   color: string;
@@ -132,6 +153,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
     banner_titulo: {
       x: margin,
       y: margin + 90,
+      text: "{secao_titulo}",
       fontSize: 44,
       maxW: contentW,
       color: "#1a1a1a",
@@ -142,6 +164,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
     numeracao: {
       x: largura - margin - 120,
       y: altura - 60,
+      text: "{pagina}",
       fontSize: 16,
       maxW: 120,
       color: "#666666",
@@ -152,6 +175,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
     contato: {
       x: margin,
       y: altura - 60,
+      text: "(11) 1234-5678 · loja.com.br",
       fontSize: 14,
       maxW: contentW,
       color: "#666666",
