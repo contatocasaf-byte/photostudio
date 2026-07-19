@@ -1,11 +1,12 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import { defaultCardBorda } from "../core/cardConfig";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
-import type { PageTipo } from "../core/pageConfig";
+import type { PageIllustration, PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, PaginaAvulsaInput, SectionReflowInput } from "../core/reflow";
 import type { ProductRow } from "../produtos/actions";
 
@@ -66,7 +67,10 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
 
   const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }, { data: avulsaRows, error: avErr }, galeriaRes] =
     await Promise.all([
-      supabase.from("page_templates").select("id, tipo, header_json, footer_json, margens, fundo_key").eq("catalog_id", catalogId),
+      supabase
+        .from("page_templates")
+        .select("id, tipo, header_json, footer_json, margens, fundo_key, illustracoes_json")
+        .eq("catalog_id", catalogId),
       supabase
         .from("sections")
         .select("id, titulo, ordem, colunas, card_template_id")
@@ -89,13 +93,27 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   const customTemplatesById = new Map<string, PageTemplateInput>();
   for (const row of pageTemplateRows ?? []) {
     const tipo = row.tipo as PageTipo;
-    const layout = { ...((row.header_json as object) ?? {}), ...((row.footer_json as object) ?? {}) };
+    const rawHeader = (row.header_json as Record<string, unknown>) ?? {};
+    const layout = { ...rawHeader, ...((row.footer_json as object) ?? {}) };
+
+    // Migração suave (Fase 5, Parte 13, mesma lógica de
+    // catalogos/paginas/actions.ts): "ilustracao" era 1 campo fixo,
+    // agora é lista — modelo salvo antes disso ainda tem o campo solto
+    // em header_json, essa ilustração antiga vira o 1º item da lista
+    // nova (só nesta leitura; grava de verdade no próximo Salvar).
+    let illustracoes = ((row.illustracoes_json as PageIllustration[] | null) ?? []) as PageIllustration[];
+    const legacyIlustracao = rawHeader.ilustracao as Omit<PageIllustration, "id"> | undefined;
+    if (illustracoes.length === 0 && legacyIlustracao) {
+      illustracoes = [{ id: randomUUID(), ...legacyIlustracao }];
+    }
+
     const built: PageTemplateInput = {
       layout: layout as PageTemplateInput["layout"],
-      elementosHabilitados: Object.keys(layout) as PageTemplateInput["elementosHabilitados"],
+      elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageTemplateInput["elementosHabilitados"],
       margens: row.margens as PageTemplateInput["margens"],
       fundoUrl: row.fundo_key ? getPublicUrl(row.fundo_key as string) : null,
       fundoKey: (row.fundo_key as string | null) ?? null,
+      illustracoes,
     };
     if (tipo === "custom") customTemplatesById.set(row.id as string, built);
     else pageTemplates[tipo] = built;

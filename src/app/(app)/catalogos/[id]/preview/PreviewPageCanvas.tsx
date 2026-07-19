@@ -376,6 +376,11 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             return <PageTextField key={def.key} cfg={textCfg} text={text} scale={scale} fontsTick={fontsTick} />;
           })}
 
+        {/* Ilustrações (Fase 5, Parte 13) — lista sem limite, mesma
+            forma de PageImageElementConfig (x/y/w/h/key/url), reaproveita
+            PageImageField sem precisar de um componente próprio. */}
+        {page.pageTemplate?.illustracoes.map((ill) => <PageImageField key={ill.id} cfg={ill} scale={scale} />)}
+
         {page.cardTemplate &&
           page.cards.flatMap((card, i) => {
             // Estrutura da grade (touching/gutter) sempre vem da versão

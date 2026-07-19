@@ -21,7 +21,14 @@ import {
   type CardShape,
   type CardTextElementConfig,
 } from "./cardConfig";
-import { fontPairsFromPageLayout, type PageFieldKey, type PageLayout, type PageTipo, type Margens } from "./pageConfig";
+import {
+  fontPairsFromPageLayout,
+  type Margens,
+  type PageFieldKey,
+  type PageIllustration,
+  type PageLayout,
+  type PageTipo,
+} from "./pageConfig";
 import type { ProductRow } from "../produtos/actions";
 
 export type CardTemplateInput = {
@@ -63,6 +70,9 @@ export type PageTemplateInput = {
   // nunca URLs (evita adicionar um cliente HTTP novo ao Python, que só
   // fala com R2 via boto3).
   fundoKey: string | null;
+  // Lista sem limite (Fase 5, Parte 13) — "ilustracao" deixou de ser 1
+  // campo fixo do layout.
+  illustracoes: PageIllustration[];
 };
 
 // Página avulsa entre seções (Fase 5, Parte 12) — já com o template

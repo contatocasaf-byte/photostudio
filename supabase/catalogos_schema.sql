@@ -237,3 +237,13 @@ create index paginas_avulsas_apos_secao_id_idx on public.paginas_avulsas(apos_se
 alter table public.paginas_avulsas enable row level security;
 create policy "authenticated full access" on public.paginas_avulsas for all to authenticated using (true) with check (true);
 grant select, insert, update, delete on public.paginas_avulsas to authenticated;
+
+-- Múltiplas ilustrações por página (Fase 5, Parte 13) — "ilustracao"
+-- deixa de ser 1 campo fixo do layout_json e vira uma lista sem
+-- limite, mesmo padrão já usado pras formas decorativas do card-molde
+-- (card_templates.shapes_json). Migração é só de LEITURA (ver
+-- getPageTemplate em catalogos/paginas/actions.ts) — nenhum dado
+-- antigo precisa de UPDATE aqui, a ilustração já configurada continua
+-- em header_json até o próximo Salvar, quando migra sozinha.
+alter table public.page_templates
+  add column illustracoes_json jsonb not null default '[]'::jsonb;

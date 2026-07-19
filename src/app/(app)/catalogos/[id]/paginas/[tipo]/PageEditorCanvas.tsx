@@ -11,6 +11,7 @@ import {
   type Margens,
   type PageElementConfig,
   type PageFieldKey,
+  type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
   type PageTextElementConfig,
@@ -178,6 +179,100 @@ function ImageFieldNode({
       onDragMove={handleDrag}
       onDragEnd={handleDrag}
       onTransform={handleTransform}
+    />
+  );
+}
+
+// Ilustração de página (Fase 5, Parte 13) — mesmo desenho/comportamento
+// de ImageFieldNode (contentFit sempre ligado, igual o antigo campo
+// único de ilustração já usava), só que registrada por `id` próprio em
+// vez de um PageFieldKey fixo, já que agora é uma lista sem limite.
+function IllustrationNode({
+  illustration,
+  scale,
+  selected,
+  onSelect,
+  onUpdate,
+  registerRef,
+}: {
+  illustration: PageIllustration;
+  scale: number;
+  selected: boolean;
+  onSelect: () => void;
+  onUpdate: (patch: Partial<PageIllustration>) => void;
+  registerRef: (key: string, node: Konva.Node | null) => void;
+}) {
+  const [img, setImg] = useState<HTMLImageElement | HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const url = illustration.url;
+    const task = !url ? Promise.resolve(null) : loadImageToCanvas(url).then((source) => fitImageOnCanvas(source, illustration.w, illustration.h));
+    task
+      .then((loaded) => {
+        if (!cancelled) setImg(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setImg(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [illustration.url, illustration.w, illustration.h]);
+
+  const x = ORIGIN + illustration.x * scale;
+  const y = ORIGIN + illustration.y * scale;
+  const width = illustration.w * scale;
+  const height = illustration.h * scale;
+
+  function handleDrag(e: Konva.KonvaEventObject<DragEvent>) {
+    onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) });
+  }
+
+  function handleTransform(e: Konva.KonvaEventObject<Event>) {
+    const node = e.target;
+    const newW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale));
+    const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale));
+    node.scaleX(1);
+    node.scaleY(1);
+    node.width(newW * scale);
+    node.height(newH * scale);
+    onUpdate({ w: newW, h: newH, x: Math.round((node.x() - ORIGIN) / scale), y: Math.round((node.y() - ORIGIN) / scale) });
+  }
+
+  const common = {
+    x,
+    y,
+    width,
+    height,
+    draggable: true,
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragMove: handleDrag,
+    onDragEnd: handleDrag,
+    onTransform: handleTransform,
+  };
+
+  if (img) {
+    return (
+      <KonvaImage
+        ref={(node) => registerRef(illustration.id, node)}
+        image={img}
+        stroke={selected ? "#4fc3f7" : undefined}
+        strokeWidth={selected ? 3 : 0}
+        {...common}
+      />
+    );
+  }
+
+  return (
+    <Rect
+      ref={(node) => registerRef(illustration.id, node)}
+      stroke="#4fc3f7"
+      strokeWidth={selected ? 3 : 2}
+      dash={[6, 4]}
+      fill="rgba(79,195,247,0.08)"
+      {...common}
     />
   );
 }
@@ -359,6 +454,10 @@ export type PageEditorCanvasProps = {
   fundoUrl: string | null;
   selectedKey: PageFieldKey | null;
   onSelect: (key: PageFieldKey | null) => void;
+  illustracoes: PageIllustration[];
+  onIllustracoesChange: (updater: (prev: PageIllustration[]) => PageIllustration[]) => void;
+  selectedIllustrationId: string | null;
+  onSelectIllustration: (id: string | null) => void;
 };
 
 export default function PageEditorCanvas({
@@ -372,10 +471,18 @@ export default function PageEditorCanvas({
   fundoUrl,
   selectedKey,
   onSelect,
+  illustracoes,
+  onIllustracoesChange,
+  selectedIllustrationId,
+  onSelectIllustration,
 }: PageEditorCanvasProps) {
   const { scale, canvasW, canvasH } = computeScale(largura, altura);
 
-  const nodeRefs = useRef<Partial<Record<PageFieldKey, Konva.Node>>>({});
+  // Um mapa só, chaveado por string (PageFieldKey ou id de ilustração)
+  // — os dois tipos de elemento compartilham o mesmo Transformer, só
+  // um pode estar selecionado por vez (ver seleção mutuamente
+  // exclusiva no componente pai, page.tsx).
+  const nodeRefs = useRef<Record<string, Konva.Node>>({});
   const fieldTransformerRef = useRef<Konva.Transformer>(null);
   const boundaryTransformerRef = useRef<Konva.Transformer>(null);
   const [fontsTick, setFontsTick] = useState(0);
@@ -390,14 +497,15 @@ export default function PageEditorCanvas({
     };
   }, [layout]);
 
-  function registerRef(key: PageFieldKey, node: Konva.Node | null) {
+  function registerRef(key: string, node: Konva.Node | null) {
     if (node) nodeRefs.current[key] = node;
   }
 
   useEffect(() => {
     const tr = fieldTransformerRef.current;
     if (!tr) return;
-    const node = selectedKey ? nodeRefs.current[selectedKey] : undefined;
+    const selectedRefKey = selectedIllustrationId ?? selectedKey;
+    const node = selectedRefKey ? nodeRefs.current[selectedRefKey] : undefined;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
   });
@@ -406,7 +514,15 @@ export default function PageEditorCanvas({
     onLayoutChange((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }
 
+  function updateIllustration(id: string, patch: Partial<PageIllustration>) {
+    onIllustracoesChange((prev) => prev.map((ill) => (ill.id === id ? { ...ill, ...patch } : ill)));
+  }
+
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
+  // Ilustração selecionada usa o mesmo conjunto de âncoras livres (8
+  // pontos) já usado pro campo de imagem — redimensiona livre em
+  // qualquer eixo.
+  const isImageSelection = selectedDef?.type === "image" || selectedIllustrationId !== null;
   const stageW = canvasW + ORIGIN * 2;
   const stageH = canvasH + ORIGIN * 2;
 
@@ -422,10 +538,16 @@ export default function PageEditorCanvas({
       width={stageW}
       height={stageH}
       onMouseDown={(e) => {
-        if (e.target === e.target.getStage()) onSelect(null);
+        if (e.target === e.target.getStage()) {
+          onSelect(null);
+          onSelectIllustration(null);
+        }
       }}
       onTap={(e) => {
-        if (e.target === e.target.getStage()) onSelect(null);
+        if (e.target === e.target.getStage()) {
+          onSelect(null);
+          onSelectIllustration(null);
+        }
       }}
     >
       <Layer>
@@ -441,6 +563,21 @@ export default function PageEditorCanvas({
 
         <Rect {...marginRect} stroke="#f59e0b" strokeWidth={1} dash={[3, 3]} listening={false} />
 
+        {illustracoes.map((ill) => (
+          <IllustrationNode
+            key={ill.id}
+            illustration={ill}
+            scale={scale}
+            selected={selectedIllustrationId === ill.id}
+            onSelect={() => {
+              onSelect(null);
+              onSelectIllustration(ill.id);
+            }}
+            onUpdate={(patch) => updateIllustration(ill.id, patch)}
+            registerRef={registerRef}
+          />
+        ))}
+
         {PAGE_FIELD_DEFS.filter((d) => elementosHabilitados.includes(d.key)).map((def) =>
           def.type === "image" ? (
             <ImageFieldNode
@@ -449,10 +586,13 @@ export default function PageEditorCanvas({
               cfg={layout[def.key] as PageImageElementConfig}
               scale={scale}
               selected={selectedKey === def.key}
-              onSelect={() => onSelect(def.key)}
+              onSelect={() => {
+                onSelectIllustration(null);
+                onSelect(def.key);
+              }}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
-              contentFit={def.key === "ilustracao" || def.key === "logo"}
+              contentFit={def.key === "logo"}
             />
           ) : (
             <TextFieldNode
@@ -461,7 +601,10 @@ export default function PageEditorCanvas({
               cfg={layout[def.key] as PageTextElementConfig}
               scale={scale}
               selected={selectedKey === def.key}
-              onSelect={() => onSelect(def.key)}
+              onSelect={() => {
+                onSelectIllustration(null);
+                onSelect(def.key);
+              }}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
               fontsTick={fontsTick}
@@ -472,7 +615,7 @@ export default function PageEditorCanvas({
         <Transformer
           ref={fieldTransformerRef}
           enabledAnchors={
-            selectedDef?.type === "image"
+            isImageSelection
               ? [
                   "top-left",
                   "top-right",

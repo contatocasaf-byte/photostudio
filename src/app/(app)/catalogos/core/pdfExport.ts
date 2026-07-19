@@ -128,6 +128,15 @@ function buildPageFields(page: PreviewPage, numeroPagina: number): PdfFieldSpec[
       });
     }
   }
+
+  // Ilustrações (Fase 5, Parte 13) — lista sem limite, fora do
+  // PAGE_FIELD_DEFS enumerado acima; mesma regra de "sem arquivo,
+  // omite" já usada pros campos fixos de imagem.
+  for (const ill of template.illustracoes) {
+    if (!ill.key) continue;
+    ops.push({ kind: "image", key: ill.key, x: ill.x, y: ill.y, w: ill.w, h: ill.h, fit: "contain" });
+  }
+
   return ops;
 }
 

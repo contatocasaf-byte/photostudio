@@ -10,7 +10,10 @@
 // ao card-molde.
 import type { TextAlign } from "@/lib/canvasText";
 
-export type PageFieldKey = "banner_titulo" | "ilustracao" | "logo" | "numeracao" | "contato";
+// "ilustracao" saiu daqui na Parte 13 — deixou de ser 1 campo fixo e
+// virou uma lista sem limite (ver PageIllustration abaixo), mesmo
+// padrão já usado pras formas decorativas do card-molde.
+export type PageFieldKey = "banner_titulo" | "logo" | "numeracao" | "contato";
 export type PageFieldType = "image" | "text";
 export type PageZone = "header" | "footer";
 
@@ -24,7 +27,6 @@ export type PageFieldDef = {
 
 export const PAGE_FIELD_DEFS: PageFieldDef[] = [
   { key: "banner_titulo", label: "Banner de Título", type: "text", zone: "header", sampleText: "Nome da Seção" },
-  { key: "ilustracao", label: "Ilustração", type: "image", zone: "header", sampleText: null },
   { key: "logo", label: "Logo", type: "image", zone: "header", sampleText: null },
   { key: "numeracao", label: "Numeração", type: "text", zone: "footer", sampleText: "1" },
   { key: "contato", label: "Contato", type: "text", zone: "footer", sampleText: "(11) 1234-5678 · loja.com.br" },
@@ -56,6 +58,26 @@ export function substitutePlaceholders(template: string, values: Record<string, 
 // "foto" do card-molde, que é só um placeholder (depende de um
 // produto que ainda não existe).
 export type PageImageElementConfig = { x: number; y: number; w: number; h: number; key: string | null; url: string | null };
+
+// Ilustração de página (Fase 5, Parte 13) — lista sem limite (não um
+// campo fixo do PAGE_FIELD_DEFS), mesmo padrão de CardShape no
+// card-molde: cada uma tem `id` próprio, mesma forma de posição/
+// tamanho/arquivo de PageImageElementConfig (sempre com encaixe
+// "contain fit" sem cortar o conteúdo, como o antigo campo único já
+// fazia).
+export type PageIllustration = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  key: string | null;
+  url: string | null;
+};
+
+export function defaultPageIllustration(id: string): PageIllustration {
+  return { id, x: 40, y: 40, w: 220, h: 160, key: null, url: null };
+}
 
 // Biblioteca de fontes (Fase 5, Parte 11) — mesma de src/lib/fonts/,
 // compartilhada com o Gerador de Ofertas e com o card-molde
@@ -155,7 +177,7 @@ export function presetToPx(preset: PageSizePreset): { largura: number; altura: n
   return { largura: mmToPx(preset.larguraMm ?? 0), altura: mmToPx(preset.alturaMm ?? 0) };
 }
 
-export const DEFAULT_ELEMENTOS_HABILITADOS: PageFieldKey[] = ["banner_titulo", "ilustracao", "logo", "numeracao", "contato"];
+export const DEFAULT_ELEMENTOS_HABILITADOS: PageFieldKey[] = ["banner_titulo", "logo", "numeracao", "contato"];
 
 export type Margens = { top: number; right: number; bottom: number; left: number };
 
@@ -177,7 +199,6 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
 
   return {
     logo: { x: margin, y: margin, w: 130, h: 60 },
-    ilustracao: { x: largura - margin - 220, y: margin, w: 220, h: 160 },
     banner_titulo: {
       x: margin,
       y: margin + 90,

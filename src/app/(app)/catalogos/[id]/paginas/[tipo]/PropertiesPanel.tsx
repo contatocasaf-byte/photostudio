@@ -11,6 +11,7 @@ import {
   pxToMm,
   type Margens,
   type PageFieldKey,
+  type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
   type PageTextElementConfig,
@@ -35,6 +36,12 @@ type Props = {
   onChangeMargens: (patch: Partial<Margens>) => void;
   fundoUrl: string | null;
   onChangeFundo: (patch: { key: string | null; url: string | null }) => void;
+  illustracoes: PageIllustration[];
+  onAddIllustracao: () => void;
+  onRemoveIllustracao: (id: string) => void;
+  onUpdateIllustracao: (id: string, patch: Partial<PageIllustration>) => void;
+  selectedIllustrationId: string | null;
+  onSelectIllustration: (id: string | null) => void;
 };
 
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
@@ -76,8 +83,15 @@ export default function PropertiesPanel({
   onChangeMargens,
   fundoUrl,
   onChangeFundo,
+  illustracoes,
+  onAddIllustracao,
+  onRemoveIllustracao,
+  onUpdateIllustracao,
+  selectedIllustrationId,
+  onSelectIllustration,
 }: Props) {
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
+  const selectedIllustration = selectedIllustrationId ? illustracoes.find((i) => i.id === selectedIllustrationId) : null;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"px" | "mm">("px");
@@ -125,6 +139,22 @@ export default function PropertiesPanel({
     try {
       const { key, url } = await uploadAsset(file);
       onUpdateField(selectedKey, { key, url });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleUploadIllustracao(fileList: FileList) {
+    if (!selectedIllustrationId) return;
+    const file = fileList[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { key, url } = await uploadAsset(file);
+      onUpdateIllustracao(selectedIllustrationId, { key, url });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
     } finally {
@@ -266,13 +296,85 @@ export default function PropertiesPanel({
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
-        {!selectedDef && <p className="text-xs text-slate-400">Clique num elemento habilitado (na lista acima ou no canvas) pra editar.</p>}
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ilustrações</p>
+          <button
+            onClick={onAddIllustracao}
+            className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+          >
+            + Ilustração
+          </button>
+        </div>
+        {illustracoes.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1">
+            {illustracoes.map((ill, i) => (
+              <button
+                key={ill.id}
+                onClick={() => {
+                  onSelectKey(null);
+                  onSelectIllustration(ill.id);
+                }}
+                className={
+                  "rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+                  (selectedIllustrationId === ill.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                }
+              >
+                Ilustração {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-        {selectedDef && (
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        {!selectedDef && !selectedIllustration && (
+          <p className="text-xs text-slate-400">Clique num elemento/ilustração habilitado (na lista acima ou no canvas) pra editar.</p>
+        )}
+
+        {(selectedDef || selectedIllustration) && (
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
+            <p className="text-sm font-semibold text-slate-900">{selectedDef?.label ?? "Ilustração"}</p>
             <button onClick={() => setCampoExpanded((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
               {campoExpanded ? "Reduzir" : "Expandir"}
+            </button>
+          </div>
+        )}
+
+        {selectedIllustration && campoExpanded && (
+          <div className="mt-2 flex flex-col gap-2">
+            <FilePickerZone
+              disabled={uploading}
+              title="Arraste uma imagem aqui ou clique para escolher"
+              subtitle="Substitui o arquivo atual desta ilustração"
+              buttonLabel={uploading ? "Enviando..." : "Escolher arquivo"}
+              onFiles={handleUploadIllustracao}
+            />
+            {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+            <NumberField
+              label="Posição X"
+              value={selectedIllustration.x}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { x: v })}
+            />
+            <NumberField
+              label="Posição Y"
+              value={selectedIllustration.y}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { y: v })}
+            />
+            <NumberField
+              label="Largura"
+              value={selectedIllustration.w}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { w: Math.max(20, v) })}
+            />
+            <NumberField
+              label="Altura"
+              value={selectedIllustration.h}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { h: Math.max(20, v) })}
+            />
+            <button
+              onClick={() => onRemoveIllustracao(selectedIllustration.id)}
+              className="mt-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+            >
+              Excluir ilustração
             </button>
           </div>
         )}

@@ -122,7 +122,7 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
 
   const { data: template, error: templateErr } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key")
+    .select("header_json, footer_json, margens, fundo_key, illustracoes_json")
     .eq("id", avulsa.page_template_id)
     .single();
   if (templateErr) return { error: templateErr.message };
@@ -143,6 +143,10 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
         margens: template.margens as Margens,
         fundoKey: template.fundo_key,
         fundoUrl: template.fundo_key ? getPublicUrl(template.fundo_key) : null,
+        // Avulsas são todas criadas depois da Parte 13 (sem legado pra
+        // migrar, diferente dos 3 slots fixos que já existiam antes) —
+        // só lê o que já estiver salvo.
+        illustracoes: (template.illustracoes_json ?? []) as PageTemplateData["illustracoes"],
       },
     },
   };
@@ -172,7 +176,13 @@ export async function savePaginaAvulsaTemplate(id: string, data: PageTemplateDat
 
   const { error } = await supabase
     .from("page_templates")
-    .update({ header_json: header, footer_json: footer, margens: data.margens, fundo_key: data.fundoKey })
+    .update({
+      header_json: header,
+      footer_json: footer,
+      margens: data.margens,
+      fundo_key: data.fundoKey,
+      illustracoes_json: data.illustracoes,
+    })
     .eq("id", avulsa.page_template_id);
   if (error) return { error: error.message };
   return {};

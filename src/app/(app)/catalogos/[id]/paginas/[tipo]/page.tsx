@@ -6,6 +6,7 @@ import { getCatalog } from "../../../actions";
 import { getPageTemplate, savePageTemplate, updateCatalogPageSize } from "../../../paginas/actions";
 import {
   defaultMargens,
+  defaultPageIllustration,
   defaultPageLayout,
   DEFAULT_ELEMENTOS_HABILITADOS,
   DEFAULT_PAGE_WIDTH,
@@ -13,6 +14,7 @@ import {
   PAGE_TIPOS,
   type Margens,
   type PageFieldKey,
+  type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
   type PageTextElementConfig,
@@ -45,6 +47,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const [fundoKey, setFundoKey] = useState<string | null>(null);
   const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
+  const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
+  const [selectedIllustrationId, setSelectedIllustrationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tipo) return;
@@ -69,6 +73,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
         setElementosHabilitados(templateRes.template.elementosHabilitados);
         setFundoKey(templateRes.template.fundoKey);
         setFundoUrl(templateRes.template.fundoUrl);
+        setIllustracoes(templateRes.template.illustracoes);
       } else if (catalogRes.catalog) {
         setLayout(defaultPageLayout(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
         setMargens(defaultMargens(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
@@ -103,6 +108,22 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     setFundoUrl(patch.url);
   }
 
+  function handleAddIllustracao() {
+    const nova = defaultPageIllustration(crypto.randomUUID());
+    setIllustracoes((prev) => [...prev, nova]);
+    setSelectedKey(null);
+    setSelectedIllustrationId(nova.id);
+  }
+
+  function handleRemoveIllustracao(id: string) {
+    setIllustracoes((prev) => prev.filter((i) => i.id !== id));
+    if (selectedIllustrationId === id) setSelectedIllustrationId(null);
+  }
+
+  function handleUpdateIllustracao(id: string, patch: Partial<PageIllustration>) {
+    setIllustracoes((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  }
+
   async function handleSave() {
     if (!tipo) return;
     setSaving(true);
@@ -110,7 +131,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     try {
       const [sizeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
-        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey }),
+        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey, illustracoes }),
       ]);
       const err = sizeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Modelo de página salvo.");
@@ -159,6 +180,10 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
+            illustracoes={illustracoes}
+            onIllustracoesChange={setIllustracoes}
+            selectedIllustrationId={selectedIllustrationId}
+            onSelectIllustration={setSelectedIllustrationId}
           />
         </div>
         <PropertiesPanel
@@ -175,6 +200,12 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           onChangeMargens={handleChangeMargens}
           fundoUrl={fundoUrl}
           onChangeFundo={handleChangeFundo}
+          illustracoes={illustracoes}
+          onAddIllustracao={handleAddIllustracao}
+          onRemoveIllustracao={handleRemoveIllustracao}
+          onUpdateIllustracao={handleUpdateIllustracao}
+          selectedIllustrationId={selectedIllustrationId}
+          onSelectIllustration={setSelectedIllustrationId}
         />
       </div>
     </div>

@@ -7,12 +7,14 @@ import { updateCatalogPageSize } from "../../../paginas/actions";
 import { getPaginaAvulsa, savePaginaAvulsaTemplate, updatePaginaAvulsaTitulo } from "../../../paginas-avulsas/actions";
 import {
   defaultMargens,
+  defaultPageIllustration,
   defaultPageLayout,
   DEFAULT_ELEMENTOS_HABILITADOS,
   DEFAULT_PAGE_WIDTH,
   DEFAULT_PAGE_HEIGHT,
   type Margens,
   type PageFieldKey,
+  type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
   type PageTextElementConfig,
@@ -42,6 +44,8 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
   const [fundoKey, setFundoKey] = useState<string | null>(null);
   const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
+  const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
+  const [selectedIllustrationId, setSelectedIllustrationId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +69,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       setElementosHabilitados(avulsa.template.elementosHabilitados);
       setFundoKey(avulsa.template.fundoKey);
       setFundoUrl(avulsa.template.fundoUrl);
+      setIllustracoes(avulsa.template.illustracoes);
       setLoading(false);
     });
     return () => {
@@ -95,6 +100,22 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
     setFundoUrl(patch.url);
   }
 
+  function handleAddIllustracao() {
+    const nova = defaultPageIllustration(crypto.randomUUID());
+    setIllustracoes((prev) => [...prev, nova]);
+    setSelectedKey(null);
+    setSelectedIllustrationId(nova.id);
+  }
+
+  function handleRemoveIllustracao(idIll: string) {
+    setIllustracoes((prev) => prev.filter((i) => i.id !== idIll));
+    if (selectedIllustrationId === idIll) setSelectedIllustrationId(null);
+  }
+
+  function handleUpdateIllustracao(idIll: string, patch: Partial<PageIllustration>) {
+    setIllustracoes((prev) => prev.map((i) => (i.id === idIll ? { ...i, ...patch } : i)));
+  }
+
   async function handleSave() {
     setSaving(true);
     setStatus(null);
@@ -102,7 +123,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       const [sizeRes, tituloRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
         updatePaginaAvulsaTitulo(avulsaId, titulo),
-        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey }),
+        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey, illustracoes }),
       ]);
       const err = sizeRes.error ?? tituloRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Página avulsa salva.");
@@ -157,6 +178,10 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
+            illustracoes={illustracoes}
+            onIllustracoesChange={setIllustracoes}
+            selectedIllustrationId={selectedIllustrationId}
+            onSelectIllustration={setSelectedIllustrationId}
           />
         </div>
         <PropertiesPanel
@@ -173,6 +198,12 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
           onChangeMargens={handleChangeMargens}
           fundoUrl={fundoUrl}
           onChangeFundo={handleChangeFundo}
+          illustracoes={illustracoes}
+          onAddIllustracao={handleAddIllustracao}
+          onRemoveIllustracao={handleRemoveIllustracao}
+          onUpdateIllustracao={handleUpdateIllustracao}
+          selectedIllustrationId={selectedIllustrationId}
+          onSelectIllustration={setSelectedIllustrationId}
         />
       </div>
     </div>

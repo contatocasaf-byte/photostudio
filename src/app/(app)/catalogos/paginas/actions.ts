@@ -6,7 +6,15 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createR2Client, R2_BUCKET_NAME } from "@/lib/storage/r2";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
-import { PAGE_FIELD_DEFS, type Margens, type PageFieldKey, type PageLayout, type PageTipo } from "../core/pageConfig";
+import {
+  PAGE_FIELD_DEFS,
+  type Margens,
+  type PageFieldKey,
+  type PageImageElementConfig,
+  type PageIllustration,
+  type PageLayout,
+  type PageTipo,
+} from "../core/pageConfig";
 
 const ASSET_PREFIX = "catalogos/assets/";
 
@@ -29,6 +37,7 @@ export type PageTemplateData = {
   elementosHabilitados: PageFieldKey[];
   margens: Margens;
   fundoKey: string | null;
+  illustracoes: PageIllustration[];
 };
 
 export async function getPageTemplate(
@@ -40,7 +49,7 @@ export async function getPageTemplate(
 
   const { data, error } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key")
+    .select("header_json, footer_json, margens, fundo_key, illustracoes_json")
     .eq("catalog_id", catalogId)
     .eq("tipo", tipo)
     .maybeSingle();
@@ -53,18 +62,29 @@ export async function getPageTemplate(
   // Só campos HABILITADOS são gravados (ver savePageTemplate) —
   // ausência de uma key = campo desligado, daí dar pra derivar
   // elementosHabilitados direto das keys presentes.
-  const layout = {
-    ...((data.header_json as Partial<PageLayout>) ?? {}),
-    ...((data.footer_json as Partial<PageLayout>) ?? {}),
-  } as PageLayout;
+  const rawHeader = (data.header_json as Record<string, unknown>) ?? {};
+  const layout = { ...rawHeader, ...((data.footer_json as object) ?? {}) } as PageLayout;
+
+  // Migração suave (Fase 5, Parte 13): "ilustracao" era 1 campo fixo,
+  // virou lista sem limite. Card-molde salvo ANTES dessa parte ainda
+  // tem esse campo solto em header_json — se a lista nova estiver
+  // vazia, essa ilustração antiga vira o 1º item dela, sem precisar de
+  // UPDATE nenhum aqui (só na próxima vez que o usuário salvar, o
+  // campo antigo já nem é mais escrito de volta, ver savePageTemplate).
+  let illustracoes = ((data.illustracoes_json as PageIllustration[] | null) ?? []) as PageIllustration[];
+  const legacyIlustracao = rawHeader.ilustracao as PageImageElementConfig | undefined;
+  if (illustracoes.length === 0 && legacyIlustracao) {
+    illustracoes = [{ id: randomUUID(), ...legacyIlustracao }];
+  }
 
   return {
     template: {
       layout,
-      elementosHabilitados: Object.keys(layout) as PageFieldKey[],
+      elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
       margens: data.margens as Margens,
       fundoKey: data.fundo_key,
       fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
+      illustracoes,
     },
   };
 }
@@ -81,7 +101,13 @@ export async function savePageTemplate(catalogId: string, tipo: PageTipo, data: 
     target[def.key] = data.layout[def.key];
   }
 
-  const row = { header_json: header, footer_json: footer, margens: data.margens, fundo_key: data.fundoKey };
+  const row = {
+    header_json: header,
+    footer_json: footer,
+    margens: data.margens,
+    fundo_key: data.fundoKey,
+    illustracoes_json: data.illustracoes,
+  };
 
   const { data: existing, error: existingErr } = await supabase
     .from("page_templates")
