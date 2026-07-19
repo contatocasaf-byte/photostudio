@@ -13,6 +13,7 @@
 // na spec, só a forma de calcular é mais robusta.
 import { wrapTextToLines } from "@/lib/canvasText";
 import {
+  fontPairsFromCardLayout,
   substitutePlaceholders,
   type CardBorda,
   type CardFieldKey,
@@ -20,7 +21,7 @@ import {
   type CardShape,
   type CardTextElementConfig,
 } from "./cardConfig";
-import type { PageFieldKey, PageLayout, PageTipo, Margens } from "./pageConfig";
+import { fontPairsFromPageLayout, type PageFieldKey, type PageLayout, type PageTipo, type Margens } from "./pageConfig";
 import type { ProductRow } from "../produtos/actions";
 
 export type CardTemplateInput = {
@@ -315,4 +316,18 @@ export function reflowCatalog(input: ReflowInput): ReflowResult {
   }
 
   return { pages, skipped };
+}
+
+// Todo par família/peso realmente usado num catálogo já montado
+// (fundo/cabeçalho/rodapé de cada página + campos de cada card, que
+// podem variar por versão de molde numa mesma página) — usado pra
+// pré-carregar (ensureFontsLoaded) antes de desenhar a tela de
+// preview, mesmo mecanismo já usado nos editores de card-molde/página.
+export function fontPairsFromPreviewPages(pages: PreviewPage[]): { family: string; weight: number }[] {
+  const pairs: { family: string; weight: number }[] = [];
+  for (const page of pages) {
+    if (page.pageTemplate) pairs.push(...fontPairsFromPageLayout(page.pageTemplate.layout));
+    for (const card of page.cards) pairs.push(...fontPairsFromCardLayout(card.cardTemplate.layout));
+  }
+  return pairs;
 }

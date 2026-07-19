@@ -12,6 +12,10 @@ const FONT_EXTS = [".ttf", ".otf", ".woff", ".woff2"];
 // prefixo layouts/): "Nome Da Familia-Peso.ext", ex.
 // "Montserrat-Bold.ttf". Peso reconhecido por número (400/700) ou
 // pelas palavras Regular/Bold — o que vier depois do último "-".
+//
+// Promovido de ofertas/fonts/ (Fase 5, Parte 11 do Criador de
+// Catálogos) — sem escopo nenhum por módulo (só "está logado"), então
+// uma fonte enviada por qualquer um dos dois já aparece pro outro.
 const WEIGHT_WORDS: Record<string, number> = { regular: 400, normal: 400, bold: 700 };
 
 export type CustomFontEntry = { key: string; family: string; weight: number; url: string };
@@ -33,9 +37,9 @@ function parseFontKey(key: string): CustomFontEntry | null {
 }
 
 // Fontes próprias do usuário (upload) — ao contrário das Google Fonts
-// curadas (ver ofertas/fonts/googleFonts.ts, carregadas direto do CDN
-// do Google, nunca armazenadas), essas ficam no mesmo bucket dos
-// layouts, prefixo próprio.
+// curadas (ver googleFonts.ts, carregadas direto do CDN do Google,
+// nunca armazenadas), essas ficam no mesmo bucket dos layouts, prefixo
+// próprio.
 export async function listFonts(): Promise<{ fonts?: CustomFontEntry[]; error?: string }> {
   const supabase = await createClient();
   const {

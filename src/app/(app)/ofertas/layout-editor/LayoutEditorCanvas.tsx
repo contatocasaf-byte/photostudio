@@ -12,7 +12,7 @@ import {
   type TextElementConfig,
 } from "../core/layoutConfig";
 import { drawTextFit } from "../core/renderOffer";
-import { ensureFontsLoaded } from "../fonts/fontLoader";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 
 const PREVIEW_MAX = 640;
 const MIN_BOX = 20;

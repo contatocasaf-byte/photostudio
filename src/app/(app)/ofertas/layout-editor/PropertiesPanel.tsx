@@ -10,7 +10,7 @@ import {
   type TextAlign,
   type TextElementConfig,
 } from "../core/layoutConfig";
-import FontPicker from "./FontPicker";
+import FontPicker from "@/components/fonts/FontPicker";
 
 type Props = {
   selectedKey: ElementKey | null;

@@ -56,6 +56,15 @@ export function substitutePlaceholders(template: string, values: Record<string, 
 // "foto" do card-molde, que é só um placeholder (depende de um
 // produto que ainda não existe).
 export type PageImageElementConfig = { x: number; y: number; w: number; h: number; key: string | null; url: string | null };
+
+// Biblioteca de fontes (Fase 5, Parte 11) — mesma de src/lib/fonts/,
+// compartilhada com o Gerador de Ofertas e com o card-molde
+// (cardConfig.ts). "Arial" continua o padrão — modelo de página salvo
+// antes desta parte não tem `fontFamily` gravado, então todo ponto de
+// leitura usa `cfg.fontFamily ?? DEFAULT_FONT_FAMILY`, nunca o campo
+// direto.
+export const DEFAULT_FONT_FAMILY = "Arial";
+
 export type PageTextElementConfig = {
   x: number;
   y: number;
@@ -63,12 +72,27 @@ export type PageTextElementConfig = {
   fontSize: number;
   maxW: number;
   color: string;
+  fontFamily: string;
   fontWeight: "bold" | "normal";
   align: TextAlign;
   maxLines: number;
 };
 export type PageElementConfig = Partial<PageImageElementConfig & PageTextElementConfig>;
 export type PageLayout = Record<PageFieldKey, PageElementConfig>;
+
+// Todo par família/peso realmente usado pelos campos de TEXTO de um
+// modelo de página — usado pra pré-carregar (ensureFontsLoaded, ver
+// src/lib/fonts/fontLoader.ts) antes de desenhar, mesmo mecanismo já
+// usado no Editor de Layout do Gerador de Ofertas e no card-molde.
+export function fontPairsFromPageLayout(layout: PageLayout): { family: string; weight: number }[] {
+  return PAGE_FIELD_DEFS.filter((d) => d.type === "text").map((d) => {
+    const cfg = layout[d.key] as Partial<PageTextElementConfig> | undefined;
+    return {
+      family: cfg?.fontFamily ?? DEFAULT_FONT_FAMILY,
+      weight: cfg?.fontWeight === "bold" ? 700 : 400,
+    };
+  });
+}
 
 export type PageTipo = "capa" | "abertura_secao" | "continuacao";
 
@@ -157,6 +181,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
       fontSize: 44,
       maxW: contentW,
       color: "#1a1a1a",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "bold",
       align: "center",
       maxLines: 1,
@@ -168,6 +193,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
       fontSize: 16,
       maxW: 120,
       color: "#666666",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "normal",
       align: "right",
       maxLines: 1,
@@ -179,6 +205,7 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
       fontSize: 14,
       maxW: contentW,
       color: "#666666",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "normal",
       align: "center",
       maxLines: 1,

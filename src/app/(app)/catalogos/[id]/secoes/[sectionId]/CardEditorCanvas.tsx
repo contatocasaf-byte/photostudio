@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Group, Shape as KonvaShape, Transformer } from "react-konva";
 import type Konva from "konva";
 import {
   CARD_FIELD_DEFS,
+  DEFAULT_FONT_FAMILY,
+  fontPairsFromCardLayout,
   substitutePlaceholders,
   type CardElementConfig,
   type CardFieldKey,
@@ -14,6 +16,7 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { drawTextFit } from "@/lib/canvasText";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 
 const PREVIEW_MAX = 420;
 const MIN_BOUNDARY = 60;
@@ -31,14 +34,27 @@ function computeScale(largura: number, alturaMinima: number) {
 // Ofertas (renderTextPreview em ofertas/layout-editor/LayoutEditorCanvas.tsx)
 // — renderiza o texto DE VERDADE via drawTextFit num canvas offscreen,
 // convertido pra Konva.Image. Sem produtos reais ainda, usa o texto de
-// exemplo do campo (CARD_FIELD_DEFS[].sampleText). Card-molde usa só
-// fonte de sistema ("Arial") — ver decisão na Parte 2 do plano.
+// exemplo do campo (CARD_FIELD_DEFS[].sampleText). Fonte real da
+// biblioteca (Fase 5, Parte 11) — cai pro padrão em card-molde salvo
+// antes dessa parte, que não tem `fontFamily` gravado.
 function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(cfg.maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
-  drawTextFit(ctx, sampleText, "Arial", cfg.fontWeight, cfg.fontSize, cfg.maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines);
+  drawTextFit(
+    ctx,
+    sampleText,
+    cfg.fontFamily ?? DEFAULT_FONT_FAMILY,
+    cfg.fontWeight,
+    cfg.fontSize,
+    cfg.maxW,
+    0,
+    0,
+    cfg.color,
+    cfg.align,
+    cfg.maxLines
+  );
   return canvas;
 }
 
@@ -119,16 +135,23 @@ function TextFieldNode({
   onSelect,
   onUpdate,
   registerRef,
+  fontsTick,
 }: NodeProps & {
   fieldKey: CardFieldKey;
   cfg: CardTextElementConfig;
   sampleText: string;
   onUpdate: (patch: Partial<CardTextElementConfig>) => void;
+  fontsTick: number;
 }) {
+  // Memoiza por campo primitivo de propósito (cfg muda de identidade a
+  // cada digitação); fontsTick força recalcular quando uma fonte
+  // termina de carregar depois do primeiro desenho (ver ensureFontsLoaded
+  // no componente principal) — sem isso a prévia ficaria presa na fonte
+  // de fallback até o usuário mexer em outro campo.
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "{valor}", sampleText)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, sampleText]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, sampleText, fontsTick]
   );
 
   return (
@@ -460,6 +483,17 @@ export default function CardEditorCanvas({
   const nodeRefs = useRef<Partial<Record<string, Konva.Node>>>({});
   const fieldTransformerRef = useRef<Konva.Transformer>(null);
   const boundaryTransformerRef = useRef<Konva.Transformer>(null);
+  const [fontsTick, setFontsTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureFontsLoaded(fontPairsFromCardLayout(layout)).then(() => {
+      if (!cancelled) setFontsTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [layout]);
 
   function registerRef(key: string, node: Konva.Node | null) {
     if (node) nodeRefs.current[key] = node;
@@ -574,6 +608,7 @@ export default function CardEditorCanvas({
               onSelect={(e) => selectField(def.key, e)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
+              fontsTick={fontsTick}
             />
           )
         )}

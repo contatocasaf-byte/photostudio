@@ -44,6 +44,14 @@ export function substitutePlaceholders(template: string, valor: string): string 
   return template.replace(/\{valor\}/g, valor);
 }
 
+// Biblioteca de fontes (Fase 5, Parte 11) — mesma de src/lib/fonts/,
+// compartilhada com o Gerador de Ofertas. "Arial" continua o padrão
+// (fonte de sistema, sem custo de carregamento) — card-molde salvo
+// antes desta parte não tem `fontFamily` gravado, então todo ponto de
+// leitura usa `cfg.fontFamily ?? DEFAULT_FONT_FAMILY`, nunca o campo
+// direto.
+export const DEFAULT_FONT_FAMILY = "Arial";
+
 export type CardImageElementConfig = { x: number; y: number; w: number; h: number };
 export type CardTextElementConfig = {
   x: number;
@@ -52,12 +60,27 @@ export type CardTextElementConfig = {
   fontSize: number;
   maxW: number;
   color: string;
+  fontFamily: string;
   fontWeight: "bold" | "normal";
   align: TextAlign;
   maxLines: number;
 };
 export type CardElementConfig = Partial<CardImageElementConfig & CardTextElementConfig>;
 export type CardLayout = Record<CardFieldKey, CardElementConfig>;
+
+// Todo par família/peso realmente usado pelos campos de TEXTO de um
+// card-molde — usado pra pré-carregar (ensureFontsLoaded, ver
+// src/lib/fonts/fontLoader.ts) antes de desenhar, mesmo mecanismo já
+// usado no Editor de Layout do Gerador de Ofertas.
+export function fontPairsFromCardLayout(layout: CardLayout): { family: string; weight: number }[] {
+  return CARD_FIELD_DEFS.filter((d) => d.type === "text").map((d) => {
+    const cfg = layout[d.key] as Partial<CardTextElementConfig> | undefined;
+    return {
+      family: cfg?.fontFamily ?? DEFAULT_FONT_FAMILY,
+      weight: cfg?.fontWeight === "bold" ? 700 : 400,
+    };
+  });
+}
 
 export const DEFAULT_CARD_WIDTH = 300;
 export const DEFAULT_CARD_HEIGHT = 380;
@@ -86,6 +109,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       fontSize: 11,
       maxW: contentW,
       color: "#888888",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "normal",
       align: "left",
       maxLines: 1,
@@ -97,6 +121,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       fontSize: 16,
       maxW: contentW,
       color: "#1a1a1a",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "bold",
       align: "left",
       maxLines: 1,
@@ -108,6 +133,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       fontSize: 12,
       maxW: contentW,
       color: "#444444",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "normal",
       align: "left",
       maxLines: 3,
@@ -119,6 +145,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       fontSize: 18,
       maxW: halfW,
       color: "#c0392b",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "bold",
       align: "left",
       maxLines: 1,
@@ -130,6 +157,7 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       fontSize: 18,
       maxW: halfW,
       color: "#ff6b35",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "bold",
       align: "left",
       maxLines: 1,

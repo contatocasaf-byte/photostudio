@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getFontUploadUrl, listFonts, type CustomFontEntry } from "./actions";
-import { invalidateCustomFontsCache } from "./fontLoader";
+import { getFontUploadUrl, listFonts, type CustomFontEntry } from "@/lib/fonts/actions";
+import { invalidateCustomFontsCache } from "@/lib/fonts/fontLoader";
 
 const EXT_BY_MIME: Record<string, "ttf" | "otf" | "woff" | "woff2"> = {
   "font/ttf": "ttf",
@@ -22,7 +22,9 @@ function extFromFile(file: File): "ttf" | "otf" | "woff" | "woff2" | null {
 // R2 (prefixo fontes/). Ao contrário do layout (uma imagem = um
 // registro), aqui o arquivo sozinho não diz o nome da família nem o
 // peso, então pede os dois antes de subir (vira o nome do arquivo, ver
-// ofertas/fonts/actions.ts:parseFontKey).
+// src/lib/fonts/actions.ts:parseFontKey). Promovido de ofertas/fonts/
+// (Fase 5, Parte 11 do Criador de Catálogos) — biblioteca de fontes
+// compartilhada entre Ofertas e Catálogos.
 export default function FontManager() {
   const [fonts, setFonts] = useState<CustomFontEntry[]>([]);
   const [loading, setLoading] = useState(true);

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   CARD_FIELD_DEFS,
   CARD_SHAPE_TYPES,
+  DEFAULT_FONT_FAMILY,
   type CardBorda,
   type CardFieldKey,
   type CardImageElementConfig,
@@ -14,6 +15,7 @@ import {
 } from "../../../core/cardConfig";
 import { mmToPx, pxToMm } from "../../../core/pageConfig";
 import type { TextAlign } from "@/lib/canvasText";
+import FontPicker from "@/components/fonts/FontPicker";
 
 type SelectMode = "replace" | "add" | "remove";
 
@@ -540,6 +542,15 @@ function TextProperties({
           O valor real do produto entra em <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">{"{valor}"}</code> — pode
           adicionar um rótulo fixo em volta, ex.: <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">À vista: {"{valor}"}</code>.
         </p>
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500">Fonte</label>
+        <FontPicker
+          family={cfg.fontFamily ?? DEFAULT_FONT_FAMILY}
+          weight={cfg.fontWeight === "bold" ? 700 : 400}
+          onSelect={(fam, w) => onUpdate({ fontFamily: fam, fontWeight: w === 700 ? "bold" : "normal" })}
+        />
       </div>
 
       <NumberField label="Tamanho da fonte (px)" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />

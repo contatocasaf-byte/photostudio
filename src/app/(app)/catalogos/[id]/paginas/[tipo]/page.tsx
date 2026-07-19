@@ -20,6 +20,7 @@ import {
 } from "../../../core/pageConfig";
 import PageEditorCanvas from "./PageEditorCanvas";
 import PropertiesPanel from "./PropertiesPanel";
+import FontManager from "@/components/fonts/FontManager";
 
 function isPageTipo(v: string): v is PageTipo {
   return PAGE_TIPOS.some((t) => t.value === v);
@@ -139,6 +140,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           {saving ? "Salvando..." : "Salvar"}
         </button>
       </div>
+
+      <FontManager />
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}

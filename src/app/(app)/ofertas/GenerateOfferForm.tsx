@@ -10,7 +10,7 @@ import { formatarPrecoBR } from "./core/priceFormat";
 import { encontrarFotoProduto, PRODUCT_PHOTO_EXTS } from "./core/findProductPhoto";
 import { parsePlanilha, buscarProduto, type ProdutoRow } from "./core/parsePlanilha";
 import { loadLayoutConfig } from "./layouts/configClient";
-import { ensureFontsLoaded } from "./fonts/fontLoader";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 import LayoutPicker, { type SelectedLayout } from "./LayoutPicker";
 import PhotoAdjustWidget, { type PhotoTransform } from "./PhotoAdjustWidget";
 

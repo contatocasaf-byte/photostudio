@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  DEFAULT_FONT_FAMILY,
   PAGE_FIELD_DEFS,
   PAGE_PLACEHOLDERS,
   PAGE_SIZE_PRESETS,
@@ -18,6 +19,7 @@ import { getPageAssetUploadUrl } from "../../../paginas/actions";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import type { TextAlign } from "@/lib/canvasText";
 import FilePickerZone from "@/components/FilePickerZone";
+import FontPicker from "@/components/fonts/FontPicker";
 
 type Props = {
   layout: PageLayout;
@@ -355,6 +357,15 @@ function TextProperties({
         ) : (
           <p className="mt-1 text-[11px] text-slate-400">Texto fixo — o mesmo em toda página.</p>
         )}
+      </div>
+
+      <div>
+        <label className="text-xs text-slate-500">Fonte</label>
+        <FontPicker
+          family={cfg.fontFamily ?? DEFAULT_FONT_FAMILY}
+          weight={cfg.fontWeight === "bold" ? 700 : 400}
+          onSelect={(fam, w) => onUpdate({ fontFamily: fam, fontWeight: w === 700 ? "bold" : "normal" })}
+        />
       </div>
 
       <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />

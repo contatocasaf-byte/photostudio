@@ -30,6 +30,7 @@ import {
 } from "../../../core/cardConfig";
 import CardEditorCanvas from "./CardEditorCanvas";
 import { CardStructurePanel, ElementsPanel, SelectedElementPanel } from "./PropertiesPanel";
+import FontManager from "@/components/fonts/FontManager";
 
 export default function CardEditorPage({ params }: { params: Promise<{ id: string; sectionId: string }> }) {
   const { id: catalogId, sectionId } = use(params);
@@ -336,6 +337,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       <p className="mt-1 text-sm text-slate-500">
         Desenhado com dados de exemplo — a foto e os textos reais entram quando os produtos forem vinculados.
       </p>
+      <FontManager />
 
       {otherSections.length > 0 && (
         <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">

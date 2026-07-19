@@ -11,6 +11,10 @@
 // registrada na conversa com o usuário. A Canva usa bastante Google
 // Fonts no plano grátis, então essa lista cobre boa parte do visual
 // similar, com segurança de licença.
+//
+// Promovido de ofertas/fonts/ (Fase 5, Parte 11 do Criador de
+// Catálogos) — mesma biblioteca de fontes, compartilhada entre os dois
+// módulos, sem nada específico de Ofertas.
 export type GoogleFontDef = {
   family: string;
   weights: number[]; // 400 = normal, 700 = bold

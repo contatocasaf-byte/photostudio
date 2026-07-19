@@ -4,7 +4,7 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import LayoutPicker, { type SelectedLayout } from "../LayoutPicker";
 import LayoutEditorCanvas from "./LayoutEditorCanvas";
 import PropertiesPanel from "./PropertiesPanel";
-import FontManager from "../fonts/FontManager";
+import FontManager from "@/components/fonts/FontManager";
 import { defaultConfigForSize, type ElementKey, type LayoutConfig } from "../core/layoutConfig";
 import { loadLayoutConfig, saveLayoutConfig } from "../layouts/configClient";
 

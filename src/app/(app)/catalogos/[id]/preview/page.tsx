@@ -3,8 +3,9 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { getCatalogPreviewData } from "../../preview/actions";
-import { reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
+import { fontPairsFromPreviewPages, reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
 import { exportCatalogPdf } from "../../pdf/exportPdf";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 import PreviewPageCanvas, { computeStageSize } from "./PreviewPageCanvas";
 
 const ZOOM_MIN = 0.25;
@@ -36,6 +37,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   const [zoom, setZoom] = useState(0.55);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [fontsTick, setFontsTick] = useState(0);
 
   async function handleExportPdf() {
     setExporting(true);
@@ -76,6 +78,22 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
       cancelled = true;
     };
   }, [catalogId]);
+
+  // Pré-carrega toda fonte usada no catálogo (Fase 5, Parte 11) antes
+  // de desenhar — fontsTick força os canvases de texto já memoizados
+  // (PreviewPageCanvas.tsx) a recalcular quando a fonte real termina de
+  // baixar depois do primeiro desenho (que já acontece com a fonte de
+  // fallback, pra não travar a tela esperando).
+  useEffect(() => {
+    if (pages.length === 0) return;
+    let cancelled = false;
+    ensureFontsLoaded(fontPairsFromPreviewPages(pages)).then(() => {
+      if (!cancelled) setFontsTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pages]);
 
   const stageSize = computeStageSize(paginaLargura, paginaAltura);
 
@@ -192,6 +210,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
                   paginaLargura={paginaLargura}
                   paginaAltura={paginaAltura}
                   numeroPagina={current + 1}
+                  fontsTick={fontsTick}
                 />
               </div>
             </div>

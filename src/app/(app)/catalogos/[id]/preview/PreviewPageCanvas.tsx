@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Line, Rect, Shape as KonvaShape } from "react-konva";
 import type Konva from "konva";
-import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardShape, type CardTextElementConfig } from "../../core/cardConfig";
+import {
+  CARD_FIELD_DEFS,
+  DEFAULT_FONT_FAMILY,
+  type CardImageElementConfig,
+  type CardShape,
+  type CardTextElementConfig,
+} from "../../core/cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "../../core/pageConfig";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
@@ -74,7 +80,21 @@ function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextEle
   // fino demais pra renderizar sem corromper glifos estreitos (I/J/T)
   // — foi o que sobrou de errado depois da correção de resolução do
   // bitmap: textos longos demais pra caber cain nesse fallback.
-  drawTextFit(ctx, text, "Arial", cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines, 1.15, 8 * STAGE_PIXEL_RATIO);
+  drawTextFit(
+    ctx,
+    text,
+    cfg.fontFamily ?? DEFAULT_FONT_FAMILY,
+    cfg.fontWeight,
+    fontSize,
+    maxW,
+    0,
+    0,
+    cfg.color,
+    cfg.align,
+    cfg.maxLines,
+    1.15,
+    8 * STAGE_PIXEL_RATIO
+  );
   return canvas;
 }
 
@@ -113,11 +133,21 @@ function PageImageField({ cfg, scale }: { cfg: PageImageElementConfig; scale: nu
   );
 }
 
-function PageTextField({ cfg, text, scale }: { cfg: PageTextElementConfig; text: string; scale: number }) {
+function PageTextField({
+  cfg,
+  text,
+  scale,
+  fontsTick,
+}: {
+  cfg: PageTextElementConfig;
+  text: string;
+  scale: number;
+  fontsTick: number;
+}) {
   const canvas = useMemo(
     () => renderTextCanvas(text, cfg),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight]
+    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, fontsTick]
   );
   return (
     <KonvaImage
@@ -215,6 +245,7 @@ function CardTextField({
   originY,
   scale,
   cardScale,
+  fontsTick,
 }: {
   cfg: CardTextElementConfig;
   text: string;
@@ -222,11 +253,12 @@ function CardTextField({
   originY: number;
   scale: number;
   cardScale: number;
+  fontsTick: number;
 }) {
   const canvas = useMemo(
     () => renderTextCanvas(text, cfg, cardScale),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cardScale]
+    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, cardScale, fontsTick]
   );
   return (
     <KonvaImage
@@ -305,13 +337,18 @@ export type PreviewPageCanvasProps = {
   paginaLargura: number;
   paginaAltura: number;
   numeroPagina: number;
+  // Incrementado pelo componente pai (page.tsx) quando ensureFontsLoaded
+  // resolve pra essa página — força recalcular os canvases de texto já
+  // memoizados, que na primeira passada podem ter desenhado com a fonte
+  // de fallback (a real ainda não tinha baixado).
+  fontsTick: number;
 };
 
 // Desenha UMA página do catálogo montado — fundo + cabeçalho/rodapé do
 // page_template (com {secao_titulo}/{pagina} substituídos por valores
 // reais) + grade de cards com dado real do produto. Somente leitura,
 // nenhuma interação (sem Transformer/drag) — é preview, não editor.
-export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, numeroPagina }: PreviewPageCanvasProps) {
+export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, numeroPagina, fontsTick }: PreviewPageCanvasProps) {
   const { scale, canvasW, canvasH } = computeScale(paginaLargura, paginaAltura);
   const margens = page.pageTemplate?.margens ?? { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -336,7 +373,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             }
             const textCfg = cfg as PageTextElementConfig;
             const text = substitutePlaceholders(textCfg.text ?? "", placeholderValues);
-            return <PageTextField key={def.key} cfg={textCfg} text={text} scale={scale} />;
+            return <PageTextField key={def.key} cfg={textCfg} text={text} scale={scale} fontsTick={fontsTick} />;
           })}
 
         {page.cardTemplate &&
@@ -527,6 +564,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                   originY={originY}
                   scale={scale}
                   cardScale={page.cardScale}
+                  fontsTick={fontsTick}
                 />
               );
             });

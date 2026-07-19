@@ -1,4 +1,4 @@
-import { googleFontsHref } from "./fonts/googleFonts";
+import { googleFontsHref } from "@/lib/fonts/googleFonts";
 
 // Carrega a lista curada de Google Fonts pro segmento /ofertas inteiro
 // (as 3 abas usam texto com fonte escolhida) — só declara o

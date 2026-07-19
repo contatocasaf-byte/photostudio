@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { listGoogleFontOptions, listCustomFontOptions, ensureFontLoaded, type FontOption } from "../fonts/fontLoader";
+import { listGoogleFontOptions, listCustomFontOptions, ensureFontLoaded, type FontOption } from "@/lib/fonts/fontLoader";
 
 type FamilyEntry = { family: string; weights: number[]; source: "google" | "custom" };
 
@@ -27,7 +27,9 @@ type Props = {
 // Seletor de fonte com busca, cada nome de família renderizado NA
 // PRÓPRIA fonte — mesma UX do font_picker.py original, combinando as
 // Google Fonts curadas com as fontes próprias enviadas pelo usuário
-// (ver ofertas/fonts/).
+// (ver src/lib/fonts/). Promovido de ofertas/layout-editor/ (Fase 5,
+// Parte 11 do Criador de Catálogos) — biblioteca de fontes
+// compartilhada entre Ofertas e Catálogos.
 export default function FontPicker({ family, weight, onSelect }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");

@@ -1,5 +1,8 @@
 "use client";
 
+// Promovido de ofertas/fonts/ (Fase 5, Parte 11 do Criador de
+// Catálogos) — biblioteca de fontes compartilhada entre os dois
+// módulos, sem nada específico de Ofertas.
 import { GOOGLE_FONTS, hasWeight } from "./googleFonts";
 import { listFonts, type CustomFontEntry } from "./actions";
 
@@ -14,8 +17,10 @@ export function listGoogleFontOptions(): FontOption[] {
 }
 
 // Cache em memória da sessão — a lista de fontes próprias muda pouco
-// (só quando alguém sobe uma nova no Editor de Layout); evita um
-// round-trip ao R2 pra cada elemento de texto de cada oferta gerada.
+// (só quando alguém sobe uma nova); evita um round-trip ao R2 pra cada
+// elemento de texto de cada oferta/card/página gerado. Compartilhado
+// entre Ofertas e Catálogos (mesmo módulo, mesmo cache) — inofensivo,
+// já que os dois listam exatamente o mesmo prefixo do R2.
 let customFontsCache: CustomFontEntry[] | null = null;
 
 async function getCustomFonts(): Promise<CustomFontEntry[]> {
@@ -31,8 +36,9 @@ export async function listCustomFontOptions(): Promise<FontOption[]> {
   return fonts.map((f) => ({ family: f.family, weight: f.weight, source: "custom" as const }));
 }
 
-// Chamar depois de um upload novo (Editor de Layout) pra próxima
-// leitura ir buscar a lista atualizada no R2 em vez do cache.
+// Chamar depois de um upload novo (Editor de Layout / editores do
+// Criador de Catálogos) pra próxima leitura ir buscar a lista
+// atualizada no R2 em vez do cache.
 export function invalidateCustomFontsCache() {
   customFontsCache = null;
 }
@@ -49,7 +55,7 @@ export async function ensureFontLoaded(family: string, weight: number): Promise<
   if (pending) return pending;
 
   pending = hasWeight(family, weight)
-    ? // Google Font: o <link> em ofertas/layout.tsx já declarou o
+    ? // Google Font: o <link> no layout.tsx do módulo já declarou o
       // @font-face — falta só pedir o download de fato.
       document.fonts.load(`${weight} 16px "${family}"`).then(() => undefined)
     : loadCustomFont(family, weight);
@@ -63,9 +69,9 @@ async function loadCustomFont(family: string, weight: number): Promise<void> {
   const match = fonts.find((f) => f.family === family && f.weight === weight);
   if (!match) {
     // Nem Google Font curada, nem fonte própria enviada — trata como
-    // fonte do sistema (ex.: "Arial", valor padrão de layouts antigos
-    // criados antes da biblioteca de fontes existir). O Canvas já
-    // resolve essas direto, sem precisar de FontFace nenhuma.
+    // fonte do sistema (ex.: "Arial", valor padrão de layouts/cards/
+    // páginas criados antes da biblioteca de fontes existir). O Canvas
+    // já resolve essas direto, sem precisar de FontFace nenhuma.
     return;
   }
 
@@ -75,8 +81,9 @@ async function loadCustomFont(family: string, weight: number): Promise<void> {
 }
 
 // Carrega várias família+peso em paralelo — usado antes de renderizar
-// uma oferta (individual ou em lote), coletando todos os pares
-// família/peso realmente usados pelos elementos de texto do layout.
+// (oferta individual/lote, card-molde, página, preview de catálogo),
+// coletando todos os pares família/peso realmente usados pelos
+// elementos de texto do layout/card/página.
 export async function ensureFontsLoaded(pairs: { family: string; weight: number }[]): Promise<void> {
   const unique = new Map(pairs.map((p) => [`${p.family}|${p.weight}`, p]));
   await Promise.all([...unique.values()].map((p) => ensureFontLoaded(p.family, p.weight)));

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konva";
 import type Konva from "konva";
 import {
+  DEFAULT_FONT_FAMILY,
+  fontPairsFromPageLayout,
   PAGE_FIELD_DEFS,
   substitutePlaceholders,
   type Margens,
@@ -16,6 +18,7 @@ import {
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
 import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 
 const PREVIEW_MAX = 480;
 const MIN_BOUNDARY = 200;
@@ -35,14 +38,27 @@ function computeScale(largura: number, altura: number) {
 
 // Mesma técnica de prévia WYSIWYG já usada no Editor de Layout do
 // Ofertas e no card-molde: renderiza o texto DE VERDADE via
-// drawTextFit num canvas offscreen. Cabeçalho/rodapé de página usam só
-// fonte de sistema ("Arial"), igual ao card-molde.
+// drawTextFit num canvas offscreen. Fonte real da biblioteca (Fase 5,
+// Parte 11) — cai pro padrão em modelo de página salvo antes dessa
+// parte, que não tem `fontFamily` gravado.
 function renderTextPreview(cfg: PageTextElementConfig, sampleText: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(cfg.maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
-  drawTextFit(ctx, sampleText, "Arial", cfg.fontWeight, cfg.fontSize, cfg.maxW, 0, 0, cfg.color, cfg.align, cfg.maxLines);
+  drawTextFit(
+    ctx,
+    sampleText,
+    cfg.fontFamily ?? DEFAULT_FONT_FAMILY,
+    cfg.fontWeight,
+    cfg.fontSize,
+    cfg.maxW,
+    0,
+    0,
+    cfg.color,
+    cfg.align,
+    cfg.maxLines
+  );
   return canvas;
 }
 
@@ -174,15 +190,20 @@ function TextFieldNode({
   onSelect,
   onUpdate,
   registerRef,
+  fontsTick,
 }: NodeProps & {
   fieldKey: PageFieldKey;
   cfg: PageTextElementConfig;
   onUpdate: (patch: Partial<PageTextElementConfig>) => void;
+  fontsTick: number;
 }) {
+  // fontsTick força recalcular quando uma fonte termina de carregar
+  // depois do primeiro desenho (ver ensureFontsLoaded no componente
+  // principal) — mesmo padrão do card-molde/Editor de Layout do Ofertas.
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "", PAGE_PREVIEW_SAMPLE_VALUES)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, fontsTick]
   );
 
   return (
@@ -357,6 +378,17 @@ export default function PageEditorCanvas({
   const nodeRefs = useRef<Partial<Record<PageFieldKey, Konva.Node>>>({});
   const fieldTransformerRef = useRef<Konva.Transformer>(null);
   const boundaryTransformerRef = useRef<Konva.Transformer>(null);
+  const [fontsTick, setFontsTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureFontsLoaded(fontPairsFromPageLayout(layout)).then(() => {
+      if (!cancelled) setFontsTick((t) => t + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [layout]);
 
   function registerRef(key: PageFieldKey, node: Konva.Node | null) {
     if (node) nodeRefs.current[key] = node;
@@ -432,6 +464,7 @@ export default function PageEditorCanvas({
               onSelect={() => onSelect(def.key)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
+              fontsTick={fontsTick}
             />
           )
         )}

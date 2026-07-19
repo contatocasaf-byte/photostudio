@@ -10,7 +10,7 @@ import { formatarPrecoBR } from "../core/priceFormat";
 import { loadImage, loadImageToCanvas } from "../core/fitImageOnCanvas";
 import { renderOffer, canvasToJpegBlob } from "../core/renderOffer";
 import { loadLayoutConfig } from "../layouts/configClient";
-import { ensureFontsLoaded } from "../fonts/fontLoader";
+import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 import LayoutPicker, { type SelectedLayout } from "../LayoutPicker";
 import type { PhotoTransform } from "../PhotoAdjustWidget";
 import { fontPairsFromConfig, type LayoutConfig } from "../core/layoutConfig";
