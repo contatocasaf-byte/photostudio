@@ -224,10 +224,26 @@ export default function PropertiesPanel({
 
       <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Margens</p>
       <div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-slate-200 p-2">
-        <NumberField label="Topo" value={margens.top} onCommit={(v) => onChangeMargens({ top: Math.max(0, v) })} />
-        <NumberField label="Base" value={margens.bottom} onCommit={(v) => onChangeMargens({ bottom: Math.max(0, v) })} />
-        <NumberField label="Esquerda" value={margens.left} onCommit={(v) => onChangeMargens({ left: Math.max(0, v) })} />
-        <NumberField label="Direita" value={margens.right} onCommit={(v) => onChangeMargens({ right: Math.max(0, v) })} />
+        <NumberField
+          label={`Topo (${unit})`}
+          value={toDisplay(margens.top)}
+          onCommit={(v) => onChangeMargens({ top: Math.max(0, fromDisplay(v)) })}
+        />
+        <NumberField
+          label={`Base (${unit})`}
+          value={toDisplay(margens.bottom)}
+          onCommit={(v) => onChangeMargens({ bottom: Math.max(0, fromDisplay(v)) })}
+        />
+        <NumberField
+          label={`Esquerda (${unit})`}
+          value={toDisplay(margens.left)}
+          onCommit={(v) => onChangeMargens({ left: Math.max(0, fromDisplay(v)) })}
+        />
+        <NumberField
+          label={`Direita (${unit})`}
+          value={toDisplay(margens.right)}
+          onCommit={(v) => onChangeMargens({ right: Math.max(0, fromDisplay(v)) })}
+        />
       </div>
 
       <div className="mt-4 flex items-center justify-between">
@@ -351,24 +367,24 @@ export default function PropertiesPanel({
             />
             {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
             <NumberField
-              label="Posição X"
-              value={selectedIllustration.x}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { x: v })}
+              label={`Posição X (${unit})`}
+              value={toDisplay(selectedIllustration.x)}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { x: fromDisplay(v) })}
             />
             <NumberField
-              label="Posição Y"
-              value={selectedIllustration.y}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { y: v })}
+              label={`Posição Y (${unit})`}
+              value={toDisplay(selectedIllustration.y)}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { y: fromDisplay(v) })}
             />
             <NumberField
-              label="Largura"
-              value={selectedIllustration.w}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { w: Math.max(20, v) })}
+              label={`Largura (${unit})`}
+              value={toDisplay(selectedIllustration.w)}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { w: Math.max(20, fromDisplay(v)) })}
             />
             <NumberField
-              label="Altura"
-              value={selectedIllustration.h}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { h: Math.max(20, v) })}
+              label={`Altura (${unit})`}
+              value={toDisplay(selectedIllustration.h)}
+              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { h: Math.max(20, fromDisplay(v)) })}
             />
             <button
               onClick={() => onRemoveIllustracao(selectedIllustration.id)}
@@ -390,24 +406,24 @@ export default function PropertiesPanel({
             />
             {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
             <NumberField
-              label="Posição X"
-              value={(layout[selectedDef.key] as PageImageElementConfig).x}
-              onCommit={(v) => onUpdateField(selectedDef.key, { x: v })}
+              label={`Posição X (${unit})`}
+              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).x)}
+              onCommit={(v) => onUpdateField(selectedDef.key, { x: fromDisplay(v) })}
             />
             <NumberField
-              label="Posição Y"
-              value={(layout[selectedDef.key] as PageImageElementConfig).y}
-              onCommit={(v) => onUpdateField(selectedDef.key, { y: v })}
+              label={`Posição Y (${unit})`}
+              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).y)}
+              onCommit={(v) => onUpdateField(selectedDef.key, { y: fromDisplay(v) })}
             />
             <NumberField
-              label="Largura"
-              value={(layout[selectedDef.key] as PageImageElementConfig).w}
-              onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, v) })}
+              label={`Largura (${unit})`}
+              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).w)}
+              onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, fromDisplay(v)) })}
             />
             <NumberField
-              label="Altura"
-              value={(layout[selectedDef.key] as PageImageElementConfig).h}
-              onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, v) })}
+              label={`Altura (${unit})`}
+              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).h)}
+              onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, fromDisplay(v)) })}
             />
           </div>
         )}
@@ -417,6 +433,9 @@ export default function PropertiesPanel({
             <TextProperties
               fieldKey={selectedDef.key}
               cfg={layout[selectedDef.key] as PageTextElementConfig}
+              unit={unit}
+              toDisplay={toDisplay}
+              fromDisplay={fromDisplay}
               onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
             />
           </div>
@@ -429,10 +448,16 @@ export default function PropertiesPanel({
 function TextProperties({
   fieldKey,
   cfg,
+  unit,
+  toDisplay,
+  fromDisplay,
   onUpdate,
 }: {
   fieldKey: PageFieldKey;
   cfg: PageTextElementConfig;
+  unit: "px" | "mm";
+  toDisplay: (px: number) => number;
+  fromDisplay: (v: number) => number;
   onUpdate: (patch: Partial<PageTextElementConfig>) => void;
 }) {
   const placeholders = PAGE_PLACEHOLDERS[fieldKey];
@@ -470,10 +495,14 @@ function TextProperties({
         />
       </div>
 
-      <NumberField label="Tamanho da fonte" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
-      <NumberField label="Largura máxima" value={cfg.maxW} onCommit={(v) => onUpdate({ maxW: Math.max(40, v) })} />
-      <NumberField label="Posição X" value={cfg.x} onCommit={(v) => onUpdate({ x: v })} />
-      <NumberField label="Posição Y" value={cfg.y} onCommit={(v) => onUpdate({ y: v })} />
+      <NumberField label="Tamanho da fonte (px)" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
+      <NumberField
+        label={`Largura máxima (${unit})`}
+        value={toDisplay(cfg.maxW)}
+        onCommit={(v) => onUpdate({ maxW: Math.max(40, fromDisplay(v)) })}
+      />
+      <NumberField label={`Posição X (${unit})`} value={toDisplay(cfg.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
+      <NumberField label={`Posição Y (${unit})`} value={toDisplay(cfg.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
 
       <div>
         <label className="text-xs text-slate-500">Número de linhas</label>
