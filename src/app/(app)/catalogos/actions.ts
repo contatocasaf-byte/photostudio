@@ -362,3 +362,48 @@ export async function saveCardTemplate(
 
   return {};
 }
+
+export type CardTemplateVersion = {
+  id: string;
+  versao: number;
+  criadoEm: string;
+  template: CardTemplateData;
+};
+
+// Restaurar uma versão antiga (Fase 5, Parte 9) não precisa de
+// persistência própria — "restaurar" é só carregar os dados de uma
+// versão antiga no estado local do editor (mesma mecânica de
+// "Reaproveitar de outra seção") e deixar o Salvar de sempre criar a
+// versão nova a partir daí. Essa função só lista o que existe.
+export async function listCardTemplateVersions(sectionId: string): Promise<{ versions?: CardTemplateVersion[]; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const { data, error } = await supabase
+    .from("card_templates")
+    .select(
+      "id, versao, criado_em, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
+    )
+    .eq("section_id", sectionId)
+    .order("versao", { ascending: false });
+  if (error) return { error: error.message };
+
+  const versions = (data ?? []).map((row) => ({
+    id: row.id as string,
+    versao: row.versao as number,
+    criadoEm: row.criado_em as string,
+    template: {
+      layout: row.layout_json as CardLayout,
+      largura: row.largura,
+      alturaMinima: row.altura_minima,
+      alturaCresceCom: row.altura_cresce_com as CardFieldKey | null,
+      camposHabilitados: (row.campos_habilitados ?? []) as CardFieldKey[],
+      gutterX: row.gutter_x,
+      gutterY: row.gutter_y,
+      shapes: (row.shapes_json ?? []) as CardShape[],
+      borda: row.borda_json as CardBorda,
+    },
+  }));
+
+  return { versions };
+}

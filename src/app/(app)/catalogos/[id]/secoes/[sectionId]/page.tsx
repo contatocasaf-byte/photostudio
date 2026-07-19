@@ -5,8 +5,10 @@ import Link from "next/link";
 import {
   getSection,
   getCardTemplate,
+  listCardTemplateVersions,
   listSections,
   saveCardTemplate,
+  type CardTemplateVersion,
   type SaveCardTemplateMode,
   type Section,
 } from "../../../actions";
@@ -73,6 +75,17 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [hasItems, setHasItems] = useState(false);
   const [showVersionChoice, setShowVersionChoice] = useState(false);
 
+  // Restaurar versão anterior (Fase 5, Parte 9) — mesma mecânica de
+  // "Reaproveitar de outra seção": carrega os dados de uma versão
+  // antiga no estado local, o usuário revisa e clica Salvar como
+  // sempre (que já cria a versão nova, ver saveCardTemplate). Todas as
+  // versões já vêm de uma vez no carregamento inicial, sem round-trip
+  // extra ao clicar "Carregar". A primeira da lista (`versao` mais
+  // alta) é sempre a versão atual — fica fora da lista de escolha.
+  const [versions, setVersions] = useState<CardTemplateVersion[]>([]);
+  const [restoreVersionId, setRestoreVersionId] = useState("");
+  const olderVersions = versions.slice(1);
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -80,7 +93,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       getCardTemplate(sectionId),
       listSections(catalogId),
       sectionHasItems(sectionId),
-    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes]) => {
+      listCardTemplateVersions(sectionId),
+    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes, versionsRes]) => {
       if (cancelled) return;
       if (sectionRes.error) setError(sectionRes.error);
       else setSection(sectionRes.section ?? null);
@@ -105,6 +119,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       }
       if (!sectionsRes.error) setOtherSections((sectionsRes.sections ?? []).filter((s) => s.id !== sectionId));
       if (!hasItemsRes.error) setHasItems(hasItemsRes.hasItems ?? false);
+      if (!versionsRes.error) setVersions(versionsRes.versions ?? []);
       setLoading(false);
     });
     return () => {
@@ -141,6 +156,21 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     } finally {
       setCopying(false);
     }
+  }
+
+  function handleLoadVersion(v: CardTemplateVersion) {
+    const t = v.template;
+    setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
+    setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+    setLargura(t.largura);
+    setAlturaMinima(t.alturaMinima);
+    setAlturaCresceCom(t.alturaCresceCom);
+    setGutterX(t.gutterX);
+    setGutterY(t.gutterY);
+    setShapes(t.shapes);
+    setBorda(t.borda ?? defaultCardBorda());
+    handleClearSelection();
+    setStatus(`✔ Versão ${v.versao} carregada — clique em Salvar pra restaurar.`);
   }
 
   function handleToggleCampo(key: CardFieldKey, habilitado: boolean) {
@@ -328,6 +358,34 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
           >
             {copying ? "Copiando..." : "Copiar"}
+          </button>
+        </div>
+      )}
+
+      {olderVersions.length > 0 && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <label className="text-xs text-slate-500">Versões anteriores:</label>
+          <select
+            value={restoreVersionId}
+            onChange={(e) => setRestoreVersionId(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">Selecione uma versão...</option>
+            {olderVersions.map((v) => (
+              <option key={v.id} value={v.id}>
+                Versão {v.versao} — {new Date(v.criadoEm).toLocaleString("pt-BR")}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const v = olderVersions.find((v) => v.id === restoreVersionId);
+              if (v) handleLoadVersion(v);
+            }}
+            disabled={!restoreVersionId}
+            className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+          >
+            Carregar
           </button>
         </div>
       )}
