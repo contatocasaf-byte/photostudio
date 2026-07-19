@@ -69,6 +69,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
         paginaAltura: data.paginaAltura,
         pageTemplates: data.pageTemplates,
         sections: data.sections,
+        paginasAvulsas: data.paginasAvulsas,
       });
       setPages(computed);
       setSkipped(skippedSections);

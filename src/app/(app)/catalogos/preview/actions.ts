@@ -6,7 +6,7 @@ import { defaultCardBorda } from "../core/cardConfig";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
 import type { PageTipo } from "../core/pageConfig";
-import type { CardTemplateInput, PageTemplateInput, SectionReflowInput } from "../core/reflow";
+import type { CardTemplateInput, PageTemplateInput, PaginaAvulsaInput, SectionReflowInput } from "../core/reflow";
 import type { ProductRow } from "../produtos/actions";
 
 async function requireUser() {
@@ -46,11 +46,13 @@ export type CatalogPreviewData = {
   paginaAltura: number;
   pageTemplates: Partial<Record<PageTipo, PageTemplateInput>>;
   sections: SectionReflowInput[];
+  paginasAvulsas: PaginaAvulsaInput[];
 };
 
-// Busca consolidada — catálogo, os 3 page_templates, seções com seus
-// card_templates, e os itens+produtos de cada seção — numa função só,
-// evitando round-trips separados na tela de preview.
+// Busca consolidada — catálogo, os 3 page_templates fixos + os
+// page_templates tipo='custom' de páginas avulsas (Fase 5, Parte 12),
+// seções com seus card_templates, e os itens+produtos de cada seção —
+// numa função só, evitando round-trips separados na tela de preview.
 export async function getCatalogPreviewData(catalogId: string): Promise<{ data?: CatalogPreviewData; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -62,33 +64,56 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     .single();
   if (catalogErr) return { error: catalogErr.message };
 
-  const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }, galeriaRes] = await Promise.all([
-    supabase.from("page_templates").select("tipo, header_json, footer_json, margens, fundo_key").eq("catalog_id", catalogId),
-    supabase
-      .from("sections")
-      .select("id, titulo, ordem, colunas, card_template_id")
-      .eq("catalog_id", catalogId)
-      .order("ordem", { ascending: true }),
-    listGaleriaImages(),
-  ]);
+  const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }, { data: avulsaRows, error: avErr }, galeriaRes] =
+    await Promise.all([
+      supabase.from("page_templates").select("id, tipo, header_json, footer_json, margens, fundo_key").eq("catalog_id", catalogId),
+      supabase
+        .from("sections")
+        .select("id, titulo, ordem, colunas, card_template_id")
+        .eq("catalog_id", catalogId)
+        .order("ordem", { ascending: true }),
+      supabase.from("paginas_avulsas").select("id, titulo, apos_secao_id, ordem, page_template_id").eq("catalog_id", catalogId),
+      listGaleriaImages(),
+    ]);
   if (ptErr) return { error: ptErr.message };
   if (secErr) return { error: secErr.message };
+  if (avErr) return { error: avErr.message };
   // Erro na galeria não derruba o preview inteiro — só os cards ficam
   // sem foto real (volta pro placeholder tracejado de sempre).
   const galeriaIndex = buildGaleriaIndex(galeriaRes.files ?? []);
 
+  // page_templates tipo='custom' não vai pro slot fixo por tipo (pode
+  // haver várias, uma por página avulsa) — fica num mapa por id,
+  // resolvido pra cada paginas_avulsas abaixo.
   const pageTemplates: Partial<Record<PageTipo, PageTemplateInput>> = {};
+  const customTemplatesById = new Map<string, PageTemplateInput>();
   for (const row of pageTemplateRows ?? []) {
     const tipo = row.tipo as PageTipo;
     const layout = { ...((row.header_json as object) ?? {}), ...((row.footer_json as object) ?? {}) };
-    pageTemplates[tipo] = {
+    const built: PageTemplateInput = {
       layout: layout as PageTemplateInput["layout"],
       elementosHabilitados: Object.keys(layout) as PageTemplateInput["elementosHabilitados"],
       margens: row.margens as PageTemplateInput["margens"],
       fundoUrl: row.fundo_key ? getPublicUrl(row.fundo_key as string) : null,
       fundoKey: (row.fundo_key as string | null) ?? null,
     };
+    if (tipo === "custom") customTemplatesById.set(row.id as string, built);
+    else pageTemplates[tipo] = built;
   }
+
+  const paginasAvulsas: PaginaAvulsaInput[] = (avulsaRows ?? [])
+    .map((row) => {
+      const template = customTemplatesById.get(row.page_template_id as string);
+      if (!template) return null;
+      return {
+        id: row.id as string,
+        titulo: row.titulo as string,
+        aposSecaoId: row.apos_secao_id as string | null,
+        ordem: row.ordem as number,
+        template,
+      };
+    })
+    .filter((x): x is PaginaAvulsaInput => x !== null);
 
   // Busca TODAS as versões de card_templates de cada seção (Fase 5,
   // Parte 8) — não só a apontada por sections.card_template_id (essa
@@ -183,6 +208,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       paginaAltura: catalog.pagina_altura,
       pageTemplates,
       sections,
+      paginasAvulsas,
     },
   };
 }

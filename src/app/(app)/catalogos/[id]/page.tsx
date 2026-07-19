@@ -23,6 +23,13 @@ import {
   type Section,
 } from "../actions";
 import PlanilhaPicker from "../produtos/PlanilhaPicker";
+import {
+  createPaginaAvulsa,
+  deletePaginaAvulsa,
+  listPaginasAvulsas,
+  swapPaginaAvulsaOrdem,
+  type PaginaAvulsaListItem,
+} from "../paginas-avulsas/actions";
 
 function SectionForm({
   initial,
@@ -159,6 +166,127 @@ function SectionRow({
   );
 }
 
+// Espaço "entre" duas seções (ou antes da 1ª, aposSecaoId=null) onde
+// dá pra inserir páginas avulsas de layout próprio (Fase 5, Parte 12)
+// — ancoradas pela seção vizinha, não por um número de ordem
+// compartilhado com elas (sections.ordem é renumerado de forma densa a
+// cada drag-reorder, o que "arrancaria" uma avulsa do lugar). Poucas
+// avulsas esperadas por âncora — reordenar é só um swap com o vizinho
+// (↑/↓), sem precisar de drag-and-drop pra um grupo tão pequeno.
+function AvulsaSlot({
+  catalogId,
+  aposSecaoId,
+  avulsas,
+  onChange,
+}: {
+  catalogId: string;
+  aposSecaoId: string | null;
+  avulsas: PaginaAvulsaListItem[];
+  onChange: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [titulo, setTitulo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!titulo.trim()) return;
+    setSaving(true);
+    try {
+      const res = await createPaginaAvulsa(catalogId, titulo, aposSecaoId);
+      if (!res.error) {
+        setTitulo("");
+        setShowForm(false);
+        onChange();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(avulsa: PaginaAvulsaListItem) {
+    if (!confirm(`Excluir a página avulsa "${avulsa.titulo}"?`)) return;
+    await deletePaginaAvulsa(avulsa.id);
+    onChange();
+  }
+
+  async function handleMove(index: number, direction: -1 | 1) {
+    const other = avulsas[index + direction];
+    const current = avulsas[index];
+    if (!other) return;
+    await swapPaginaAvulsaOrdem(current.id, current.ordem, other.id, other.ordem);
+    onChange();
+  }
+
+  return (
+    <div className="pl-6">
+      {avulsas.map((av, i) => (
+        <div key={av.id} className="my-1 flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-1.5">
+          <span className="text-xs text-slate-400">📄</span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{av.titulo}</span>
+          <button
+            onClick={() => handleMove(i, -1)}
+            disabled={i === 0}
+            className="rounded px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            title="Mover pra cima"
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => handleMove(i, 1)}
+            disabled={i === avulsas.length - 1}
+            className="rounded px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            title="Mover pra baixo"
+          >
+            ↓
+          </button>
+          <Link
+            href={`/catalogos/${catalogId}/paginas-avulsas/${av.id}`}
+            className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-white"
+          >
+            Editar
+          </Link>
+          <button
+            onClick={() => handleDelete(av)}
+            className="shrink-0 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+          >
+            Excluir
+          </button>
+        </div>
+      ))}
+
+      {showForm ? (
+        <div className="my-1 flex items-center gap-2">
+          <input
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            autoFocus
+            placeholder="Título da página avulsa"
+            className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-2 py-1 text-xs"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={saving || !titulo.trim()}
+            className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Criando..." : "Criar"}
+          </button>
+          <button
+            onClick={() => setShowForm(false)}
+            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setShowForm(true)} className="my-1 text-xs text-slate-400 underline underline-offset-2 hover:text-slate-600">
+          + Página avulsa
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function CatalogDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
@@ -168,15 +296,22 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
   const [planilhaId, setPlanilhaId] = useState<string | null>(null);
   const [showPlanilhaPicker, setShowPlanilhaPicker] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
+  const [avulsas, setAvulsas] = useState<PaginaAvulsaListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  async function loadAvulsas() {
+    const res = await listPaginasAvulsas(id);
+    if (res.error) setError(res.error);
+    else setAvulsas(res.avulsas ?? []);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getCatalog(id), listSections(id)]).then(([catalogRes, sectionsRes]) => {
+    Promise.all([getCatalog(id), listSections(id), listPaginasAvulsas(id)]).then(([catalogRes, sectionsRes, avulsasRes]) => {
       if (cancelled) return;
       if (catalogRes.error) setError(catalogRes.error);
       else {
@@ -185,12 +320,24 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
       }
       if (sectionsRes.error) setError(sectionsRes.error);
       else setSections(sectionsRes.sections ?? []);
+      if (avulsasRes.error) setError(avulsasRes.error);
+      else setAvulsas(avulsasRes.avulsas ?? []);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [id]);
+
+  // Agrupado + ordenado por âncora uma vez por render — cada slot só
+  // lê o próprio grupo (evita cada AvulsaSlot refazer o filtro/sort).
+  const avulsasByAnchor = new Map<string | null, PaginaAvulsaListItem[]>();
+  for (const av of avulsas) {
+    const list = avulsasByAnchor.get(av.aposSecaoId) ?? [];
+    list.push(av);
+    avulsasByAnchor.set(av.aposSecaoId, list);
+  }
+  for (const list of avulsasByAnchor.values()) list.sort((a, b) => a.ordem - b.ordem);
 
   async function handleSaveNome() {
     if (!nomeDraft.trim()) return;
@@ -228,6 +375,9 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
       return;
     }
     setSections((prev) => prev.filter((s) => s.id !== section.id));
+    // Páginas avulsas ancoradas nesta seção caem pro início (on delete
+    // set null, ver schema) — recarrega pra refletir isso na tela.
+    loadAvulsas();
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -343,18 +493,24 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
         <p className="mt-4 text-sm text-slate-400">Nenhuma seção ainda — crie a primeira acima.</p>
       )}
 
+      <div className="mt-3">
+        <AvulsaSlot catalogId={id} aposSecaoId={null} avulsas={avulsasByAnchor.get(null) ?? []} onChange={loadAvulsas} />
+      </div>
+
       {sections.length > 0 && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-            <div className="mt-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {sections.map((s) => (
-                <SectionRow
-                  key={s.id}
-                  catalogId={id}
-                  section={s}
-                  onSave={(values) => handleSaveSection(s.id, values)}
-                  onDelete={() => handleDeleteSection(s)}
-                />
+                <div key={s.id}>
+                  <SectionRow
+                    catalogId={id}
+                    section={s}
+                    onSave={(values) => handleSaveSection(s.id, values)}
+                    onDelete={() => handleDeleteSection(s)}
+                  />
+                  <AvulsaSlot catalogId={id} aposSecaoId={s.id} avulsas={avulsasByAnchor.get(s.id) ?? []} onChange={loadAvulsas} />
+                </div>
               ))}
             </div>
           </SortableContext>

@@ -211,3 +211,29 @@ create table public.galeria_config (
 alter table public.galeria_config enable row level security;
 create policy "authenticated full access" on public.galeria_config for all to authenticated using (true) with check (true);
 grant select, insert, update, delete on public.galeria_config to authenticated;
+
+-- Páginas avulsas entre seções (Fase 5, Parte 12) — página one-off,
+-- design próprio (via um page_templates tipo='custom' SÓ dela, não
+-- reutilizável), ancorada por seção em vez de por um número de ordem
+-- compartilhado (sections.ordem é renumerado de forma densa a cada
+-- reordenação — ancorar por ID evita a avulsa "pular de lugar" quando
+-- as seções são reordenadas). apos_secao_id null = antes de tudo
+-- (logo depois da capa, se houver). on delete set null (não cascade):
+-- apagar a seção-âncora não apaga a página avulsa, só a move pro
+-- início. page_template_id em cascade: apagar a página avulsa apaga
+-- também o page_templates que só existe pra ela.
+create table public.paginas_avulsas (
+  id uuid primary key default gen_random_uuid(),
+  catalog_id uuid not null references public.catalogs(id) on delete cascade,
+  titulo text not null,
+  apos_secao_id uuid references public.sections(id) on delete set null,
+  ordem integer not null default 0,
+  page_template_id uuid not null references public.page_templates(id) on delete cascade,
+  criado_em timestamptz not null default now()
+);
+create index paginas_avulsas_catalog_id_idx on public.paginas_avulsas(catalog_id);
+create index paginas_avulsas_apos_secao_id_idx on public.paginas_avulsas(apos_secao_id);
+
+alter table public.paginas_avulsas enable row level security;
+create policy "authenticated full access" on public.paginas_avulsas for all to authenticated using (true) with check (true);
+grant select, insert, update, delete on public.paginas_avulsas to authenticated;

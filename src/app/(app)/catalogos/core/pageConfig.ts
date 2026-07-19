@@ -94,9 +94,13 @@ export function fontPairsFromPageLayout(layout: PageLayout): { family: string; w
   });
 }
 
-export type PageTipo = "capa" | "abertura_secao" | "continuacao";
+// "custom" (Fase 5, Parte 12) — página avulsa entre seções, design
+// one-off só dela, não um dos 3 slots fixos. Fora de PAGE_TIPOS de
+// propósito: não é uma tela fixa em /catalogos/[id]/paginas, tem sua
+// própria UI de criação/edição (ver paginas-avulsas/).
+export type PageTipo = "capa" | "abertura_secao" | "continuacao" | "custom";
 
-export const PAGE_TIPOS: { value: PageTipo; label: string }[] = [
+export const PAGE_TIPOS: { value: Exclude<PageTipo, "custom">; label: string }[] = [
   { value: "capa", label: "Capa" },
   { value: "abertura_secao", label: "Abertura de Seção" },
   { value: "continuacao", label: "Continuação" },

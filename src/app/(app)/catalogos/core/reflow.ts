@@ -65,11 +65,24 @@ export type PageTemplateInput = {
   fundoKey: string | null;
 };
 
+// Página avulsa entre seções (Fase 5, Parte 12) — já com o template
+// resolvido (mesmo formato de qualquer outro PageTemplateInput), só
+// ancorada por seção em vez de por tipo fixo. `aposSecaoId: null` =
+// antes de tudo (logo depois da capa, se houver).
+export type PaginaAvulsaInput = {
+  id: string;
+  titulo: string;
+  aposSecaoId: string | null;
+  ordem: number;
+  template: PageTemplateInput;
+};
+
 export type ReflowInput = {
   paginaLargura: number;
   paginaAltura: number;
   pageTemplates: Partial<Record<PageTipo, PageTemplateInput>>;
   sections: SectionReflowInput[];
+  paginasAvulsas: PaginaAvulsaInput[];
 };
 
 export type PositionedCard = {
@@ -287,9 +300,38 @@ export type SkippedSection = { id: string; titulo: string; motivo: "sem_card_mol
 
 export type ReflowResult = { pages: PreviewPage[]; skipped: SkippedSection[] };
 
+// Agrupa páginas avulsas por âncora (mesma ordenação já persistida) —
+// usado pelo loop principal pra intercalar na sequência certa, sem
+// mexer no espaço de `ordem` das seções (ver decisão na Parte 12: essa
+// é aggressively renumerada de forma densa a cada reordenação, então
+// não dá pra compartilhar o mesmo número com as avulsas).
+function groupPaginasAvulsasByAnchor(paginasAvulsas: PaginaAvulsaInput[]): Map<string | null, PaginaAvulsaInput[]> {
+  const map = new Map<string | null, PaginaAvulsaInput[]>();
+  for (const av of paginasAvulsas) {
+    const list = map.get(av.aposSecaoId) ?? [];
+    list.push(av);
+    map.set(av.aposSecaoId, list);
+  }
+  for (const list of map.values()) list.sort((a, b) => a.ordem - b.ordem);
+  return map;
+}
+
+function paginaAvulsaToPreviewPage(av: PaginaAvulsaInput): PreviewPage {
+  return {
+    tipo: "custom",
+    sectionId: null,
+    sectionTitulo: av.titulo,
+    pageTemplate: av.template,
+    cardTemplate: null,
+    cardScale: 1,
+    cards: [],
+  };
+}
+
 export function reflowCatalog(input: ReflowInput): ReflowResult {
   const pages: PreviewPage[] = [];
   const skipped: SkippedSection[] = [];
+  const avulsasByAnchor = groupPaginasAvulsasByAnchor(input.paginasAvulsas);
 
   if (input.pageTemplates.capa) {
     pages.push({
@@ -303,16 +345,22 @@ export function reflowCatalog(input: ReflowInput): ReflowResult {
     });
   }
 
+  // Avulsas ancoradas em `null` (antes de tudo) — logo depois da capa,
+  // antes da primeira seção.
+  for (const av of avulsasByAnchor.get(null) ?? []) pages.push(paginaAvulsaToPreviewPage(av));
+
   for (const section of input.sections) {
     if (!section.cardTemplate) {
       skipped.push({ id: section.id, titulo: section.titulo, motivo: "sem_card_molde" });
-      continue;
-    }
-    if (section.items.length === 0) {
+    } else if (section.items.length === 0) {
       skipped.push({ id: section.id, titulo: section.titulo, motivo: "sem_produtos" });
-      continue;
+    } else {
+      pages.push(...reflowSection(section, input.pageTemplates, input.paginaLargura, input.paginaAltura));
     }
-    pages.push(...reflowSection(section, input.pageTemplates, input.paginaLargura, input.paginaAltura));
+    // Avulsas ancoradas nesta seção aparecem logo depois dela, mesmo
+    // se a seção em si foi pulada (a avulsa é conteúdo independente,
+    // não depende da seção ter card-molde/produtos configurados).
+    for (const av of avulsasByAnchor.get(section.id) ?? []) pages.push(paginaAvulsaToPreviewPage(av));
   }
 
   return { pages, skipped };
