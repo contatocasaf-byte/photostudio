@@ -1,15 +1,6 @@
-import { downloadBlob, zipBlobs } from "@/lib/downloadFiles";
+import { zipBlobs } from "@/lib/downloadFiles";
 
-export { downloadBlob, zipBlobs, uniqueName } from "@/lib/downloadFiles";
-
-// Baixa uma URL pública do R2 pro computador do usuário — o resultado
-// processado só existia no bucket até agora, essa é a etapa que falta pra
-// tirar o arquivo de lá de fato (edição/salvar só sobrescreve no R2).
-export async function downloadUrl(url: string, filename: string) {
-  const res = await fetch(url, { cache: "no-store" });
-  const blob = await res.blob();
-  downloadBlob(blob, filename);
-}
+export { downloadBlob, downloadUrl, zipBlobs, uniqueName } from "@/lib/downloadFiles";
 
 // Baixa várias fotos processadas de uma vez, compactadas num .zip só —
 // usado no modo Lote em vez de baixar uma a uma.

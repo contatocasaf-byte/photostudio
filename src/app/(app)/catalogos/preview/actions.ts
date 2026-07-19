@@ -86,6 +86,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       elementosHabilitados: Object.keys(layout) as PageTemplateInput["elementosHabilitados"],
       margens: row.margens as PageTemplateInput["margens"],
       fundoUrl: row.fundo_key ? getPublicUrl(row.fundo_key as string) : null,
+      fundoKey: (row.fundo_key as string | null) ?? null,
     };
   }
 

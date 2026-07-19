@@ -15,6 +15,15 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
+// Baixa uma URL pública do R2 pro computador do usuário — o resultado
+// processado só existia no bucket até agora, essa é a etapa que falta pra
+// tirar o arquivo de lá de fato (edição/salvar só sobrescreve no R2).
+export async function downloadUrl(url: string, filename: string) {
+  const res = await fetch(url, { cache: "no-store" });
+  const blob = await res.blob();
+  downloadBlob(blob, filename);
+}
+
 // Compacta vários Blobs já em memória num .zip só.
 export async function zipBlobs(items: { blob: Blob; filename: string }[], zipName: string) {
   const zip = new JSZip();

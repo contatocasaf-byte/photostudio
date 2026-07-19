@@ -57,6 +57,11 @@ export type PageTemplateInput = {
   elementosHabilitados: PageFieldKey[];
   margens: Margens;
   fundoUrl: string | null;
+  // Chave crua do R2 (não a URL pública) — exportação de PDF (Fase 5
+  // Parte 10) precisa disso porque o backend Python só recebe chaves,
+  // nunca URLs (evita adicionar um cliente HTTP novo ao Python, que só
+  // fala com R2 via boto3).
+  fundoKey: string | null;
 };
 
 export type ReflowInput = {

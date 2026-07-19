@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { getCatalogPreviewData } from "../../preview/actions";
 import { reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
+import { exportCatalogPdf } from "../../pdf/exportPdf";
 import PreviewPageCanvas, { computeStageSize } from "./PreviewPageCanvas";
 
 const ZOOM_MIN = 0.25;
@@ -33,6 +34,20 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   // rolar demais; o usuário ajusta pra ler texto de perto quando
   // precisar.
   const [zoom, setZoom] = useState(0.55);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function handleExportPdf() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportCatalogPdf({ pages, paginaLargura, paginaAltura, catalogNome: catalogNome ?? "catalogo" });
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Falha ao gerar PDF.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -71,9 +86,19 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
       <Link href={`/catalogos/${catalogId}`} className="text-xs text-slate-500 hover:text-slate-700">
         ← {catalogNome}
       </Link>
-      <h1 className="mt-2 text-lg font-semibold text-slate-900">Ver catálogo</h1>
+      <div className="mt-2 flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-slate-900">Ver catálogo</h1>
+        <button
+          onClick={handleExportPdf}
+          disabled={exporting || pages.length === 0}
+          className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {exporting ? "Gerando PDF..." : "Baixar PDF"}
+        </button>
+      </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
 
       {skipped.length > 0 && (
         <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
