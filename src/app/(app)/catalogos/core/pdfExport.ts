@@ -63,8 +63,21 @@ export type PdfBorderSpec = {
   width: number;
 };
 
+// Fundo de página vetorial (upload de PDF, Fase 5 Parte 17) — a página
+// inteira do PDF original é mesclada como camada de BASE do PDF final
+// (pdf_logic.py) em vez de desenhada como imagem "stretch", sem perda
+// de qualidade nenhuma. Só existe pra exportação: o editor/preview
+// continuam desenhando o PNG rasterizado (`fundoKey`/`fundoUrl`),
+// nunca este spec.
+export type PdfPdfBackgroundSpec = {
+  kind: "pdf";
+  key: string;
+};
+
+export type PdfBackgroundSpec = PdfImageSpec | PdfPdfBackgroundSpec;
+
 export type PdfPageSpec = {
-  background: PdfImageSpec | null;
+  background: PdfBackgroundSpec | null;
   pageShapes: PdfShapeSpec[];
   pageFields: PdfFieldSpec[];
   cardBorders: PdfBorderSpec[];
@@ -91,7 +104,10 @@ export function collectDistinctFotoUrls(pages: PreviewPage[]): string[] {
   return [...urls];
 }
 
-function buildBackground(page: PreviewPage, paginaLargura: number, paginaAltura: number): PdfImageSpec | null {
+function buildBackground(page: PreviewPage, paginaLargura: number, paginaAltura: number): PdfBackgroundSpec | null {
+  const pdfKey = page.pageTemplate?.fundoPdfKey;
+  if (pdfKey) return { kind: "pdf", key: pdfKey };
+
   const key = page.pageTemplate?.fundoKey;
   if (!key) return null;
   return { kind: "image", key, x: 0, y: 0, w: paginaLargura, h: paginaAltura, fit: "stretch" };

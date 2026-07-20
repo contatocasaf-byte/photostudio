@@ -122,7 +122,7 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
 
   const { data: template, error: templateErr } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
+    .select("header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json")
     .eq("id", avulsa.page_template_id)
     .single();
   if (templateErr) return { error: templateErr.message };
@@ -142,6 +142,7 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
         elementosHabilitados: Object.keys(layout) as PageFieldKey[],
         margens: template.margens as Margens,
         fundoKey: template.fundo_key,
+        fundoPdfKey: template.fundo_pdf_key,
         fundoUrl: template.fundo_key ? getPublicUrl(template.fundo_key) : null,
         // Avulsas são todas criadas depois da Parte 13 (sem legado pra
         // migrar, diferente dos 3 slots fixos que já existiam antes) —
@@ -182,6 +183,7 @@ export async function savePaginaAvulsaTemplate(id: string, data: PageTemplateDat
       footer_json: footer,
       margens: data.margens,
       fundo_key: data.fundoKey,
+      fundo_pdf_key: data.fundoPdfKey,
       illustracoes_json: data.illustracoes,
       formas_json: data.formas,
     })

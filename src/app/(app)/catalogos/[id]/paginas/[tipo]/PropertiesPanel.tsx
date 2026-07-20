@@ -38,7 +38,12 @@ type Props = {
   margens: Margens;
   onChangeMargens: (patch: Partial<Margens>) => void;
   fundoUrl: string | null;
-  onChangeFundo: (patch: { key: string | null; url: string | null }) => void;
+  // fundoPdfKey: chave do PDF ORIGINAL no R2 quando o fundo foi
+  // enviado como PDF (Fase 5, Parte 17) — null pra fundo em imagem
+  // comum. Só usado aqui pra mostrar um aviso; o desenho em tela
+  // sempre usa fundoUrl (o PNG rasterizado), igual antes.
+  fundoPdfKey: string | null;
+  onChangeFundo: (patch: { key: string | null; url: string | null; pdfKey: string | null }) => void;
   illustracoes: PageIllustration[];
   onAddIllustracao: () => void;
   onRemoveIllustracao: (id: string) => void;
@@ -91,6 +96,7 @@ export default function PropertiesPanel({
   margens,
   onChangeMargens,
   fundoUrl,
+  fundoPdfKey,
   onChangeFundo,
   illustracoes,
   onAddIllustracao,
@@ -131,14 +137,42 @@ export default function PropertiesPanel({
     return { key, url: getPublicUrl(key) };
   }
 
+  // Rasteriza a 1ª página de um PDF já enviado pro R2 (backend Python,
+  // via proxy Next.js) — só pra ter uma imagem pra desenhar no editor/
+  // preview (Konva não sabe renderizar PDF). O PDF original continua
+  // intacto no R2 (ver handleUploadFundo) e é isso que a exportação de
+  // PDF final usa de verdade, mesclado como camada vetorial.
+  async function renderPdfBackground(pdfKey: string, width: number, height: number): Promise<{ key?: string; error?: string }> {
+    const res = await fetch("/api/catalogos/render-pdf-background", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: pdfKey, width: Math.round(width), height: Math.round(height) }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error ?? "Falha ao converter PDF." };
+    return { key: data.resultKey as string };
+  }
+
+  // Plano de fundo aceita PDF além de imagem (Fase 5, Parte 17) — sem
+  // perda de qualidade no PDF final: sobe o PDF original de verdade
+  // (uploadAsset já é genérico por content-type) e gera uma prévia
+  // rasterizada só pra desenhar em tela.
   async function handleUploadFundo(fileList: FileList) {
     const file = fileList[0];
     if (!file) return;
     setUploading(true);
     setUploadError(null);
     try {
-      const { key, url } = await uploadAsset(file);
-      onChangeFundo({ key, url });
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (isPdf) {
+        const { key: pdfKey } = await uploadAsset(file);
+        const { key: pngKey, error } = await renderPdfBackground(pdfKey, largura, altura);
+        if (error || !pngKey) throw new Error(error ?? "Falha ao converter o PDF.");
+        onChangeFundo({ key: pngKey, url: getPublicUrl(pngKey), pdfKey });
+      } else {
+        const { key, url } = await uploadAsset(file);
+        onChangeFundo({ key, url, pdfKey: null });
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
     } finally {
@@ -277,18 +311,26 @@ export default function PropertiesPanel({
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={fundoUrl} alt="Plano de fundo" className="h-14 w-14 rounded border border-slate-200 object-cover" />
-              <button
-                onClick={() => onChangeFundo({ key: null, url: null })}
-                className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
-              >
-                Remover
-              </button>
+              <div className="flex flex-col gap-1">
+                {fundoPdfKey && (
+                  <span className="w-fit rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                    PDF — prévia rasterizada
+                  </span>
+                )}
+                <button
+                  onClick={() => onChangeFundo({ key: null, url: null, pdfKey: null })}
+                  className="w-fit rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                >
+                  Remover
+                </button>
+              </div>
             </div>
           )}
           <FilePickerZone
             disabled={uploading}
-            title="Arraste uma imagem aqui ou clique para escolher"
-            subtitle="Cobre a página inteira, atrás dos elementos"
+            accept="image/*,application/pdf"
+            title="Arraste uma imagem ou PDF aqui ou clique para escolher"
+            subtitle="Cobre a página inteira, atrás dos elementos — PDF mantém qualidade vetorial no PDF final"
             buttonLabel={uploading ? "Enviando..." : fundoUrl ? "Trocar arquivo" : "Escolher arquivo"}
             onFiles={handleUploadFundo}
           />

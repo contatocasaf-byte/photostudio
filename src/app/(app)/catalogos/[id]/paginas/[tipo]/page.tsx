@@ -48,6 +48,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const [altura, setAltura] = useState(DEFAULT_PAGE_HEIGHT);
   const [margens, setMargens] = useState<Margens>(() => defaultMargens(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT));
   const [fundoKey, setFundoKey] = useState<string | null>(null);
+  const [fundoPdfKey, setFundoPdfKey] = useState<string | null>(null);
   const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
   const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
@@ -77,6 +78,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
         setMargens(templateRes.template.margens);
         setElementosHabilitados(templateRes.template.elementosHabilitados);
         setFundoKey(templateRes.template.fundoKey);
+        setFundoPdfKey(templateRes.template.fundoPdfKey);
         setFundoUrl(templateRes.template.fundoUrl);
         setIllustracoes(templateRes.template.illustracoes);
         setFormas(templateRes.template.formas);
@@ -109,8 +111,9 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     setMargens((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleChangeFundo(patch: { key: string | null; url: string | null }) {
+  function handleChangeFundo(patch: { key: string | null; url: string | null; pdfKey: string | null }) {
     setFundoKey(patch.key);
+    setFundoPdfKey(patch.pdfKey);
     setFundoUrl(patch.url);
   }
 
@@ -154,7 +157,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     try {
       const [sizeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
-        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey, illustracoes, formas }),
+        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
       ]);
       const err = sizeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Modelo de página salvo.");
@@ -226,6 +229,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           margens={margens}
           onChangeMargens={handleChangeMargens}
           fundoUrl={fundoUrl}
+          fundoPdfKey={fundoPdfKey}
           onChangeFundo={handleChangeFundo}
           illustracoes={illustracoes}
           onAddIllustracao={handleAddIllustracao}

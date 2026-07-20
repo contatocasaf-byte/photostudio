@@ -76,6 +76,12 @@ export type PageTemplateInput = {
   // nunca URLs (evita adicionar um cliente HTTP novo ao Python, que só
   // fala com R2 via boto3).
   fundoKey: string | null;
+  // Upload de PDF como fundo (Fase 5, Parte 17) — chave do PDF
+  // ORIGINAL, null quando o fundo é imagem comum. `fundoKey`/`fundoUrl`
+  // continuam apontando pro PNG rasterizado (usado no preview); isso
+  // aqui só é lido na exportação de PDF (pdfExport.ts), pra mesclar o
+  // PDF original como camada vetorial em vez de desenhar a imagem.
+  fundoPdfKey: string | null;
   // Lista sem limite (Fase 5, Parte 13) — "ilustracao" deixou de ser 1
   // campo fixo do layout.
   illustracoes: PageIllustration[];

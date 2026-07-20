@@ -267,3 +267,12 @@ alter table public.sections
 -- padrão já usado no card-molde (card_templates.shapes_json).
 alter table public.page_templates
   add column formas_json jsonb not null default '[]'::jsonb;
+
+-- Upload de PDF como fundo de página (Fase 5, Parte 17) — fundo_key
+-- continua sendo uma imagem (PNG rasterizado do PDF quando aplicável),
+-- usada pro desenho no editor/preview (Konva não renderiza PDF).
+-- fundo_pdf_key aponta pro PDF original, intacto, mesclado como camada
+-- vetorial de base só na hora de gerar o PDF final (ver pdf_logic.py
+-- em brasmam-studio-api). NULL quando o fundo é uma imagem comum.
+alter table public.page_templates
+  add column fundo_pdf_key text;

@@ -69,7 +69,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     await Promise.all([
       supabase
         .from("page_templates")
-        .select("id, tipo, header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
+        .select("id, tipo, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json")
         .eq("catalog_id", catalogId),
       supabase
         .from("sections")
@@ -118,6 +118,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       margens: row.margens as PageTemplateInput["margens"],
       fundoUrl: row.fundo_key ? getPublicUrl(row.fundo_key as string) : null,
       fundoKey: (row.fundo_key as string | null) ?? null,
+      fundoPdfKey: (row.fundo_pdf_key as string | null) ?? null,
       illustracoes,
       formas: ((row.formas_json as PageShape[] | null) ?? []) as PageShape[],
     };

@@ -45,6 +45,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
   const [altura, setAltura] = useState(DEFAULT_PAGE_HEIGHT);
   const [margens, setMargens] = useState<Margens>(() => defaultMargens(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT));
   const [fundoKey, setFundoKey] = useState<string | null>(null);
+  const [fundoPdfKey, setFundoPdfKey] = useState<string | null>(null);
   const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
   const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
@@ -73,6 +74,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       setMargens(avulsa.template.margens);
       setElementosHabilitados(avulsa.template.elementosHabilitados);
       setFundoKey(avulsa.template.fundoKey);
+      setFundoPdfKey(avulsa.template.fundoPdfKey);
       setFundoUrl(avulsa.template.fundoUrl);
       setIllustracoes(avulsa.template.illustracoes);
       setFormas(avulsa.template.formas);
@@ -101,8 +103,9 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
     setMargens((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleChangeFundo(patch: { key: string | null; url: string | null }) {
+  function handleChangeFundo(patch: { key: string | null; url: string | null; pdfKey: string | null }) {
     setFundoKey(patch.key);
+    setFundoPdfKey(patch.pdfKey);
     setFundoUrl(patch.url);
   }
 
@@ -146,7 +149,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       const [sizeRes, tituloRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
         updatePaginaAvulsaTitulo(avulsaId, titulo),
-        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey, illustracoes, formas }),
+        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
       ]);
       const err = sizeRes.error ?? tituloRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Página avulsa salva.");
@@ -224,6 +227,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
           margens={margens}
           onChangeMargens={handleChangeMargens}
           fundoUrl={fundoUrl}
+          fundoPdfKey={fundoPdfKey}
           onChangeFundo={handleChangeFundo}
           illustracoes={illustracoes}
           onAddIllustracao={handleAddIllustracao}

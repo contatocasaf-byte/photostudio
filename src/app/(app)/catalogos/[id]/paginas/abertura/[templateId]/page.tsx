@@ -51,6 +51,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
   const [altura, setAltura] = useState(DEFAULT_PAGE_HEIGHT);
   const [margens, setMargens] = useState<Margens>(() => defaultMargens(DEFAULT_PAGE_WIDTH, DEFAULT_PAGE_HEIGHT));
   const [fundoKey, setFundoKey] = useState<string | null>(null);
+  const [fundoPdfKey, setFundoPdfKey] = useState<string | null>(null);
   const [fundoUrl, setFundoUrl] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
   const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
@@ -90,6 +91,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
         setMargens(detail.template.margens);
         setElementosHabilitados(detail.template.elementosHabilitados);
         setFundoKey(detail.template.fundoKey);
+        setFundoPdfKey(detail.template.fundoPdfKey);
         setFundoUrl(detail.template.fundoUrl);
         setIllustracoes(detail.template.illustracoes);
         setFormas(detail.template.formas);
@@ -117,6 +119,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
       setMargens(t.margens);
       setElementosHabilitados(t.elementosHabilitados);
       setFundoKey(t.fundoKey);
+      setFundoPdfKey(t.fundoPdfKey);
       setFundoUrl(t.fundoUrl);
       setIllustracoes(t.illustracoes);
       setFormas(t.formas);
@@ -147,8 +150,9 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
     setMargens((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleChangeFundo(patch: { key: string | null; url: string | null }) {
+  function handleChangeFundo(patch: { key: string | null; url: string | null; pdfKey: string | null }) {
     setFundoKey(patch.key);
+    setFundoPdfKey(patch.pdfKey);
     setFundoUrl(patch.url);
   }
 
@@ -192,7 +196,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
       const [sizeRes, nomeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
         updateAberturaSecaoNome(templateId, nome),
-        saveAberturaSecaoTemplate(templateId, { layout, elementosHabilitados, margens, fundoKey, illustracoes, formas }),
+        saveAberturaSecaoTemplate(templateId, { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
       ]);
       const err = sizeRes.error ?? nomeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Abertura de seção salva.");
@@ -295,6 +299,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
           margens={margens}
           onChangeMargens={handleChangeMargens}
           fundoUrl={fundoUrl}
+          fundoPdfKey={fundoPdfKey}
           onChangeFundo={handleChangeFundo}
           illustracoes={illustracoes}
           onAddIllustracao={handleAddIllustracao}

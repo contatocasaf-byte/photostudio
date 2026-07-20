@@ -42,6 +42,12 @@ export type PageTemplateData = {
   elementosHabilitados: PageFieldKey[];
   margens: Margens;
   fundoKey: string | null;
+  // Upload de PDF como fundo (Fase 5, Parte 17) — chave do PDF ORIGINAL
+  // no R2, null quando o fundo é uma imagem comum. fundoKey continua
+  // apontando pra uma imagem sempre (o PNG rasterizado a partir do PDF
+  // quando aplicável) — é o que o editor/preview desenham; fundoPdfKey
+  // só é lido na hora de gerar o PDF final (ver pdfExport.ts).
+  fundoPdfKey: string | null;
   illustracoes: PageIllustration[];
   formas: PageShape[];
 };
@@ -55,7 +61,7 @@ export async function getPageTemplate(
 
   const { data, error } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
+    .select("header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json")
     .eq("catalog_id", catalogId)
     .eq("tipo", tipo)
     .maybeSingle();
@@ -89,6 +95,7 @@ export async function getPageTemplate(
       elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
       margens: data.margens as Margens,
       fundoKey: data.fundo_key,
+      fundoPdfKey: data.fundo_pdf_key,
       fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
       illustracoes,
       formas: ((data.formas_json as PageShape[] | null) ?? []) as PageShape[],
@@ -113,6 +120,7 @@ export async function savePageTemplate(catalogId: string, tipo: PageTipo, data: 
     footer_json: footer,
     margens: data.margens,
     fundo_key: data.fundoKey,
+    fundo_pdf_key: data.fundoPdfKey,
     illustracoes_json: data.illustracoes,
     formas_json: data.formas,
   };
@@ -231,7 +239,7 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("page_templates")
-    .select("nome, header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
+    .select("nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -258,6 +266,7 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
         elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
         margens: data.margens as Margens,
         fundoKey: data.fundo_key,
+        fundoPdfKey: data.fundo_pdf_key,
         fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
         illustracoes,
         formas: ((data.formas_json as PageShape[] | null) ?? []) as PageShape[],
@@ -287,6 +296,7 @@ export async function saveAberturaSecaoTemplate(id: string, data: PageTemplateDa
       footer_json: footer,
       margens: data.margens,
       fundo_key: data.fundoKey,
+      fundo_pdf_key: data.fundoPdfKey,
       illustracoes_json: data.illustracoes,
       formas_json: data.formas,
     })
