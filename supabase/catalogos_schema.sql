@@ -247,3 +247,18 @@ grant select, insert, update, delete on public.paginas_avulsas to authenticated;
 -- em header_json até o próximo Salvar, quando migra sozinha.
 alter table public.page_templates
   add column illustracoes_json jsonb not null default '[]'::jsonb;
+
+-- Abertura de seção personalizável por seção (Fase 5, Parte 15) — só
+-- "abertura_secao" ganha múltiplas variantes por catálogo (nome +
+-- design próprios); capa/continuação continuam 1 por catálogo. Cada
+-- seção escolhe qual usar, ou herda o padrão do catálogo (FK que
+-- existia sem uso desde a Parte 3, renomeada aqui pra refletir o uso
+-- real).
+alter table public.page_templates
+  add column nome text;
+
+alter table public.catalogs
+  rename column page_template_default_id to abertura_secao_default_id;
+
+alter table public.sections
+  add column abertura_template_id uuid references public.page_templates(id) on delete set null;

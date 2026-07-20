@@ -21,6 +21,9 @@ export type Section = {
   titulo: string;
   ordem: number;
   colunas: number;
+  // Qual variante de "Abertura de Seção" esta seção usa (Fase 5, Parte
+  // 15) — null = herda o padrão do catálogo (catalogs.abertura_secao_default_id).
+  abertura_template_id: string | null;
 };
 
 async function requireUser() {
@@ -94,6 +97,9 @@ export type CatalogDetail = {
   paginaLargura: number;
   paginaAltura: number;
   planilhaId: string | null;
+  // Variante de "Abertura de Seção" usada por padrão quando a seção
+  // não escolhe uma própria (Fase 5, Parte 15).
+  aberturaSecaoDefaultId: string | null;
 };
 
 export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail; error?: string }> {
@@ -101,7 +107,7 @@ export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail;
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("catalogs")
-    .select("id, nome, pagina_largura, pagina_altura, planilha_id")
+    .select("id, nome, pagina_largura, pagina_altura, planilha_id, abertura_secao_default_id")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -112,8 +118,20 @@ export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail;
       paginaLargura: data.pagina_largura,
       paginaAltura: data.pagina_altura,
       planilhaId: data.planilha_id,
+      aberturaSecaoDefaultId: data.abertura_secao_default_id,
     },
   };
+}
+
+// Padrão do catálogo pra "Abertura de Seção" (Fase 5, Parte 15) — vale
+// pra toda seção que não escolher uma variante própria. templateId=null
+// remove o padrão (nenhuma seção sem escolha própria mostra abertura).
+export async function setCatalogAberturaDefault(catalogId: string, templateId: string | null): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { error } = await supabase.from("catalogs").update({ abertura_secao_default_id: templateId }).eq("id", catalogId);
+  if (error) return { error: error.message };
+  return {};
 }
 
 export async function getSection(id: string): Promise<{ section?: Section; error?: string }> {
@@ -121,7 +139,7 @@ export async function getSection(id: string): Promise<{ section?: Section; error
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("sections")
-    .select("id, catalog_id, numero, titulo, ordem, colunas")
+    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -133,7 +151,7 @@ export async function listSections(catalogId: string): Promise<{ sections?: Sect
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("sections")
-    .select("id, catalog_id, numero, titulo, ordem, colunas")
+    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id")
     .eq("catalog_id", catalogId)
     .order("ordem", { ascending: true });
   if (error) return { error: error.message };
@@ -145,6 +163,7 @@ export async function createSection(params: {
   numero: string;
   titulo: string;
   colunas: number;
+  aberturaTemplateId?: string | null;
 }): Promise<{ id?: string; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -170,6 +189,7 @@ export async function createSection(params: {
       titulo,
       colunas: Math.max(1, params.colunas),
       ordem: nextOrdem,
+      abertura_template_id: params.aberturaTemplateId ?? null,
     })
     .select("id")
     .single();
@@ -179,7 +199,7 @@ export async function createSection(params: {
 
 export async function updateSection(
   id: string,
-  patch: { numero?: string; titulo?: string; colunas?: number }
+  patch: { numero?: string; titulo?: string; colunas?: number; aberturaTemplateId?: string | null }
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -192,6 +212,7 @@ export async function updateSection(
     update.titulo = titulo;
   }
   if (patch.colunas !== undefined) update.colunas = Math.max(1, patch.colunas);
+  if (patch.aberturaTemplateId !== undefined) update.abertura_template_id = patch.aberturaTemplateId;
 
   const { error } = await supabase.from("sections").update(update).eq("id", id);
   if (error) return { error: error.message };

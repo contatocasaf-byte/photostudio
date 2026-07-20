@@ -30,28 +30,32 @@ import {
   swapPaginaAvulsaOrdem,
   type PaginaAvulsaListItem,
 } from "../paginas-avulsas/actions";
+import { listAberturaSecaoTemplates, type AberturaSecaoListItem } from "../paginas/actions";
 
 function SectionForm({
   initial,
+  aberturaOptions,
   onCancel,
   onSubmit,
   submitLabel,
 }: {
-  initial: { numero: string; titulo: string; colunas: number };
+  initial: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null };
+  aberturaOptions: AberturaSecaoListItem[];
   onCancel?: () => void;
-  onSubmit: (values: { numero: string; titulo: string; colunas: number }) => Promise<void>;
+  onSubmit: (values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) => Promise<void>;
   submitLabel: string;
 }) {
   const [numero, setNumero] = useState(initial.numero);
   const [titulo, setTitulo] = useState(initial.titulo);
   const [colunas, setColunas] = useState(initial.colunas);
+  const [aberturaTemplateId, setAberturaTemplateId] = useState(initial.aberturaTemplateId);
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
     if (!titulo.trim()) return;
     setSaving(true);
     try {
-      await onSubmit({ numero, titulo, colunas });
+      await onSubmit({ numero, titulo, colunas, aberturaTemplateId });
     } finally {
       setSaving(false);
     }
@@ -82,6 +86,21 @@ function SectionForm({
           className="w-14 rounded-md border border-slate-300 px-2 py-1 text-sm"
         />
       </label>
+      <label className="flex items-center gap-1.5 text-xs text-slate-500">
+        Abertura desta seção
+        <select
+          value={aberturaTemplateId ?? ""}
+          onChange={(e) => setAberturaTemplateId(e.target.value || null)}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+        >
+          <option value="">Padrão do catálogo</option>
+          {aberturaOptions.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.nome}
+            </option>
+          ))}
+        </select>
+      </label>
       <button
         onClick={handleSubmit}
         disabled={saving || !titulo.trim()}
@@ -101,12 +120,14 @@ function SectionForm({
 function SectionRow({
   catalogId,
   section,
+  aberturaOptions,
   onSave,
   onDelete,
 }: {
   catalogId: string;
   section: Section;
-  onSave: (values: { numero: string; titulo: string; colunas: number }) => Promise<void>;
+  aberturaOptions: AberturaSecaoListItem[];
+  onSave: (values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) => Promise<void>;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
@@ -120,7 +141,13 @@ function SectionRow({
     >
       {editing ? (
         <SectionForm
-          initial={{ numero: section.numero ?? "", titulo: section.titulo, colunas: section.colunas }}
+          initial={{
+            numero: section.numero ?? "",
+            titulo: section.titulo,
+            colunas: section.colunas,
+            aberturaTemplateId: section.abertura_template_id,
+          }}
+          aberturaOptions={aberturaOptions}
           submitLabel="Salvar"
           onCancel={() => setEditing(false)}
           onSubmit={async (values) => {
@@ -297,6 +324,7 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
   const [showPlanilhaPicker, setShowPlanilhaPicker] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
   const [avulsas, setAvulsas] = useState<PaginaAvulsaListItem[]>([]);
+  const [aberturaOptions, setAberturaOptions] = useState<AberturaSecaoListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -311,19 +339,23 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getCatalog(id), listSections(id), listPaginasAvulsas(id)]).then(([catalogRes, sectionsRes, avulsasRes]) => {
-      if (cancelled) return;
-      if (catalogRes.error) setError(catalogRes.error);
-      else {
-        setCatalogNome(catalogRes.catalog?.nome ?? "");
-        setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+    Promise.all([getCatalog(id), listSections(id), listPaginasAvulsas(id), listAberturaSecaoTemplates(id)]).then(
+      ([catalogRes, sectionsRes, avulsasRes, aberturaRes]) => {
+        if (cancelled) return;
+        if (catalogRes.error) setError(catalogRes.error);
+        else {
+          setCatalogNome(catalogRes.catalog?.nome ?? "");
+          setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+        }
+        if (sectionsRes.error) setError(sectionsRes.error);
+        else setSections(sectionsRes.sections ?? []);
+        if (avulsasRes.error) setError(avulsasRes.error);
+        else setAvulsas(avulsasRes.avulsas ?? []);
+        if (aberturaRes.error) setError(aberturaRes.error);
+        else setAberturaOptions(aberturaRes.templates ?? []);
+        setLoading(false);
       }
-      if (sectionsRes.error) setError(sectionsRes.error);
-      else setSections(sectionsRes.sections ?? []);
-      if (avulsasRes.error) setError(avulsasRes.error);
-      else setAvulsas(avulsasRes.avulsas ?? []);
-      setLoading(false);
-    });
+    );
     return () => {
       cancelled = true;
     };
@@ -347,7 +379,7 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
     setEditingNome(false);
   }
 
-  async function handleCreateSection(values: { numero: string; titulo: string; colunas: number }) {
+  async function handleCreateSection(values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) {
     const res = await createSection({ catalogId: id, ...values });
     if (res.error) {
       setError(res.error);
@@ -358,13 +390,20 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
     setShowNewForm(false);
   }
 
-  async function handleSaveSection(sectionId: string, values: { numero: string; titulo: string; colunas: number }) {
+  async function handleSaveSection(
+    sectionId: string,
+    values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }
+  ) {
     const res = await updateSection(sectionId, values);
     if (res.error) {
       setError(res.error);
       return;
     }
-    setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, ...values, numero: values.numero || null } : s)));
+    setSections((prev) =>
+      prev.map((s) =>
+        s.id === sectionId ? { ...s, ...values, numero: values.numero || null, abertura_template_id: values.aberturaTemplateId } : s
+      )
+    );
   }
 
   async function handleDeleteSection(section: Section) {
@@ -481,7 +520,8 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
       {showNewForm && (
         <div className="mt-2 rounded-md border border-dashed border-slate-300 p-3">
           <SectionForm
-            initial={{ numero: "", titulo: "", colunas: 3 }}
+            initial={{ numero: "", titulo: "", colunas: 3, aberturaTemplateId: null }}
+            aberturaOptions={aberturaOptions}
             submitLabel="Criar seção"
             onCancel={() => setShowNewForm(false)}
             onSubmit={handleCreateSection}
@@ -506,6 +546,7 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
                   <SectionRow
                     catalogId={id}
                     section={s}
+                    aberturaOptions={aberturaOptions}
                     onSave={(values) => handleSaveSection(s.id, values)}
                     onDelete={() => handleDeleteSection(s)}
                   />

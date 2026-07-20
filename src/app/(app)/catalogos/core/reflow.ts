@@ -58,6 +58,11 @@ export type SectionReflowInput = {
   // continuar desenhando com o molde antigo.
   templateVersions: { versao: number; template: CardTemplateInput }[];
   items: { product: ProductRow; cardTemplateVersao: number }[]; // já ordenados (ver Parte 5)
+  // Variante de "Abertura de Seção" escolhida especificamente pra essa
+  // seção (Fase 5, Parte 15) — null = sem escolha própria, cai pro
+  // padrão do catálogo (pageTemplates.abertura_secao, resolvido em
+  // preview/actions.ts a partir de catalogs.abertura_secao_default_id).
+  aberturaTemplate: PageTemplateInput | null;
 };
 
 export type PageTemplateInput = {
@@ -233,7 +238,10 @@ function reflowSection(
 
   while (indice < itens.length) {
     const tipoPagina: PageTipo = primeiraPagina ? "abertura_secao" : "continuacao";
-    const pageTemplate = pageTemplates[tipoPagina] ?? null;
+    // Primeira página da seção: usa a variante de abertura ESCOLHIDA
+    // por essa seção (Parte 15), se houver — senão cai pro padrão do
+    // catálogo. Continuação nunca varia por seção, sempre o slot único.
+    const pageTemplate = primeiraPagina ? (section.aberturaTemplate ?? pageTemplates.abertura_secao ?? null) : (pageTemplates[tipoPagina] ?? null);
     const areaUtilAltura = pageTemplate ? paginaAltura - pageTemplate.margens.top - pageTemplate.margens.bottom : paginaAltura;
     const areaUtilLargura = pageTemplate ? paginaLargura - pageTemplate.margens.left - pageTemplate.margens.right : paginaLargura;
 
