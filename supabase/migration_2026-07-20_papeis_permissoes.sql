@@ -47,12 +47,17 @@ create policy "usuario le proprio perfil" on public.perfis
 create policy "usuario le propria permissao" on public.permissoes_usuario
   for select to authenticated using (usuario_id = auth.uid());
 
--- GRANT de tabela é obrigatório mesmo com RLS certo (mesma pegadinha
--- já documentada no resto do schema: RLS filtra LINHAS, mas sem o
--- GRANT o Postgres já barra a TABELA inteira pro role "authenticated").
--- Só select, de propósito — sem insert/update/delete pra authenticated.
-grant usage on schema public to authenticated;
+-- GRANT de tabela é obrigatório mesmo com RLS certo (mesma pegadinha já
+-- documentada no resto do schema: RLS filtra LINHAS, mas sem o GRANT o
+-- Postgres já barra a TABELA inteira pro role). Vale tanto pra
+-- "authenticated" (leitura da própria linha, direto do navegador)
+-- quanto pra "service_role" (usado pelas Server Actions administrativas
+-- de /usuarios, que fazem CRUD completo via src/lib/supabase/admin.ts —
+-- sem este grant, toda ação em /usuarios falha com "permission denied
+-- for table perfis", mesmo o service_role já ignorando RLS).
+grant usage on schema public to authenticated, service_role;
 grant select on public.perfis, public.permissoes_usuario to authenticated;
+grant select, insert, update, delete on public.perfis, public.permissoes_usuario to service_role;
 
 -- Trigger: qualquer conta nova em auth.users (criada por QUALQUER via —
 -- dashboard do Supabase, Admin API, futuro) nasce com um perfil
