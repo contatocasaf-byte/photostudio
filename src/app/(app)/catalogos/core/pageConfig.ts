@@ -79,6 +79,35 @@ export function defaultPageIllustration(id: string): PageIllustration {
   return { id, x: 40, y: 40, w: 220, h: 160, key: null, url: null };
 }
 
+// Formas decorativas na página (Fase 5, Parte 16) — mesmo padrão de
+// CardShape no card-molde (cardConfig.ts): lista livre, sem vínculo com
+// nenhum campo fixo. Tipo independente em vez de importado de
+// cardConfig — mesma decisão já tomada pra PageIllustration/
+// PageImageElementConfig (módulos de página e card ficam sem
+// dependência cruzada, mesmo com forma estruturalmente idêntica).
+export type PageShapeType = "retangulo" | "elipse" | "triangulo";
+
+export const PAGE_SHAPE_TYPES: { value: PageShapeType; label: string }[] = [
+  { value: "retangulo", label: "Retângulo" },
+  { value: "elipse", label: "Elipse" },
+  { value: "triangulo", label: "Triângulo" },
+];
+
+export type PageShape = {
+  id: string;
+  type: PageShapeType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+  opacity: number; // 0-1
+};
+
+export function defaultPageShape(type: PageShapeType, id: string): PageShape {
+  return { id, type, x: 40, y: 40, w: 120, h: 120, color: "#4fc3f7", opacity: 0.5 };
+}
+
 // Biblioteca de fontes (Fase 5, Parte 11) — mesma de src/lib/fonts/,
 // compartilhada com o Gerador de Ofertas e com o card-molde
 // (cardConfig.ts). "Arial" continua o padrão — modelo de página salvo

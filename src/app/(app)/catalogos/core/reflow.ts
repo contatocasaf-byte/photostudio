@@ -27,6 +27,7 @@ import {
   type PageFieldKey,
   type PageIllustration,
   type PageLayout,
+  type PageShape,
   type PageTipo,
 } from "./pageConfig";
 import type { ProductRow } from "../produtos/actions";
@@ -78,6 +79,9 @@ export type PageTemplateInput = {
   // Lista sem limite (Fase 5, Parte 13) — "ilustracao" deixou de ser 1
   // campo fixo do layout.
   illustracoes: PageIllustration[];
+  // Formas decorativas da página (Fase 5, Parte 16), mesmo padrão de
+  // CardShape no card-molde.
+  formas: PageShape[];
 };
 
 // Página avulsa entre seções (Fase 5, Parte 12) — já com o template

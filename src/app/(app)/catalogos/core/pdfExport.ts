@@ -1,14 +1,15 @@
 // Monta o payload de exportação de PDF (Fase 5, Parte 10) a partir do
 // resultado JÁ CALCULADO de reflowCatalog() — espelha, campo a campo,
 // a ordem e a lógica de desenho de catalogos/[id]/preview/PreviewPageCanvas.tsx
-// (fundo -> campos de cabeçalho/rodapé -> bordas de card -> formas de
-// card -> campos de card), só que emitindo uma lista plana em vez de
-// nós Konva. Geometria/decisões de merge (cards encostados, versão de
-// molde por item) ficam 100% aqui — o backend Python só resolve o que
-// exige medição de pixel/fonte (encaixe de foto, quebra de texto).
+// (fundo -> formas de página -> campos de cabeçalho/rodapé -> bordas de
+// card -> formas de card -> campos de card), só que emitindo uma lista
+// plana em vez de nós Konva. Geometria/decisões de merge (cards
+// encostados, versão de molde por item) ficam 100% aqui — o backend
+// Python só resolve o que exige medição de pixel/fonte (encaixe de
+// foto, quebra de texto).
 import type { TextAlign } from "@/lib/canvasText";
 import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
-import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "./pageConfig";
+import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
 export type PdfImageSpec = {
@@ -39,7 +40,11 @@ export type PdfTextSpec = {
 export type PdfFieldSpec = PdfImageSpec | PdfTextSpec;
 
 export type PdfShapeSpec = {
-  shapeType: CardShapeType;
+  // Card e página usam o mesmo conjunto de tipos (retangulo/elipse/
+  // triangulo) — tipos independentes na origem (cardConfig.ts/
+  // pageConfig.ts, sem acoplar os dois módulos), mas estruturalmente
+  // idênticos aqui, onde só a geometria já resolvida importa.
+  shapeType: CardShapeType | PageShapeType;
   x: number;
   y: number;
   w: number;
@@ -60,6 +65,7 @@ export type PdfBorderSpec = {
 
 export type PdfPageSpec = {
   background: PdfImageSpec | null;
+  pageShapes: PdfShapeSpec[];
   pageFields: PdfFieldSpec[];
   cardBorders: PdfBorderSpec[];
   cardShapes: PdfShapeSpec[];
@@ -89,6 +95,22 @@ function buildBackground(page: PreviewPage, paginaLargura: number, paginaAltura:
   const key = page.pageTemplate?.fundoKey;
   if (!key) return null;
   return { kind: "image", key, x: 0, y: 0, w: paginaLargura, h: paginaAltura, fit: "stretch" };
+}
+
+// Formas decorativas da PÁGINA (Fase 5, Parte 16) — geometria já
+// absoluta (sem origem/escala de card), sem sangria (não faz parte de
+// grade nenhuma pra precisar cobrir costura entre vizinhos).
+function buildPageShapes(page: PreviewPage): PdfShapeSpec[] {
+  if (!page.pageTemplate) return [];
+  return page.pageTemplate.formas.map((shape) => ({
+    shapeType: shape.type,
+    x: shape.x,
+    y: shape.y,
+    w: shape.w,
+    h: shape.h,
+    color: shape.color,
+    opacity: shape.opacity,
+  }));
 }
 
 function buildPageFields(page: PreviewPage, numeroPagina: number): PdfFieldSpec[] {
@@ -316,6 +338,7 @@ function buildPageSpec(
 ): PdfPageSpec {
   return {
     background: buildBackground(page, paginaLargura, paginaAltura),
+    pageShapes: buildPageShapes(page),
     pageFields: buildPageFields(page, numeroPagina),
     cardBorders: buildCardBorders(page),
     cardShapes: buildCardShapes(page),

@@ -10,7 +10,13 @@ import {
   type CardShape,
   type CardTextElementConfig,
 } from "../../core/cardConfig";
-import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageTextElementConfig } from "../../core/pageConfig";
+import {
+  PAGE_FIELD_DEFS,
+  substitutePlaceholders,
+  type PageImageElementConfig,
+  type PageShape,
+  type PageTextElementConfig,
+} from "../../core/pageConfig";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
@@ -235,6 +241,45 @@ function PageBackground({ url, canvasW, canvasH }: { url: string | null; canvasW
   return <KonvaImage image={img} x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} listening={false} />;
 }
 
+// Forma decorativa da PÁGINA (Fase 5, Parte 16) — mesmo desenho do
+// PreviewCardShape, só que em espaço de página cru (sem origem/escala
+// de card, sem sangria — não faz parte de nenhuma grade de cards pra
+// precisar cobrir costura entre elementos vizinhos).
+function PreviewPageShape({ shape, scale }: { shape: PageShape; scale: number }) {
+  const x = ORIGIN + shape.x * scale;
+  const y = ORIGIN + shape.y * scale;
+  const width = shape.w * scale;
+  const height = shape.h * scale;
+  const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
+
+  if (shape.type === "retangulo") {
+    return <Rect {...common} />;
+  }
+
+  const sceneFunc =
+    shape.type === "elipse"
+      ? (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, Math.max(0.01, w / 2), Math.max(0.01, h / 2), 0, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        }
+      : (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 0);
+          ctx.lineTo(w, h);
+          ctx.lineTo(0, h);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        };
+
+  return <KonvaShape {...common} sceneFunc={sceneFunc} />;
+}
+
 // Campo de TEXTO de um card posicionado na grade — dado REAL do
 // produto, já com o rótulo do template aplicado (resolveCardFieldDisplayText),
 // não mais texto de exemplo.
@@ -363,6 +408,8 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
         <Rect x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} fill="#ffffff" stroke="#e2e8f0" strokeWidth={1} />
 
         <PageBackground url={page.pageTemplate?.fundoUrl ?? null} canvasW={canvasW} canvasH={canvasH} />
+
+        {page.pageTemplate?.formas.map((shape) => <PreviewPageShape key={shape.id} shape={shape} scale={scale} />)}
 
         {page.pageTemplate &&
           PAGE_FIELD_DEFS.filter((d) => page.pageTemplate!.elementosHabilitados.includes(d.key)).map((def) => {

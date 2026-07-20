@@ -8,6 +8,7 @@ import {
   defaultMargens,
   defaultPageIllustration,
   defaultPageLayout,
+  defaultPageShape,
   DEFAULT_ELEMENTOS_HABILITADOS,
   DEFAULT_PAGE_WIDTH,
   DEFAULT_PAGE_HEIGHT,
@@ -16,6 +17,8 @@ import {
   type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
+  type PageShape,
+  type PageShapeType,
   type PageTextElementConfig,
 } from "../../../../core/pageConfig";
 // Reaproveita os mesmos componentes do editor de página "de tipo fixo"
@@ -45,6 +48,8 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
   const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
   const [selectedIllustrationId, setSelectedIllustrationId] = useState<string | null>(null);
+  const [formas, setFormas] = useState<PageShape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +74,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
       setFundoKey(detail.template.fundoKey);
       setFundoUrl(detail.template.fundoUrl);
       setIllustracoes(detail.template.illustracoes);
+      setFormas(detail.template.formas);
       setLoading(false);
     });
     return () => {
@@ -115,6 +121,23 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
     setIllustracoes((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
+  function handleAddForma(type: PageShapeType) {
+    const nova = defaultPageShape(type, crypto.randomUUID());
+    setFormas((prev) => [...prev, nova]);
+    setSelectedKey(null);
+    setSelectedIllustrationId(null);
+    setSelectedShapeId(nova.id);
+  }
+
+  function handleRemoveForma(id: string) {
+    setFormas((prev) => prev.filter((s) => s.id !== id));
+    if (selectedShapeId === id) setSelectedShapeId(null);
+  }
+
+  function handleUpdateForma(id: string, patch: Partial<PageShape>) {
+    setFormas((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
   async function handleSave() {
     setSaving(true);
     setStatus(null);
@@ -122,7 +145,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
       const [sizeRes, nomeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
         updateAberturaSecaoNome(templateId, nome),
-        saveAberturaSecaoTemplate(templateId, { layout, elementosHabilitados, margens, fundoKey, illustracoes }),
+        saveAberturaSecaoTemplate(templateId, { layout, elementosHabilitados, margens, fundoKey, illustracoes, formas }),
       ]);
       const err = sizeRes.error ?? nomeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Abertura de seção salva.");
@@ -181,6 +204,10 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
             onIllustracoesChange={setIllustracoes}
             selectedIllustrationId={selectedIllustrationId}
             onSelectIllustration={setSelectedIllustrationId}
+            formas={formas}
+            onFormasChange={setFormas}
+            selectedShapeId={selectedShapeId}
+            onSelectShape={setSelectedShapeId}
           />
         </div>
         <PropertiesPanel
@@ -203,6 +230,12 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
           onUpdateIllustracao={handleUpdateIllustracao}
           selectedIllustrationId={selectedIllustrationId}
           onSelectIllustration={setSelectedIllustrationId}
+          formas={formas}
+          onAddForma={handleAddForma}
+          onRemoveForma={handleRemoveForma}
+          onUpdateForma={handleUpdateForma}
+          selectedShapeId={selectedShapeId}
+          onSelectShape={setSelectedShapeId}
         />
       </div>
     </div>

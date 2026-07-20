@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Shape as KonvaShape, Transformer } from "react-konva";
 import type Konva from "konva";
 import {
   DEFAULT_FONT_FAMILY,
@@ -14,6 +14,7 @@ import {
   type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
+  type PageShape,
   type PageTextElementConfig,
 } from "../../../core/pageConfig";
 import { drawTextFit } from "@/lib/canvasText";
@@ -277,6 +278,92 @@ function IllustrationNode({
   );
 }
 
+// Forma decorativa (retângulo/elipse/triângulo) — mesmo padrão do
+// ShapeNode do card-molde (CardEditorCanvas.tsx): retângulo usa o
+// <Rect> nativo do Konva, elipse/triângulo usam <Shape> com sceneFunc
+// custom (desenha via Canvas 2D direto), assim os três continuam com
+// x()/y()/width()/height() padrão, compatíveis com o mesmo Transformer
+// dos outros elementos.
+function PageShapeNode({
+  shape,
+  scale,
+  selected,
+  onSelect,
+  onUpdate,
+  registerRef,
+}: {
+  shape: PageShape;
+  scale: number;
+  selected: boolean;
+  onSelect: () => void;
+  onUpdate: (patch: Partial<PageShape>) => void;
+  registerRef: (key: string, node: Konva.Node | null) => void;
+}) {
+  const x = ORIGIN + shape.x * scale;
+  const y = ORIGIN + shape.y * scale;
+  const width = shape.w * scale;
+  const height = shape.h * scale;
+
+  function handleDrag(e: Konva.KonvaEventObject<DragEvent>) {
+    onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) });
+  }
+
+  function handleTransform(e: Konva.KonvaEventObject<Event>) {
+    const node = e.target;
+    const newW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale));
+    const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale));
+    node.scaleX(1);
+    node.scaleY(1);
+    node.width(newW * scale);
+    node.height(newH * scale);
+    onUpdate({ w: newW, h: newH, x: Math.round((node.x() - ORIGIN) / scale), y: Math.round((node.y() - ORIGIN) / scale) });
+  }
+
+  const common = {
+    x,
+    y,
+    width,
+    height,
+    fill: shape.color,
+    opacity: shape.opacity,
+    stroke: selected ? "#4fc3f7" : undefined,
+    strokeWidth: selected ? 2 : 0,
+    draggable: true,
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragMove: handleDrag,
+    onDragEnd: handleDrag,
+    onTransform: handleTransform,
+  };
+
+  if (shape.type === "retangulo") {
+    return <Rect ref={(node) => registerRef(shape.id, node)} {...common} />;
+  }
+
+  const sceneFunc =
+    shape.type === "elipse"
+      ? (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.ellipse(w / 2, h / 2, Math.max(0.01, w / 2), Math.max(0.01, h / 2), 0, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        }
+      : (ctx: Konva.Context, node: Konva.Shape) => {
+          const w = node.width();
+          const h = node.height();
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 0);
+          ctx.lineTo(w, h);
+          ctx.lineTo(0, h);
+          ctx.closePath();
+          ctx.fillStrokeShape(node);
+        };
+
+  return <KonvaShape ref={(node) => registerRef(shape.id, node)} {...common} sceneFunc={sceneFunc} />;
+}
+
 function TextFieldNode({
   fieldKey,
   cfg,
@@ -458,6 +545,10 @@ export type PageEditorCanvasProps = {
   onIllustracoesChange: (updater: (prev: PageIllustration[]) => PageIllustration[]) => void;
   selectedIllustrationId: string | null;
   onSelectIllustration: (id: string | null) => void;
+  formas: PageShape[];
+  onFormasChange: (updater: (prev: PageShape[]) => PageShape[]) => void;
+  selectedShapeId: string | null;
+  onSelectShape: (id: string | null) => void;
 };
 
 export default function PageEditorCanvas({
@@ -475,6 +566,10 @@ export default function PageEditorCanvas({
   onIllustracoesChange,
   selectedIllustrationId,
   onSelectIllustration,
+  formas,
+  onFormasChange,
+  selectedShapeId,
+  onSelectShape,
 }: PageEditorCanvasProps) {
   const { scale, canvasW, canvasH } = computeScale(largura, altura);
 
@@ -504,7 +599,7 @@ export default function PageEditorCanvas({
   useEffect(() => {
     const tr = fieldTransformerRef.current;
     if (!tr) return;
-    const selectedRefKey = selectedIllustrationId ?? selectedKey;
+    const selectedRefKey = selectedShapeId ?? selectedIllustrationId ?? selectedKey;
     const node = selectedRefKey ? nodeRefs.current[selectedRefKey] : undefined;
     tr.nodes(node ? [node] : []);
     tr.getLayer()?.batchDraw();
@@ -518,11 +613,15 @@ export default function PageEditorCanvas({
     onIllustracoesChange((prev) => prev.map((ill) => (ill.id === id ? { ...ill, ...patch } : ill)));
   }
 
+  function updateShape(id: string, patch: Partial<PageShape>) {
+    onFormasChange((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
-  // Ilustração selecionada usa o mesmo conjunto de âncoras livres (8
-  // pontos) já usado pro campo de imagem — redimensiona livre em
+  // Ilustração/forma selecionada usa o mesmo conjunto de âncoras livres
+  // (8 pontos) já usado pro campo de imagem — redimensiona livre em
   // qualquer eixo.
-  const isImageSelection = selectedDef?.type === "image" || selectedIllustrationId !== null;
+  const isFreeResize = selectedDef?.type === "image" || selectedIllustrationId !== null || selectedShapeId !== null;
   const stageW = canvasW + ORIGIN * 2;
   const stageH = canvasH + ORIGIN * 2;
 
@@ -541,12 +640,14 @@ export default function PageEditorCanvas({
         if (e.target === e.target.getStage()) {
           onSelect(null);
           onSelectIllustration(null);
+          onSelectShape(null);
         }
       }}
       onTap={(e) => {
         if (e.target === e.target.getStage()) {
           onSelect(null);
           onSelectIllustration(null);
+          onSelectShape(null);
         }
       }}
     >
@@ -563,6 +664,22 @@ export default function PageEditorCanvas({
 
         <Rect {...marginRect} stroke="#f59e0b" strokeWidth={1} dash={[3, 3]} listening={false} />
 
+        {formas.map((shape) => (
+          <PageShapeNode
+            key={shape.id}
+            shape={shape}
+            scale={scale}
+            selected={selectedShapeId === shape.id}
+            onSelect={() => {
+              onSelect(null);
+              onSelectIllustration(null);
+              onSelectShape(shape.id);
+            }}
+            onUpdate={(patch) => updateShape(shape.id, patch)}
+            registerRef={registerRef}
+          />
+        ))}
+
         {illustracoes.map((ill) => (
           <IllustrationNode
             key={ill.id}
@@ -571,6 +688,7 @@ export default function PageEditorCanvas({
             selected={selectedIllustrationId === ill.id}
             onSelect={() => {
               onSelect(null);
+              onSelectShape(null);
               onSelectIllustration(ill.id);
             }}
             onUpdate={(patch) => updateIllustration(ill.id, patch)}
@@ -588,6 +706,7 @@ export default function PageEditorCanvas({
               selected={selectedKey === def.key}
               onSelect={() => {
                 onSelectIllustration(null);
+                onSelectShape(null);
                 onSelect(def.key);
               }}
               onUpdate={(patch) => updateField(def.key, patch)}
@@ -603,6 +722,7 @@ export default function PageEditorCanvas({
               selected={selectedKey === def.key}
               onSelect={() => {
                 onSelectIllustration(null);
+                onSelectShape(null);
                 onSelect(def.key);
               }}
               onUpdate={(patch) => updateField(def.key, patch)}
@@ -615,7 +735,7 @@ export default function PageEditorCanvas({
         <Transformer
           ref={fieldTransformerRef}
           enabledAnchors={
-            isImageSelection
+            isFreeResize
               ? [
                   "top-left",
                   "top-right",

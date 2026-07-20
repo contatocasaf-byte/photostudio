@@ -9,6 +9,7 @@ import {
   defaultMargens,
   defaultPageIllustration,
   defaultPageLayout,
+  defaultPageShape,
   DEFAULT_ELEMENTOS_HABILITADOS,
   DEFAULT_PAGE_WIDTH,
   DEFAULT_PAGE_HEIGHT,
@@ -17,6 +18,8 @@ import {
   type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
+  type PageShape,
+  type PageShapeType,
   type PageTextElementConfig,
 } from "../../../core/pageConfig";
 // Reaproveita os mesmos componentes do editor de página "de tipo fixo"
@@ -46,6 +49,8 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
   const [selectedKey, setSelectedKey] = useState<PageFieldKey | null>(null);
   const [illustracoes, setIllustracoes] = useState<PageIllustration[]>([]);
   const [selectedIllustrationId, setSelectedIllustrationId] = useState<string | null>(null);
+  const [formas, setFormas] = useState<PageShape[]>([]);
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +75,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       setFundoKey(avulsa.template.fundoKey);
       setFundoUrl(avulsa.template.fundoUrl);
       setIllustracoes(avulsa.template.illustracoes);
+      setFormas(avulsa.template.formas);
       setLoading(false);
     });
     return () => {
@@ -116,6 +122,23 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
     setIllustracoes((prev) => prev.map((i) => (i.id === idIll ? { ...i, ...patch } : i)));
   }
 
+  function handleAddForma(type: PageShapeType) {
+    const nova = defaultPageShape(type, crypto.randomUUID());
+    setFormas((prev) => [...prev, nova]);
+    setSelectedKey(null);
+    setSelectedIllustrationId(null);
+    setSelectedShapeId(nova.id);
+  }
+
+  function handleRemoveForma(id: string) {
+    setFormas((prev) => prev.filter((s) => s.id !== id));
+    if (selectedShapeId === id) setSelectedShapeId(null);
+  }
+
+  function handleUpdateForma(id: string, patch: Partial<PageShape>) {
+    setFormas((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
   async function handleSave() {
     setSaving(true);
     setStatus(null);
@@ -123,7 +146,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       const [sizeRes, tituloRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
         updatePaginaAvulsaTitulo(avulsaId, titulo),
-        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey, illustracoes }),
+        savePaginaAvulsaTemplate(avulsaId, { layout, elementosHabilitados, margens, fundoKey, illustracoes, formas }),
       ]);
       const err = sizeRes.error ?? tituloRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Página avulsa salva.");
@@ -182,6 +205,10 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
             onIllustracoesChange={setIllustracoes}
             selectedIllustrationId={selectedIllustrationId}
             onSelectIllustration={setSelectedIllustrationId}
+            formas={formas}
+            onFormasChange={setFormas}
+            selectedShapeId={selectedShapeId}
+            onSelectShape={setSelectedShapeId}
           />
         </div>
         <PropertiesPanel
@@ -204,6 +231,12 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
           onUpdateIllustracao={handleUpdateIllustracao}
           selectedIllustrationId={selectedIllustrationId}
           onSelectIllustration={setSelectedIllustrationId}
+          formas={formas}
+          onAddForma={handleAddForma}
+          onRemoveForma={handleRemoveForma}
+          onUpdateForma={handleUpdateForma}
+          selectedShapeId={selectedShapeId}
+          onSelectShape={setSelectedShapeId}
         />
       </div>
     </div>

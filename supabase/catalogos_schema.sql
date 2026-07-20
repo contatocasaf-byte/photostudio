@@ -262,3 +262,8 @@ alter table public.catalogs
 
 alter table public.sections
   add column abertura_template_id uuid references public.page_templates(id) on delete set null;
+
+-- Formas decorativas no editor de página (Fase 5, Parte 16) — mesmo
+-- padrão já usado no card-molde (card_templates.shapes_json).
+alter table public.page_templates
+  add column formas_json jsonb not null default '[]'::jsonb;

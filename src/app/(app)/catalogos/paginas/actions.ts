@@ -14,6 +14,7 @@ import {
   type PageImageElementConfig,
   type PageIllustration,
   type PageLayout,
+  type PageShape,
   type PageTipo,
 } from "../core/pageConfig";
 
@@ -42,6 +43,7 @@ export type PageTemplateData = {
   margens: Margens;
   fundoKey: string | null;
   illustracoes: PageIllustration[];
+  formas: PageShape[];
 };
 
 export async function getPageTemplate(
@@ -53,7 +55,7 @@ export async function getPageTemplate(
 
   const { data, error } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key, illustracoes_json")
+    .select("header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
     .eq("catalog_id", catalogId)
     .eq("tipo", tipo)
     .maybeSingle();
@@ -89,6 +91,7 @@ export async function getPageTemplate(
       fundoKey: data.fundo_key,
       fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
       illustracoes,
+      formas: ((data.formas_json as PageShape[] | null) ?? []) as PageShape[],
     },
   };
 }
@@ -111,6 +114,7 @@ export async function savePageTemplate(catalogId: string, tipo: PageTipo, data: 
     margens: data.margens,
     fundo_key: data.fundoKey,
     illustracoes_json: data.illustracoes,
+    formas_json: data.formas,
   };
 
   const { data: existing, error: existingErr } = await supabase
@@ -227,7 +231,7 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("page_templates")
-    .select("nome, header_json, footer_json, margens, fundo_key, illustracoes_json")
+    .select("nome, header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -256,6 +260,7 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
         fundoKey: data.fundo_key,
         fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
         illustracoes,
+        formas: ((data.formas_json as PageShape[] | null) ?? []) as PageShape[],
       },
     },
   };
@@ -283,6 +288,7 @@ export async function saveAberturaSecaoTemplate(id: string, data: PageTemplateDa
       margens: data.margens,
       fundo_key: data.fundoKey,
       illustracoes_json: data.illustracoes,
+      formas_json: data.formas,
     })
     .eq("id", id);
   if (error) return { error: error.message };

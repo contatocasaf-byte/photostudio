@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
-import { defaultMargens, PAGE_FIELD_DEFS, type Margens, type PageFieldKey, type PageLayout } from "../core/pageConfig";
+import { defaultMargens, PAGE_FIELD_DEFS, type Margens, type PageFieldKey, type PageLayout, type PageShape } from "../core/pageConfig";
 import type { PageTemplateData } from "../paginas/actions";
 
 async function requireUser() {
@@ -122,7 +122,7 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
 
   const { data: template, error: templateErr } = await supabase
     .from("page_templates")
-    .select("header_json, footer_json, margens, fundo_key, illustracoes_json")
+    .select("header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
     .eq("id", avulsa.page_template_id)
     .single();
   if (templateErr) return { error: templateErr.message };
@@ -147,6 +147,7 @@ export async function getPaginaAvulsa(id: string): Promise<{ avulsa?: PaginaAvul
         // migrar, diferente dos 3 slots fixos que já existiam antes) —
         // só lê o que já estiver salvo.
         illustracoes: (template.illustracoes_json ?? []) as PageTemplateData["illustracoes"],
+        formas: ((template.formas_json as PageShape[] | null) ?? []) as PageShape[],
       },
     },
   };
@@ -182,6 +183,7 @@ export async function savePaginaAvulsaTemplate(id: string, data: PageTemplateDat
       margens: data.margens,
       fundo_key: data.fundoKey,
       illustracoes_json: data.illustracoes,
+      formas_json: data.formas,
     })
     .eq("id", avulsa.page_template_id);
   if (error) return { error: error.message };

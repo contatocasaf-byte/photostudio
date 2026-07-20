@@ -6,7 +6,7 @@ import { getPublicUrl } from "@/lib/storage/public-url";
 import { defaultCardBorda } from "../core/cardConfig";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
-import type { PageIllustration, PageTipo } from "../core/pageConfig";
+import type { PageIllustration, PageShape, PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, PaginaAvulsaInput, SectionReflowInput } from "../core/reflow";
 import type { ProductRow } from "../produtos/actions";
 
@@ -69,7 +69,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     await Promise.all([
       supabase
         .from("page_templates")
-        .select("id, tipo, header_json, footer_json, margens, fundo_key, illustracoes_json")
+        .select("id, tipo, header_json, footer_json, margens, fundo_key, illustracoes_json, formas_json")
         .eq("catalog_id", catalogId),
       supabase
         .from("sections")
@@ -119,6 +119,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       fundoUrl: row.fundo_key ? getPublicUrl(row.fundo_key as string) : null,
       fundoKey: (row.fundo_key as string | null) ?? null,
       illustracoes,
+      formas: ((row.formas_json as PageShape[] | null) ?? []) as PageShape[],
     };
     if (tipo === "custom") customTemplatesById.set(row.id as string, built);
     else if (tipo === "abertura_secao") aberturaTemplatesById.set(row.id as string, built);

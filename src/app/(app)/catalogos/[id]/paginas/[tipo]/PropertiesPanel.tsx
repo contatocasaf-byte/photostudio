@@ -5,6 +5,7 @@ import {
   DEFAULT_FONT_FAMILY,
   PAGE_FIELD_DEFS,
   PAGE_PLACEHOLDERS,
+  PAGE_SHAPE_TYPES,
   PAGE_SIZE_PRESETS,
   mmToPx,
   presetToPx,
@@ -14,6 +15,8 @@ import {
   type PageIllustration,
   type PageImageElementConfig,
   type PageLayout,
+  type PageShape,
+  type PageShapeType,
   type PageTextElementConfig,
 } from "../../../core/pageConfig";
 import { getPageAssetUploadUrl } from "../../../paginas/actions";
@@ -42,6 +45,12 @@ type Props = {
   onUpdateIllustracao: (id: string, patch: Partial<PageIllustration>) => void;
   selectedIllustrationId: string | null;
   onSelectIllustration: (id: string | null) => void;
+  formas: PageShape[];
+  onAddForma: (type: PageShapeType) => void;
+  onRemoveForma: (id: string) => void;
+  onUpdateForma: (id: string, patch: Partial<PageShape>) => void;
+  selectedShapeId: string | null;
+  onSelectShape: (id: string | null) => void;
 };
 
 const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
@@ -89,9 +98,16 @@ export default function PropertiesPanel({
   onUpdateIllustracao,
   selectedIllustrationId,
   onSelectIllustration,
+  formas,
+  onAddForma,
+  onRemoveForma,
+  onUpdateForma,
+  selectedShapeId,
+  onSelectShape,
 }: Props) {
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
   const selectedIllustration = selectedIllustrationId ? illustracoes.find((i) => i.id === selectedIllustrationId) : null;
+  const selectedShape = selectedShapeId ? formas.find((s) => s.id === selectedShapeId) : null;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [unit, setUnit] = useState<"px" | "mm">("px");
@@ -299,7 +315,12 @@ export default function PropertiesPanel({
                 className="shrink-0"
               />
               <button
-                onClick={() => habilitado && onSelectKey(def.key)}
+                onClick={() => {
+                  if (!habilitado) return;
+                  onSelectIllustration(null);
+                  onSelectShape(null);
+                  onSelectKey(def.key);
+                }}
                 disabled={!habilitado}
                 className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
               >
@@ -328,6 +349,7 @@ export default function PropertiesPanel({
                 key={ill.id}
                 onClick={() => {
                   onSelectKey(null);
+                  onSelectShape(null);
                   onSelectIllustration(ill.id);
                 }}
                 className={
@@ -343,15 +365,121 @@ export default function PropertiesPanel({
       </div>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
-        {!selectedDef && !selectedIllustration && (
-          <p className="text-xs text-slate-400">Clique num elemento/ilustração habilitado (na lista acima ou no canvas) pra editar.</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Formas</p>
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          {PAGE_SHAPE_TYPES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => onAddForma(t.value)}
+              className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            >
+              + {t.label}
+            </button>
+          ))}
+        </div>
+        {formas.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1">
+            {formas.map((shape, i) => {
+              const def = PAGE_SHAPE_TYPES.find((t) => t.value === shape.type);
+              return (
+                <button
+                  key={shape.id}
+                  onClick={() => {
+                    onSelectKey(null);
+                    onSelectIllustration(null);
+                    onSelectShape(shape.id);
+                  }}
+                  className={
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+                    (selectedShapeId === shape.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                  }
+                >
+                  <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
+                  {def?.label ?? shape.type} {i + 1}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        {!selectedDef && !selectedIllustration && !selectedShape && (
+          <p className="text-xs text-slate-400">Clique num elemento/ilustração/forma (na lista acima ou no canvas) pra editar.</p>
         )}
 
-        {(selectedDef || selectedIllustration) && (
+        {(selectedDef || selectedIllustration || selectedShape) && (
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-900">{selectedDef?.label ?? "Ilustração"}</p>
+            <p className="text-sm font-semibold text-slate-900">
+              {selectedDef?.label ?? (selectedIllustration ? "Ilustração" : (PAGE_SHAPE_TYPES.find((t) => t.value === selectedShape?.type)?.label ?? "Forma"))}
+            </p>
             <button onClick={() => setCampoExpanded((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
               {campoExpanded ? "Reduzir" : "Expandir"}
+            </button>
+          </div>
+        )}
+
+        {selectedShape && campoExpanded && (
+          <div className="mt-2 flex flex-col gap-3">
+            <NumberField
+              label={`Posição X (${unit})`}
+              value={toDisplay(selectedShape.x)}
+              onCommit={(v) => onUpdateForma(selectedShape.id, { x: fromDisplay(v) })}
+            />
+            <NumberField
+              label={`Posição Y (${unit})`}
+              value={toDisplay(selectedShape.y)}
+              onCommit={(v) => onUpdateForma(selectedShape.id, { y: fromDisplay(v) })}
+            />
+            <NumberField
+              label={`Largura (${unit})`}
+              value={toDisplay(selectedShape.w)}
+              onCommit={(v) => onUpdateForma(selectedShape.id, { w: Math.max(4, fromDisplay(v)) })}
+            />
+            <NumberField
+              label={`Altura (${unit})`}
+              value={toDisplay(selectedShape.h)}
+              onCommit={(v) => onUpdateForma(selectedShape.id, { h: Math.max(4, fromDisplay(v)) })}
+            />
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-slate-500">Cor</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={selectedShape.color}
+                  onChange={(e) => onUpdateForma(selectedShape.id, { color: e.target.value })}
+                  className="h-7 w-10 cursor-pointer rounded border border-slate-300"
+                />
+                <input
+                  key={selectedShape.color}
+                  defaultValue={selectedShape.color}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onUpdateForma(selectedShape.id, { color: v });
+                  }}
+                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center justify-between text-xs text-slate-500">
+                <span>Transparência</span>
+                <span>{Math.round(selectedShape.opacity * 100)}%</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(selectedShape.opacity * 100)}
+                onChange={(e) => onUpdateForma(selectedShape.id, { opacity: Number(e.target.value) / 100 })}
+                className="mt-1 w-full"
+              />
+            </div>
+            <button
+              onClick={() => onRemoveForma(selectedShape.id)}
+              className="mt-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+            >
+              Excluir forma
             </button>
           </div>
         )}
