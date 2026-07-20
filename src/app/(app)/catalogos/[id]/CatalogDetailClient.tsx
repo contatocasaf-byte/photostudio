@@ -1,0 +1,562 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  getCatalog,
+  renameCatalog,
+  listSections,
+  createSection,
+  updateSection,
+  deleteSection,
+  reorderSections,
+  type Section,
+} from "../actions";
+import PlanilhaPicker from "../produtos/PlanilhaPicker";
+import {
+  createPaginaAvulsa,
+  deletePaginaAvulsa,
+  listPaginasAvulsas,
+  swapPaginaAvulsaOrdem,
+  type PaginaAvulsaListItem,
+} from "../paginas-avulsas/actions";
+import { listAberturaSecaoTemplates, type AberturaSecaoListItem } from "../paginas/actions";
+
+function SectionForm({
+  initial,
+  aberturaOptions,
+  onCancel,
+  onSubmit,
+  submitLabel,
+}: {
+  initial: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null };
+  aberturaOptions: AberturaSecaoListItem[];
+  onCancel?: () => void;
+  onSubmit: (values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) => Promise<void>;
+  submitLabel: string;
+}) {
+  const [numero, setNumero] = useState(initial.numero);
+  const [titulo, setTitulo] = useState(initial.titulo);
+  const [colunas, setColunas] = useState(initial.colunas);
+  const [aberturaTemplateId, setAberturaTemplateId] = useState(initial.aberturaTemplateId);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit() {
+    if (!titulo.trim()) return;
+    setSaving(true);
+    try {
+      await onSubmit({ numero, titulo, colunas, aberturaTemplateId });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        value={numero}
+        onChange={(e) => setNumero(e.target.value)}
+        placeholder="Nº"
+        className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+      />
+      <input
+        value={titulo}
+        onChange={(e) => setTitulo(e.target.value)}
+        placeholder="Título da seção"
+        className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+      />
+      <label className="flex items-center gap-1.5 text-xs text-slate-500">
+        Colunas
+        <input
+          type="number"
+          min={1}
+          max={12}
+          value={colunas}
+          onChange={(e) => setColunas(Math.max(1, Number(e.target.value) || 1))}
+          className="w-14 rounded-md border border-slate-300 px-2 py-1 text-sm"
+        />
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-slate-500">
+        Abertura desta seção
+        <select
+          value={aberturaTemplateId ?? ""}
+          onChange={(e) => setAberturaTemplateId(e.target.value || null)}
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+        >
+          <option value="">Padrão do catálogo</option>
+          {aberturaOptions.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        onClick={handleSubmit}
+        disabled={saving || !titulo.trim()}
+        className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+      >
+        {saving ? "Salvando..." : submitLabel}
+      </button>
+      {onCancel && (
+        <button onClick={onCancel} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+          Cancelar
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SectionRow({
+  catalogId,
+  section,
+  aberturaOptions,
+  onSave,
+  onDelete,
+}: {
+  catalogId: string;
+  section: Section;
+  aberturaOptions: AberturaSecaoListItem[];
+  onSave: (values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) => Promise<void>;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="rounded-md border border-slate-200 bg-white px-3 py-2.5"
+    >
+      {editing ? (
+        <SectionForm
+          initial={{
+            numero: section.numero ?? "",
+            titulo: section.titulo,
+            colunas: section.colunas,
+            aberturaTemplateId: section.abertura_template_id,
+          }}
+          aberturaOptions={aberturaOptions}
+          submitLabel="Salvar"
+          onCancel={() => setEditing(false)}
+          onSubmit={async (values) => {
+            await onSave(values);
+            setEditing(false);
+          }}
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <button {...attributes} {...listeners} className="cursor-grab px-1 text-slate-300 hover:text-slate-600" title="Arrastar">
+            ⠿
+          </button>
+          <span className="w-8 shrink-0 text-xs font-semibold text-slate-400">{section.numero || "—"}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{section.titulo}</span>
+          <span className="shrink-0 text-xs text-slate-400">{section.colunas} colunas</span>
+          <Link
+            href={`/catalogos/${catalogId}/secoes/${section.id}`}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Editar card
+          </Link>
+          <Link
+            href={`/catalogos/${catalogId}/secoes/${section.id}/produtos`}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Produtos
+          </Link>
+          <button
+            onClick={() => setEditing(true)}
+            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Editar
+          </button>
+          <button
+            onClick={onDelete}
+            className="shrink-0 rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+          >
+            Excluir
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Espaço "entre" duas seções (ou antes da 1ª, aposSecaoId=null) onde
+// dá pra inserir páginas avulsas de layout próprio (Fase 5, Parte 12)
+// — ancoradas pela seção vizinha, não por um número de ordem
+// compartilhado com elas (sections.ordem é renumerado de forma densa a
+// cada drag-reorder, o que "arrancaria" uma avulsa do lugar). Poucas
+// avulsas esperadas por âncora — reordenar é só um swap com o vizinho
+// (↑/↓), sem precisar de drag-and-drop pra um grupo tão pequeno.
+function AvulsaSlot({
+  catalogId,
+  aposSecaoId,
+  avulsas,
+  onChange,
+}: {
+  catalogId: string;
+  aposSecaoId: string | null;
+  avulsas: PaginaAvulsaListItem[];
+  onChange: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [titulo, setTitulo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!titulo.trim()) return;
+    setSaving(true);
+    try {
+      const res = await createPaginaAvulsa(catalogId, titulo, aposSecaoId);
+      if (!res.error) {
+        setTitulo("");
+        setShowForm(false);
+        onChange();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(avulsa: PaginaAvulsaListItem) {
+    if (!confirm(`Excluir a página avulsa "${avulsa.titulo}"?`)) return;
+    await deletePaginaAvulsa(avulsa.id);
+    onChange();
+  }
+
+  async function handleMove(index: number, direction: -1 | 1) {
+    const other = avulsas[index + direction];
+    const current = avulsas[index];
+    if (!other) return;
+    await swapPaginaAvulsaOrdem(current.id, current.ordem, other.id, other.ordem);
+    onChange();
+  }
+
+  return (
+    <div className="pl-6">
+      {avulsas.map((av, i) => (
+        <div key={av.id} className="my-1 flex items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-1.5">
+          <span className="text-xs text-slate-400">📄</span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{av.titulo}</span>
+          <button
+            onClick={() => handleMove(i, -1)}
+            disabled={i === 0}
+            className="rounded px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            title="Mover pra cima"
+          >
+            ↑
+          </button>
+          <button
+            onClick={() => handleMove(i, 1)}
+            disabled={i === avulsas.length - 1}
+            className="rounded px-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30"
+            title="Mover pra baixo"
+          >
+            ↓
+          </button>
+          <Link
+            href={`/catalogos/${catalogId}/paginas-avulsas/${av.id}`}
+            className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-white"
+          >
+            Editar
+          </Link>
+          <button
+            onClick={() => handleDelete(av)}
+            className="shrink-0 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+          >
+            Excluir
+          </button>
+        </div>
+      ))}
+
+      {showForm ? (
+        <div className="my-1 flex items-center gap-2">
+          <input
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            autoFocus
+            placeholder="Título da página avulsa"
+            className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-2 py-1 text-xs"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={saving || !titulo.trim()}
+            className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Criando..." : "Criar"}
+          </button>
+          <button
+            onClick={() => setShowForm(false)}
+            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setShowForm(true)} className="my-1 text-xs text-slate-400 underline underline-offset-2 hover:text-slate-600">
+          + Página avulsa
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function CatalogDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+
+  const [catalogNome, setCatalogNome] = useState<string | null>(null);
+  const [editingNome, setEditingNome] = useState(false);
+  const [nomeDraft, setNomeDraft] = useState("");
+  const [planilhaId, setPlanilhaId] = useState<string | null>(null);
+  const [showPlanilhaPicker, setShowPlanilhaPicker] = useState(false);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [avulsas, setAvulsas] = useState<PaginaAvulsaListItem[]>([]);
+  const [aberturaOptions, setAberturaOptions] = useState<AberturaSecaoListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  async function loadAvulsas() {
+    const res = await listPaginasAvulsas(id);
+    if (res.error) setError(res.error);
+    else setAvulsas(res.avulsas ?? []);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getCatalog(id), listSections(id), listPaginasAvulsas(id), listAberturaSecaoTemplates(id)]).then(
+      ([catalogRes, sectionsRes, avulsasRes, aberturaRes]) => {
+        if (cancelled) return;
+        if (catalogRes.error) setError(catalogRes.error);
+        else {
+          setCatalogNome(catalogRes.catalog?.nome ?? "");
+          setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+        }
+        if (sectionsRes.error) setError(sectionsRes.error);
+        else setSections(sectionsRes.sections ?? []);
+        if (avulsasRes.error) setError(avulsasRes.error);
+        else setAvulsas(avulsasRes.avulsas ?? []);
+        if (aberturaRes.error) setError(aberturaRes.error);
+        else setAberturaOptions(aberturaRes.templates ?? []);
+        setLoading(false);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  // Agrupado + ordenado por âncora uma vez por render — cada slot só
+  // lê o próprio grupo (evita cada AvulsaSlot refazer o filtro/sort).
+  const avulsasByAnchor = new Map<string | null, PaginaAvulsaListItem[]>();
+  for (const av of avulsas) {
+    const list = avulsasByAnchor.get(av.aposSecaoId) ?? [];
+    list.push(av);
+    avulsasByAnchor.set(av.aposSecaoId, list);
+  }
+  for (const list of avulsasByAnchor.values()) list.sort((a, b) => a.ordem - b.ordem);
+
+  async function handleSaveNome() {
+    if (!nomeDraft.trim()) return;
+    const res = await renameCatalog(id, nomeDraft);
+    if (res.error) setError(res.error);
+    else setCatalogNome(nomeDraft.trim());
+    setEditingNome(false);
+  }
+
+  async function handleCreateSection(values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }) {
+    const res = await createSection({ catalogId: id, ...values });
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    const refreshed = await listSections(id);
+    if (refreshed.sections) setSections(refreshed.sections);
+    setShowNewForm(false);
+  }
+
+  async function handleSaveSection(
+    sectionId: string,
+    values: { numero: string; titulo: string; colunas: number; aberturaTemplateId: string | null }
+  ) {
+    const res = await updateSection(sectionId, values);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setSections((prev) =>
+      prev.map((s) =>
+        s.id === sectionId ? { ...s, ...values, numero: values.numero || null, abertura_template_id: values.aberturaTemplateId } : s
+      )
+    );
+  }
+
+  async function handleDeleteSection(section: Section) {
+    if (!confirm(`Excluir a seção "${section.titulo}"?`)) return;
+    const res = await deleteSection(section.id);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setSections((prev) => prev.filter((s) => s.id !== section.id));
+    // Páginas avulsas ancoradas nesta seção caem pro início (on delete
+    // set null, ver schema) — recarrega pra refletir isso na tela.
+    loadAvulsas();
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sections.findIndex((s) => s.id === active.id);
+    const newIndex = sections.findIndex((s) => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(sections, oldIndex, newIndex);
+    setSections(reordered);
+    const res = await reorderSections(reordered.map((s) => s.id));
+    if (res.error) setError(res.error);
+  }
+
+  if (loading) return <p className="text-sm text-slate-400">Carregando catálogo...</p>;
+
+  return (
+    <div>
+      <Link href="/catalogos" className="text-xs text-slate-500 hover:text-slate-700">
+        ← Catálogos
+      </Link>
+
+      <div className="mt-2">
+        {editingNome ? (
+          <div className="flex items-center gap-2">
+            <input
+              value={nomeDraft}
+              onChange={(e) => setNomeDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveNome()}
+              autoFocus
+              className="rounded-md border border-slate-300 px-2 py-1.5 text-lg font-semibold"
+            />
+            <button onClick={handleSaveNome} className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800">
+              Salvar
+            </button>
+            <button onClick={() => setEditingNome(false)} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <h1
+            className="cursor-pointer text-lg font-semibold text-slate-900 hover:underline"
+            title="Clique para renomear"
+            onClick={() => {
+              setNomeDraft(catalogNome ?? "");
+              setEditingNome(true);
+            }}
+          >
+            {catalogNome}
+          </h1>
+        )}
+      </div>
+
+      <div className="mt-1 flex items-center gap-3">
+        <Link
+          href={`/catalogos/${id}/paginas`}
+          className="inline-block text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
+        >
+          Modelos de página (capa, abertura de seção, continuação)
+        </Link>
+        <Link
+          href={`/catalogos/${id}/preview`}
+          className="inline-block text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
+        >
+          Ver catálogo
+        </Link>
+      </div>
+
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      <div className="mt-4 rounded-lg border border-slate-200 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Planilha de Produtos</p>
+          <button onClick={() => setShowPlanilhaPicker((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
+            {showPlanilhaPicker ? "Fechar" : "Escolher"}
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-slate-600">
+          {planilhaId ? "Planilha selecionada" : "Nenhuma planilha selecionada"}
+        </p>
+        {showPlanilhaPicker && (
+          <div className="mt-2">
+            <PlanilhaPicker catalogId={id} value={planilhaId} onChange={setPlanilhaId} />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Seções</p>
+        {!showNewForm && (
+          <button
+            onClick={() => setShowNewForm(true)}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
+          >
+            + Nova seção
+          </button>
+        )}
+      </div>
+
+      {showNewForm && (
+        <div className="mt-2 rounded-md border border-dashed border-slate-300 p-3">
+          <SectionForm
+            initial={{ numero: "", titulo: "", colunas: 3, aberturaTemplateId: null }}
+            aberturaOptions={aberturaOptions}
+            submitLabel="Criar seção"
+            onCancel={() => setShowNewForm(false)}
+            onSubmit={handleCreateSection}
+          />
+        </div>
+      )}
+
+      {sections.length === 0 && !showNewForm && (
+        <p className="mt-4 text-sm text-slate-400">Nenhuma seção ainda — crie a primeira acima.</p>
+      )}
+
+      <div className="mt-3">
+        <AvulsaSlot catalogId={id} aposSecaoId={null} avulsas={avulsasByAnchor.get(null) ?? []} onChange={loadAvulsas} />
+      </div>
+
+      {sections.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-2">
+              {sections.map((s) => (
+                <div key={s.id}>
+                  <SectionRow
+                    catalogId={id}
+                    section={s}
+                    aberturaOptions={aberturaOptions}
+                    onSave={(values) => handleSaveSection(s.id, values)}
+                    onDelete={() => handleDeleteSection(s)}
+                  />
+                  <AvulsaSlot catalogId={id} aposSecaoId={s.id} avulsas={avulsasByAnchor.get(s.id) ?? []} onChange={loadAvulsas} />
+                </div>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
+}
