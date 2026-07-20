@@ -80,5 +80,5 @@ create trigger on_auth_user_created
 insert into public.perfis (id, email, papel)
 select id, email, 'administrador'
 from auth.users
-where email = 'nevesrodrigo.o@gmail.com'
+where email = 'contatocasaf@gmail.com'
 on conflict (id) do update set papel = 'administrador';
