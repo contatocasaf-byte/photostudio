@@ -3,7 +3,14 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { getCatalog } from "../../../../actions";
-import { getAberturaSecaoTemplate, saveAberturaSecaoTemplate, updateAberturaSecaoNome, updateCatalogPageSize } from "../../../../paginas/actions";
+import {
+  getAberturaSecaoTemplate,
+  listAberturaSecaoTemplates,
+  saveAberturaSecaoTemplate,
+  updateAberturaSecaoNome,
+  updateCatalogPageSize,
+  type AberturaSecaoListItem,
+} from "../../../../paginas/actions";
 import {
   defaultMargens,
   defaultPageIllustration,
@@ -51,36 +58,76 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
   const [formas, setFormas] = useState<PageShape[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
 
+  // Reaproveitar configuração de outra variante de abertura do mesmo
+  // catálogo — mesma mecânica já usada no card-molde (handleCopyFrom):
+  // "Copiar" só carrega os valores no estado local, não persiste nada
+  // nem religa as duas variantes, o usuário ainda precisa clicar
+  // Salvar. Facilita quando são poucas alterações: abre uma variante já
+  // pronta como ponto de partida em vez de montar do zero.
+  const [otherAberturas, setOtherAberturas] = useState<AberturaSecaoListItem[]>([]);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [copying, setCopying] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getAberturaSecaoTemplate(templateId), getCatalog(catalogId)]).then(([detailRes, catalogRes]) => {
-      if (cancelled) return;
-      if (detailRes.error || !detailRes.detail) {
-        setError(detailRes.error ?? "Abertura de seção não encontrada.");
+    Promise.all([getAberturaSecaoTemplate(templateId), getCatalog(catalogId), listAberturaSecaoTemplates(catalogId)]).then(
+      ([detailRes, catalogRes, othersRes]) => {
+        if (cancelled) return;
+        if (detailRes.error || !detailRes.detail) {
+          setError(detailRes.error ?? "Abertura de seção não encontrada.");
+          setLoading(false);
+          return;
+        }
+        const { detail } = detailRes;
+        const paginaLargura = catalogRes.catalog?.paginaLargura ?? DEFAULT_PAGE_WIDTH;
+        const paginaAltura = catalogRes.catalog?.paginaAltura ?? DEFAULT_PAGE_HEIGHT;
+        setNome(detail.nome);
+        setLargura(paginaLargura);
+        setAltura(paginaAltura);
+        // Só campos habilitados foram salvos — mescla por cima dos
+        // padrões (mesmo padrão já usado no editor de página fixo).
+        setLayout({ ...defaultPageLayout(paginaLargura, paginaAltura), ...detail.template.layout });
+        setMargens(detail.template.margens);
+        setElementosHabilitados(detail.template.elementosHabilitados);
+        setFundoKey(detail.template.fundoKey);
+        setFundoUrl(detail.template.fundoUrl);
+        setIllustracoes(detail.template.illustracoes);
+        setFormas(detail.template.formas);
+        if (!othersRes.error) setOtherAberturas((othersRes.templates ?? []).filter((t) => t.id !== templateId));
         setLoading(false);
-        return;
       }
-      const { detail } = detailRes;
-      const paginaLargura = catalogRes.catalog?.paginaLargura ?? DEFAULT_PAGE_WIDTH;
-      const paginaAltura = catalogRes.catalog?.paginaAltura ?? DEFAULT_PAGE_HEIGHT;
-      setNome(detail.nome);
-      setLargura(paginaLargura);
-      setAltura(paginaAltura);
-      // Só campos habilitados foram salvos — mescla por cima dos
-      // padrões (mesmo padrão já usado no editor de página fixo).
-      setLayout({ ...defaultPageLayout(paginaLargura, paginaAltura), ...detail.template.layout });
-      setMargens(detail.template.margens);
-      setElementosHabilitados(detail.template.elementosHabilitados);
-      setFundoKey(detail.template.fundoKey);
-      setFundoUrl(detail.template.fundoUrl);
-      setIllustracoes(detail.template.illustracoes);
-      setFormas(detail.template.formas);
-      setLoading(false);
-    });
+    );
     return () => {
       cancelled = true;
     };
   }, [templateId, catalogId]);
+
+  async function handleCopyFrom() {
+    if (!copySourceId) return;
+    setCopying(true);
+    setStatus(null);
+    try {
+      const res = await getAberturaSecaoTemplate(copySourceId);
+      if (res.error || !res.detail) {
+        setStatus(`⚠ ${res.error ?? "Abertura não encontrada."}`);
+        return;
+      }
+      const t = res.detail.template;
+      setLayout({ ...defaultPageLayout(largura, altura), ...t.layout });
+      setMargens(t.margens);
+      setElementosHabilitados(t.elementosHabilitados);
+      setFundoKey(t.fundoKey);
+      setFundoUrl(t.fundoUrl);
+      setIllustracoes(t.illustracoes);
+      setFormas(t.formas);
+      setSelectedKey(null);
+      setSelectedIllustrationId(null);
+      setSelectedShapeId(null);
+      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar nesta variante.");
+    } finally {
+      setCopying(false);
+    }
+  }
 
   function handleToggleElemento(key: PageFieldKey, habilitado: boolean) {
     setElementosHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
@@ -183,6 +230,31 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
       </p>
 
       <FontManager />
+
+      {otherAberturas.length > 0 && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <label className="text-xs text-slate-500">Reaproveitar configuração de:</label>
+          <select
+            value={copySourceId}
+            onChange={(e) => setCopySourceId(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+          >
+            <option value="">Selecione uma abertura...</option>
+            {otherAberturas.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nome}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleCopyFrom}
+            disabled={!copySourceId || copying}
+            className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+          >
+            {copying ? "Copiando..." : "Copiar"}
+          </button>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}
