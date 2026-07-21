@@ -8,7 +8,7 @@
 // Python só resolve o que exige medição de pixel/fonte (encaixe de
 // foto, quebra de texto).
 import type { TextAlign } from "@/lib/canvasText";
-import { CARD_FIELD_DEFS, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
+import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
@@ -33,6 +33,7 @@ export type PdfTextSpec = {
   color: string;
   align: TextAlign;
   fontWeight: "bold" | "normal";
+  fontFamily: string;
   maxLines: number;
   lineSpacing: number;
 };
@@ -161,6 +162,7 @@ function buildPageFields(page: PreviewPage, numeroPagina: number): PdfFieldSpec[
         color: textCfg.color,
         align: textCfg.align,
         fontWeight: textCfg.fontWeight,
+        fontFamily: textCfg.fontFamily ?? DEFAULT_FONT_FAMILY,
         maxLines: textCfg.maxLines,
         lineSpacing: 1.15,
       });
@@ -336,6 +338,7 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
           color: textCfg.color,
           align: textCfg.align,
           fontWeight: textCfg.fontWeight,
+          fontFamily: textCfg.fontFamily ?? DEFAULT_FONT_FAMILY,
           maxLines: textCfg.maxLines,
           lineSpacing: 1.15,
         });
