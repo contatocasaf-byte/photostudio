@@ -17,21 +17,29 @@ export async function listPlanilhas(): Promise<{ planilhas?: Planilha[]; error?:
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
-  const [planilhasRes, productsRes] = await Promise.all([
-    supabase.from("planilhas").select("id, nome, criado_em").order("criado_em", { ascending: false }),
-    supabase.from("products").select("planilha_id"),
-  ]);
-  if (planilhasRes.error) return { error: planilhasRes.error.message };
-  if (productsRes.error) return { error: productsRes.error.message };
+  const { data: planilhasData, error: planilhasErr } = await supabase
+    .from("planilhas")
+    .select("id, nome, criado_em")
+    .order("criado_em", { ascending: false });
+  if (planilhasErr) return { error: planilhasErr.message };
 
-  const counts = new Map<string, number>();
-  for (const p of productsRes.data ?? []) counts.set(p.planilha_id, (counts.get(p.planilha_id) ?? 0) + 1);
+  // Contagem exata por planilha (head: true, sem baixar linha nenhuma)
+  // em vez de buscar TODAS as linhas de `products` e contar em memória
+  // — o Supabase limita select() sem range() a 1000 linhas por padrão,
+  // o que fazia planilhas grandes (ex. 3000+ produtos) mostrarem
+  // contagem errada (às vezes 0) assim que a tabela como um todo
+  // passasse desse teto.
+  const counts = await Promise.all(
+    (planilhasData ?? []).map((p) =>
+      supabase.from("products").select("id", { count: "exact", head: true }).eq("planilha_id", p.id)
+    )
+  );
 
-  const planilhas = (planilhasRes.data ?? []).map((p) => ({
+  const planilhas = (planilhasData ?? []).map((p, i) => ({
     id: p.id as string,
     nome: p.nome as string,
     criadoEm: p.criado_em as string,
-    produtoCount: counts.get(p.id as string) ?? 0,
+    produtoCount: counts[i].count ?? 0,
   }));
 
   return { planilhas };
@@ -114,19 +122,34 @@ export type ProductRow = {
   fotoUrl: string | null;
 };
 
+const SELECT_PAGE_SIZE = 1000;
+
 export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produtos?: ProductRow[]; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, codigo, ref, descricao, preco_1, preco_2")
-    .eq("planilha_id", planilhaId)
-    .order("codigo", { ascending: true });
-  if (error) return { error: error.message };
+
+  // Paginado (range em blocos de 1000) — o Supabase limita select() sem
+  // range() a 1000 linhas por padrão; uma planilha real facilmente
+  // passa disso (ex. 3253 produtos), o que truncava a lista sem erro
+  // nenhum, deixando parte dos produtos invisíveis pra busca/adição.
+  type Row = { id: string; codigo: string; ref: string | null; descricao: string | null; preco_1: number | null; preco_2: number | null };
+  const rows: Row[] = [];
+  for (let from = 0; ; from += SELECT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, codigo, ref, descricao, preco_1, preco_2")
+      .eq("planilha_id", planilhaId)
+      .order("codigo", { ascending: true })
+      .range(from, from + SELECT_PAGE_SIZE - 1);
+    if (error) return { error: error.message };
+    rows.push(...((data ?? []) as Row[]));
+    if (!data || data.length < SELECT_PAGE_SIZE) break;
+  }
+
   return {
-    produtos: (data ?? []).map((p) => ({
-      id: p.id as string,
-      codigo: p.codigo as string,
+    produtos: rows.map((p) => ({
+      id: p.id,
+      codigo: p.codigo,
       ref: p.ref,
       descricao: p.descricao,
       preco1: p.preco_1,
