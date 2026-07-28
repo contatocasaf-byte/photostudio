@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import FilePickerZone from "@/components/FilePickerZone";
 import { parsePlanilhaProdutos } from "../core/parsePlanilhaProdutos";
-import { listPlanilhas, createPlanilhaComProdutos, setCatalogPlanilha, deletePlanilha, type Planilha } from "./actions";
+import { listPlanilhas, createPlanilhaComProdutos, atualizarPlanilha, setCatalogPlanilha, deletePlanilha, type Planilha } from "./actions";
 
 type Props = {
   catalogId: string;
@@ -24,6 +24,9 @@ export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir
   const [nomeNovo, setNomeNovo] = useState("");
   const [uploading, setUploading] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [atualizandoId, setAtualizandoId] = useState<string | null>(null);
+  const updateFileInputRef = useRef<HTMLInputElement>(null);
+  const pendingUpdateRef = useRef<{ id: string; nome: string } | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -70,6 +73,40 @@ export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir
     await refresh();
   }
 
+  function handleUpdateClick(id: string, nome: string) {
+    pendingUpdateRef.current = { id, nome };
+    updateFileInputRef.current?.click();
+  }
+
+  async function handleUpdateFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const pending = pendingUpdateRef.current;
+    // Sempre limpa o valor do input, mesmo se cancelado — senão
+    // escolher o MESMO arquivo de novo não dispara onChange de novo.
+    e.target.value = "";
+    if (!file || !pending) return;
+
+    const confirmado = window.confirm(
+      `Atualizar a planilha "${pending.nome}" com os dados de "${file.name}"?\n\n` +
+        `Produtos com o mesmo código terão referência/descrição/preços substituídos pelos valores do novo arquivo. ` +
+        `Códigos novos serão adicionados. Produtos que não estiverem mais no arquivo NÃO são removidos automaticamente.`
+    );
+    if (!confirmado) return;
+
+    setAtualizandoId(pending.id);
+    setError(null);
+    try {
+      const produtos = await parsePlanilhaProdutos(file);
+      const res = await atualizarPlanilha(pending.id, produtos);
+      if (res.error) throw new Error(res.error);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido.");
+    } finally {
+      setAtualizandoId(null);
+    }
+  }
+
   async function handleUpload(fileList: FileList) {
     const file = fileList[0];
     if (!file) return;
@@ -96,6 +133,10 @@ export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir
 
   return (
     <div>
+      {/* Compartilhado por todas as linhas — handleUpdateClick guarda em
+          pendingUpdateRef QUAL planilha antes de disparar o click(). */}
+      <input ref={updateFileInputRef} type="file" accept=".xlsx,.xls" onChange={handleUpdateFileChange} className="hidden" />
+
       {loading && <p className="text-sm text-slate-400">Carregando planilhas...</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -114,6 +155,13 @@ export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir
                 <span className="ml-2 shrink-0 text-xs text-slate-400">
                   {p.produtoCount} produto{p.produtoCount === 1 ? "" : "s"} · {new Date(p.criadoEm).toLocaleDateString("pt-BR")}
                 </span>
+              </button>
+              <button
+                onClick={() => handleUpdateClick(p.id, p.nome)}
+                disabled={atualizandoId === p.id}
+                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                {atualizandoId === p.id ? "Atualizando..." : "Atualizar"}
               </button>
               {podeExcluir && (
                 <button

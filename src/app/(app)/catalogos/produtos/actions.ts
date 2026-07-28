@@ -97,6 +97,49 @@ export async function createPlanilhaComProdutos(
   return { id: planilha.id };
 }
 
+// Atualiza uma planilha existente com um arquivo novo — pedido do
+// usuário pra refletir produtos novos que vão entrando no portfólio,
+// sem perder o vínculo já existente com os catálogos que usam essa
+// planilha (que referenciam por `planilhas.id`, nunca alterado aqui).
+//
+// NÃO É substituição total (delete + insert): é upsert por
+// (planilha_id, codigo) — código que já existe tem
+// ref/descrição/preços atualizados NO MESMO registro (mesmo `id` de
+// produto), então qualquer `catalog_items` que já aponte pra ele
+// continua válido e passa a refletir os dados novos automaticamente;
+// código novo vira produto novo; código que não veio no arquivo NÃO é
+// removido (não-destrutivo de propósito — evita o mesmo problema de
+// FK que a exclusão de planilha trata explicitamente, e evita apagar
+// sem querer um produto só porque uma linha foi cortada da planilha
+// por engano).
+export async function atualizarPlanilha(planilhaId: string, produtos: ProdutoImportRow[]): Promise<{ totalProdutos?: number; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  if (produtos.length === 0) return { error: "Nenhum produto encontrado no arquivo (confira as colunas)." };
+
+  const { data: planilha, error: planilhaErr } = await supabase.from("planilhas").select("id").eq("id", planilhaId).maybeSingle();
+  if (planilhaErr) return { error: planilhaErr.message };
+  if (!planilha) return { error: "Planilha não encontrada." };
+
+  const dedup = new Map<string, ProdutoImportRow>();
+  for (const p of produtos) dedup.set(p.codigo, p);
+
+  const rows = [...dedup.values()].map((p) => ({
+    planilha_id: planilhaId,
+    codigo: p.codigo,
+    ref: p.ref || null,
+    descricao: p.desc || null,
+    preco_1: parsePreco(p.preco1),
+    preco_2: parsePreco(p.preco2),
+  }));
+
+  const { error: upsertErr } = await supabase.from("products").upsert(rows, { onConflict: "planilha_id,codigo" });
+  if (upsertErr) return { error: upsertErr.message };
+
+  const { count } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("planilha_id", planilhaId);
+  return { totalProdutos: count ?? undefined };
+}
+
 // Destrutiva e irreversível (apaga a planilha inteira + seus produtos
 // via cascade) — checagem de permissão feita DENTRO da action, não só
 // escondendo o botão na tela (mesmo padrão já usado nas actions de
