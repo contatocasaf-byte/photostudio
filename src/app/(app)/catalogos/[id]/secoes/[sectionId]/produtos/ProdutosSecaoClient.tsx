@@ -40,9 +40,8 @@ function ItemRow({ item, onRemove }: { item: SectionItem; onRemove: () => void }
         ⠿
       </button>
       <span className="w-20 shrink-0 text-xs font-semibold text-slate-500">{item.product.codigo}</span>
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
-        {item.product.descricao || item.product.ref || "—"}
-      </span>
+      <span className="w-28 shrink-0 truncate text-xs text-slate-500">{item.product.ref || "—"}</span>
+      <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{item.product.descricao || "—"}</span>
       <span className="shrink-0 text-xs text-slate-400">
         {formatPreco(item.product.preco1)} / {formatPreco(item.product.preco2)}
       </span>
