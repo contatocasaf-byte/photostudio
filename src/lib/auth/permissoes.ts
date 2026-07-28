@@ -16,6 +16,7 @@ export type PermissaoChave =
   | "catalogos_cards_produtos"
   | "catalogos_galeria"
   | "catalogos_preview_pdf"
+  | "catalogos_excluir_planilhas"
   | "criar_usuarios";
 
 export type ModuloChave = "studio" | "ofertas" | "catalogos" | "sistema";
@@ -42,6 +43,7 @@ export const PERMISSOES: PermissaoDef[] = [
   { chave: "catalogos_cards_produtos", modulo: "catalogos", label: "Editar card-molde e produtos da seção" },
   { chave: "catalogos_galeria", modulo: "catalogos", label: "Configurar galeria de fotos" },
   { chave: "catalogos_preview_pdf", modulo: "catalogos", label: "Ver catálogo e baixar PDF" },
+  { chave: "catalogos_excluir_planilhas", modulo: "catalogos", label: "Excluir planilhas de produtos" },
   { chave: "criar_usuarios", modulo: "sistema", label: "Criar usuários" },
 ];
 

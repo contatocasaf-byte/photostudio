@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentAccess, temPermissao } from "@/lib/auth/access";
 import type { ProdutoImportRow } from "../core/parsePlanilhaProdutos";
 
 async function requireUser() {
@@ -94,6 +95,77 @@ export async function createPlanilhaComProdutos(
   }
 
   return { id: planilha.id };
+}
+
+// Destrutiva e irreversível (apaga a planilha inteira + seus produtos
+// via cascade) — checagem de permissão feita DENTRO da action, não só
+// escondendo o botão na tela (mesmo padrão já usado nas actions de
+// /usuarios pra capacidades sensíveis). Administrador já tem acesso
+// via bypass de temPermissao(); a permissão só precisa ser concedida
+// explicitamente pra Supervisor.
+export async function deletePlanilha(planilhaId: string): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, "catalogos_excluir_planilhas")) {
+    return { error: "Sem permissão pra excluir planilhas de produtos." };
+  }
+
+  // `catalogs.planilha_id` não tem "on delete cascade" (de propósito —
+  // apagar uma planilha em uso nunca deve arrancar silenciosamente a
+  // fonte de dados de um catálogo real). Bloqueia com uma mensagem que
+  // já diz quais catálogos precisam trocar de planilha antes.
+  const { data: catalogosEmUso, error: catalogosErr } = await supabase
+    .from("catalogs")
+    .select("nome")
+    .eq("planilha_id", planilhaId);
+  if (catalogosErr) return { error: catalogosErr.message };
+  if (catalogosEmUso && catalogosEmUso.length > 0) {
+    const nomes = catalogosEmUso.map((c) => c.nome as string).join(", ");
+    return { error: `Planilha em uso pelo(s) catálogo(s): ${nomes}. Troque a planilha desses catálogos antes de excluir.` };
+  }
+
+  // `catalog_items.product_id` também não tem cascade — se algum
+  // produto desta planilha já foi adicionado a uma seção (mesmo de um
+  // catálogo que já trocou de planilha depois), apagar os produtos
+  // (via cascade da planilha) quebraria essa referência. Bloqueia em
+  // vez de deixar o Postgres estourar um erro de FK cru pro usuário.
+  //
+  // Busca os IDs de produto em blocos de 1000 (mesmo teto de linhas do
+  // Supabase já corrigido em listPlanilhaProdutos) e checa cada bloco
+  // em sub-lotes de 100 no .in() — uma planilha grande (ex. 3253
+  // produtos) geraria uma URL gigante se todos os IDs fossem enviados
+  // de uma vez só.
+  const IN_BATCH = 100;
+  const PAGE = 1000;
+  outer: for (let from = 0; ; from += PAGE) {
+    const { data: page, error: pageErr } = await supabase
+      .from("products")
+      .select("id")
+      .eq("planilha_id", planilhaId)
+      .range(from, from + PAGE - 1);
+    if (pageErr) return { error: pageErr.message };
+    const ids = (page ?? []).map((p) => p.id as string);
+
+    for (let i = 0; i < ids.length; i += IN_BATCH) {
+      const slice = ids.slice(i, i + IN_BATCH);
+      const { count, error: itemsErr } = await supabase
+        .from("catalog_items")
+        .select("id", { count: "exact", head: true })
+        .in("product_id", slice);
+      if (itemsErr) return { error: itemsErr.message };
+      if (count && count > 0) {
+        return { error: "Um ou mais produtos desta planilha já foram adicionados a seções de catálogos — remova-os antes de excluir a planilha." };
+      }
+    }
+
+    if (!page || page.length < PAGE) break outer;
+  }
+
+  const { error: deleteErr } = await supabase.from("planilhas").delete().eq("id", planilhaId);
+  if (deleteErr) return { error: deleteErr.message };
+  return {};
 }
 
 export async function setCatalogPlanilha(catalogId: string, planilhaId: string | null): Promise<{ error?: string }> {

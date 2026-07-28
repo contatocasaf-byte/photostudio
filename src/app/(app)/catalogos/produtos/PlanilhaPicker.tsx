@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import FilePickerZone from "@/components/FilePickerZone";
 import { parsePlanilhaProdutos } from "../core/parsePlanilhaProdutos";
-import { listPlanilhas, createPlanilhaComProdutos, setCatalogPlanilha, type Planilha } from "./actions";
+import { listPlanilhas, createPlanilhaComProdutos, setCatalogPlanilha, deletePlanilha, type Planilha } from "./actions";
 
 type Props = {
   catalogId: string;
   value: string | null;
   onChange: (planilhaId: string) => void;
+  podeExcluir: boolean;
 };
 
 // Mesmo padrão de ofertas/LayoutPicker.tsx: lista entidades já
@@ -16,12 +17,13 @@ type Props = {
 // a seleção já persiste na hora (setCatalogPlanilha), diferente do
 // LayoutPicker (que só atualiza estado local de um formulário maior) —
 // não existe um botão "Salvar" global na tela do catálogo.
-export default function PlanilhaPicker({ catalogId, value, onChange }: Props) {
+export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir }: Props) {
   const [planilhas, setPlanilhas] = useState<Planilha[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nomeNovo, setNomeNovo] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -53,6 +55,19 @@ export default function PlanilhaPicker({ catalogId, value, onChange }: Props) {
       return;
     }
     onChange(id);
+  }
+
+  async function handleDelete(id: string, nome: string) {
+    if (!window.confirm(`Excluir a planilha "${nome}" e todos os seus produtos? Essa ação não pode ser desfeita.`)) return;
+    setExcluindoId(id);
+    setError(null);
+    const res = await deletePlanilha(id);
+    setExcluindoId(null);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    await refresh();
   }
 
   async function handleUpload(fileList: FileList) {
@@ -87,19 +102,29 @@ export default function PlanilhaPicker({ catalogId, value, onChange }: Props) {
       {!loading && planilhas.length > 0 && (
         <div className="flex flex-col gap-1">
           {planilhas.map((p) => (
-            <button
+            <div
               key={p.id}
-              onClick={() => handleSelect(p.id)}
               className={
-                "flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors " +
+                "flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors " +
                 (value === p.id ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200 hover:border-slate-400")
               }
             >
-              <span className="font-medium text-slate-900">{p.nome}</span>
-              <span className="shrink-0 text-xs text-slate-400">
-                {p.produtoCount} produto{p.produtoCount === 1 ? "" : "s"} · {new Date(p.criadoEm).toLocaleDateString("pt-BR")}
-              </span>
-            </button>
+              <button onClick={() => handleSelect(p.id)} className="flex min-w-0 flex-1 items-center justify-between text-left">
+                <span className="min-w-0 truncate font-medium text-slate-900">{p.nome}</span>
+                <span className="ml-2 shrink-0 text-xs text-slate-400">
+                  {p.produtoCount} produto{p.produtoCount === 1 ? "" : "s"} · {new Date(p.criadoEm).toLocaleDateString("pt-BR")}
+                </span>
+              </button>
+              {podeExcluir && (
+                <button
+                  onClick={() => handleDelete(p.id, p.nome)}
+                  disabled={excluindoId === p.id}
+                  className="shrink-0 rounded-md border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+                >
+                  {excluindoId === p.id ? "Excluindo..." : "Excluir"}
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

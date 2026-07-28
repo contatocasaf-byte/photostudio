@@ -314,7 +314,13 @@ function AvulsaSlot({
   );
 }
 
-export default function CatalogDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function CatalogDetailPage({
+  params,
+  podeExcluirPlanilhas,
+}: {
+  params: Promise<{ id: string }>;
+  podeExcluirPlanilhas: boolean;
+}) {
   const { id } = use(params);
 
   const [catalogNome, setCatalogNome] = useState<string | null>(null);
@@ -500,7 +506,7 @@ export default function CatalogDetailPage({ params }: { params: Promise<{ id: st
         </p>
         {showPlanilhaPicker && (
           <div className="mt-2">
-            <PlanilhaPicker catalogId={id} value={planilhaId} onChange={setPlanilhaId} />
+            <PlanilhaPicker catalogId={id} value={planilhaId} onChange={setPlanilhaId} podeExcluir={podeExcluirPlanilhas} />
           </div>
         )}
       </div>
