@@ -187,7 +187,8 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
                   return (
                     <div key={p.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm">
                       <span className="w-20 shrink-0 text-xs font-semibold text-slate-500">{p.codigo}</span>
-                      <span className="min-w-0 flex-1 truncate text-slate-900">{p.descricao || p.ref || "—"}</span>
+                      <span className="w-28 shrink-0 truncate text-xs text-slate-500">{p.ref || "—"}</span>
+                      <span className="min-w-0 flex-1 truncate text-slate-900">{p.descricao || "—"}</span>
                       <button
                         onClick={() => handleAdd(p.id)}
                         disabled={adicionado}
