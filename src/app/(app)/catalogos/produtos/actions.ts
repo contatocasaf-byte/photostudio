@@ -115,6 +115,12 @@ export async function createPlanilhaComProdutos(
 export async function atualizarPlanilha(planilhaId: string, produtos: ProdutoImportRow[]): Promise<{ totalProdutos?: number; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, "catalogos_atualizar_planilhas")) {
+    return { error: "Sem permissão pra atualizar planilhas de produtos." };
+  }
+
   if (produtos.length === 0) return { error: "Nenhum produto encontrado no arquivo (confira as colunas)." };
 
   const { data: planilha, error: planilhaErr } = await supabase.from("planilhas").select("id").eq("id", planilhaId).maybeSingle();

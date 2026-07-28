@@ -8,10 +8,11 @@ export default async function CatalogDetailPage({ params }: { params: Promise<{ 
   // mesmo resultado dentro da mesma requisição.
   const access = await getCurrentAccess();
   const podeExcluirPlanilhas = temPermissao(access, "catalogos_excluir_planilhas");
+  const podeAtualizarPlanilhas = temPermissao(access, "catalogos_atualizar_planilhas");
 
   return (
     <PermissaoGate chave="catalogos_gerenciar">
-      <CatalogDetailClient params={params} podeExcluirPlanilhas={podeExcluirPlanilhas} />
+      <CatalogDetailClient params={params} podeExcluirPlanilhas={podeExcluirPlanilhas} podeAtualizarPlanilhas={podeAtualizarPlanilhas} />
     </PermissaoGate>
   );
 }

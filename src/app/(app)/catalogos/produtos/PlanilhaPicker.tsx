@@ -10,6 +10,7 @@ type Props = {
   value: string | null;
   onChange: (planilhaId: string) => void;
   podeExcluir: boolean;
+  podeAtualizar: boolean;
 };
 
 // Mesmo padrão de ofertas/LayoutPicker.tsx: lista entidades já
@@ -17,7 +18,7 @@ type Props = {
 // a seleção já persiste na hora (setCatalogPlanilha), diferente do
 // LayoutPicker (que só atualiza estado local de um formulário maior) —
 // não existe um botão "Salvar" global na tela do catálogo.
-export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir }: Props) {
+export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir, podeAtualizar }: Props) {
   const [planilhas, setPlanilhas] = useState<Planilha[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,13 +157,15 @@ export default function PlanilhaPicker({ catalogId, value, onChange, podeExcluir
                   {p.produtoCount} produto{p.produtoCount === 1 ? "" : "s"} · {new Date(p.criadoEm).toLocaleDateString("pt-BR")}
                 </span>
               </button>
-              <button
-                onClick={() => handleUpdateClick(p.id, p.nome)}
-                disabled={atualizandoId === p.id}
-                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-              >
-                {atualizandoId === p.id ? "Atualizando..." : "Atualizar"}
-              </button>
+              {podeAtualizar && (
+                <button
+                  onClick={() => handleUpdateClick(p.id, p.nome)}
+                  disabled={atualizandoId === p.id}
+                  className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  {atualizandoId === p.id ? "Atualizando..." : "Atualizar"}
+                </button>
+              )}
               {podeExcluir && (
                 <button
                   onClick={() => handleDelete(p.id, p.nome)}
