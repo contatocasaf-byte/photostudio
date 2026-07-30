@@ -60,7 +60,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
 
   const { data: catalog, error: catalogErr } = await supabase
     .from("catalogs")
-    .select("nome, pagina_largura, pagina_altura, abertura_secao_default_id")
+    .select("nome, pagina_largura, pagina_altura, abertura_secao_default_id, continuacao_default_id")
     .eq("id", catalogId)
     .single();
   if (catalogErr) return { error: catalogErr.message };
@@ -73,7 +73,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
         .eq("catalog_id", catalogId),
       supabase
         .from("sections")
-        .select("id, titulo, ordem, colunas, card_template_id, abertura_template_id")
+        .select("id, titulo, ordem, colunas, card_template_id, abertura_template_id, continuacao_template_id")
         .eq("catalog_id", catalogId)
         .order("ordem", { ascending: true }),
       supabase.from("paginas_avulsas").select("id, titulo, apos_secao_id, ordem, page_template_id").eq("catalog_id", catalogId),
@@ -89,13 +89,16 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   // page_templates tipo='custom' não vai pro slot fixo por tipo (pode
   // haver várias, uma por página avulsa) — fica num mapa por id,
   // resolvido pra cada paginas_avulsas abaixo. tipo='abertura_secao'
-  // (Fase 5, Parte 15) tem o mesmo problema — pode haver várias
-  // variantes por catálogo — fica no próprio mapa, resolvido por seção
-  // (abertura_template_id) ou pelo padrão do catálogo
-  // (abertura_secao_default_id) logo abaixo.
+  // (Fase 5, Parte 15) e tipo='continuacao' (mesma mudança aplicada
+  // depois) têm o mesmo problema — podem ter várias variantes por
+  // catálogo — ficam nos próprios mapas, resolvidos por seção
+  // (abertura_template_id/continuacao_template_id) ou pelo padrão do
+  // catálogo (abertura_secao_default_id/continuacao_default_id) logo
+  // abaixo.
   const pageTemplates: Partial<Record<PageTipo, PageTemplateInput>> = {};
   const customTemplatesById = new Map<string, PageTemplateInput>();
   const aberturaTemplatesById = new Map<string, PageTemplateInput>();
+  const continuacaoTemplatesById = new Map<string, PageTemplateInput>();
   for (const row of pageTemplateRows ?? []) {
     const tipo = row.tipo as PageTipo;
     const rawHeader = (row.header_json as Record<string, unknown>) ?? {};
@@ -124,17 +127,24 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     };
     if (tipo === "custom") customTemplatesById.set(row.id as string, built);
     else if (tipo === "abertura_secao") aberturaTemplatesById.set(row.id as string, built);
+    else if (tipo === "continuacao") continuacaoTemplatesById.set(row.id as string, built);
     else pageTemplates[tipo] = built;
   }
 
-  // Padrão do catálogo pra abertura_secao (Parte 15) — usado por
-  // qualquer seção que não escolher uma variante própria. Sem padrão
-  // configurado, `pageTemplates.abertura_secao` fica undefined (mesmo
-  // comportamento de "não configurado" de antes desta parte).
+  // Padrão do catálogo pra abertura_secao (Parte 15) e continuacao —
+  // usado por qualquer seção que não escolher uma variante própria. Sem
+  // padrão configurado, `pageTemplates.abertura_secao`/`continuacao`
+  // ficam undefined (mesmo comportamento de "não configurado" de antes
+  // dessas partes).
   const aberturaSecaoDefaultId = catalog.abertura_secao_default_id as string | null;
   if (aberturaSecaoDefaultId) {
     const aberturaDefault = aberturaTemplatesById.get(aberturaSecaoDefaultId);
     if (aberturaDefault) pageTemplates.abertura_secao = aberturaDefault;
+  }
+  const continuacaoDefaultId = catalog.continuacao_default_id as string | null;
+  if (continuacaoDefaultId) {
+    const continuacaoDefault = continuacaoTemplatesById.get(continuacaoDefaultId);
+    if (continuacaoDefault) pageTemplates.continuacao = continuacaoDefault;
   }
 
   const paginasAvulsas: PaginaAvulsaInput[] = (avulsaRows ?? [])
@@ -228,6 +238,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     const atual = templateId ? versions.find((v) => v.id === templateId) : undefined;
 
     const aberturaTemplateId = s.abertura_template_id as string | null;
+    const continuacaoTemplateId = s.continuacao_template_id as string | null;
 
     return {
       id: s.id as string,
@@ -237,6 +248,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       templateVersions: versions.map(({ versao, template }) => ({ versao, template })),
       items: itemsBySection.get(s.id as string) ?? [],
       aberturaTemplate: aberturaTemplateId ? (aberturaTemplatesById.get(aberturaTemplateId) ?? null) : null,
+      continuacaoTemplate: continuacaoTemplateId ? (continuacaoTemplatesById.get(continuacaoTemplateId) ?? null) : null,
     };
   });
 

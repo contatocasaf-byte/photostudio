@@ -150,19 +150,19 @@ export function fontPairsFromPageLayout(layout: PageLayout): { family: string; w
 // propósito: não é uma tela fixa em /catalogos/[id]/paginas, tem sua
 // própria UI de criação/edição (ver paginas-avulsas/).
 //
-// "abertura_secao" também saiu de PAGE_TIPOS na Parte 15 — deixou de
-// ser 1 slot fixo por catálogo (upsert por (catalog_id, tipo)) e virou
-// uma lista de variantes nomeadas, cada seção escolhendo qual usar (ou
-// herdando o padrão do catálogo). Continua um valor válido de PageTipo
-// (linhas no banco continuam tipo='abertura_secao', só que podem ser
-// várias por catálogo agora) — só não é mais um dos slots únicos
-// ao lado de capa/continuação. UI própria em
-// /catalogos/[id]/paginas/abertura/.
+// "abertura_secao" também saiu de PAGE_TIPOS na Parte 15, e
+// "continuacao" pelo mesmo motivo depois — deixaram de ser 1 slot fixo
+// por catálogo (upsert por (catalog_id, tipo)) e viraram listas de
+// variantes nomeadas, cada seção escolhendo qual usar (ou herdando o
+// padrão do catálogo). Continuam valores válidos de PageTipo (linhas
+// no banco continuam tipo='abertura_secao'/'continuacao', só que podem
+// ser várias por catálogo agora) — só não são mais slots únicos ao
+// lado de capa. UI própria em /catalogos/[id]/paginas/abertura/ e
+// /catalogos/[id]/paginas/continuacao/.
 export type PageTipo = "capa" | "abertura_secao" | "continuacao" | "custom";
 
-export const PAGE_TIPOS: { value: Exclude<PageTipo, "custom" | "abertura_secao">; label: string }[] = [
+export const PAGE_TIPOS: { value: Exclude<PageTipo, "custom" | "abertura_secao" | "continuacao">; label: string }[] = [
   { value: "capa", label: "Capa" },
-  { value: "continuacao", label: "Continuação" },
 ];
 
 export const DEFAULT_PAGE_WIDTH = 1240;

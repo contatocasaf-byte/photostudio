@@ -2,13 +2,17 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { getCatalog, setCatalogAberturaDefault } from "../../actions";
+import { getCatalog, setCatalogAberturaDefault, setCatalogContinuacaoDefault } from "../../actions";
 import {
   createAberturaSecaoTemplate,
   deleteAberturaSecaoTemplate,
+  createContinuacaoTemplate,
+  deleteContinuacaoTemplate,
   getPageTemplate,
   listAberturaSecaoTemplates,
+  listContinuacaoTemplates,
   type AberturaSecaoListItem,
+  type ContinuacaoListItem,
 } from "../../paginas/actions";
 import { PAGE_TIPOS, type PageTipo } from "../../core/pageConfig";
 import { useRouter } from "next/navigation";
@@ -131,12 +135,132 @@ function AberturaSecaoList({
   );
 }
 
+function ContinuacaoList({
+  catalogId,
+  templates,
+  defaultId,
+  onChange,
+}: {
+  catalogId: string;
+  templates: ContinuacaoListItem[];
+  defaultId: string | null;
+  onChange: () => void;
+}) {
+  const router = useRouter();
+  const [showForm, setShowForm] = useState(false);
+  const [nome, setNome] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleCreate() {
+    if (!nome.trim()) return;
+    setSaving(true);
+    try {
+      const res = await createContinuacaoTemplate(catalogId, nome);
+      if (res.id) router.push(`/catalogos/${catalogId}/paginas/continuacao/${res.id}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSetDefault(id: string) {
+    await setCatalogContinuacaoDefault(catalogId, id);
+    onChange();
+  }
+
+  async function handleDelete(t: ContinuacaoListItem) {
+    if (!confirm(`Excluir a continuação "${t.nome}"?`)) return;
+    await deleteContinuacaoTemplate(t.id);
+    onChange();
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-slate-900">Continuação</span>
+        {!showForm && (
+          <button onClick={() => setShowForm(true)} className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700">
+            + Nova continuação
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-slate-400">
+        Cada seção pode usar uma variante própria ou herdar a marcada como padrão do catálogo.
+      </p>
+
+      {templates.length === 0 && !showForm && <p className="mt-2 text-xs text-slate-400">Nenhuma continuação criada ainda.</p>}
+
+      {templates.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {templates.map((t) => (
+            <div key={t.id} className="flex items-center gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{t.nome}</span>
+              <span className={"shrink-0 text-[11px] " + (t.configurado ? "text-emerald-700" : "text-slate-400")}>
+                {t.configurado ? "Configurado" : "Não configurado"}
+              </span>
+              {defaultId === t.id ? (
+                <span className="shrink-0 rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-white">Padrão</span>
+              ) : (
+                <button
+                  onClick={() => handleSetDefault(t.id)}
+                  className="shrink-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-white"
+                >
+                  Usar como padrão
+                </button>
+              )}
+              <Link
+                href={`/catalogos/${catalogId}/paginas/continuacao/${t.id}`}
+                className="shrink-0 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-white"
+              >
+                Editar
+              </Link>
+              <button
+                onClick={() => handleDelete(t)}
+                className="shrink-0 rounded-md border border-red-200 px-2 py-0.5 text-[11px] text-red-700 hover:bg-red-50"
+              >
+                Excluir
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            autoFocus
+            placeholder="Nome da continuação (ex.: Padrão)"
+            className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-2 py-1 text-xs"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={saving || !nome.trim()}
+            className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Criando..." : "Criar"}
+          </button>
+          <button
+            onClick={() => setShowForm(false)}
+            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PaginasPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: catalogId } = use(params);
   const [catalogNome, setCatalogNome] = useState<string | null>(null);
   const [status, setStatus] = useState<Partial<Record<PageTipo, boolean>>>({});
   const [aberturaTemplates, setAberturaTemplates] = useState<AberturaSecaoListItem[]>([]);
   const [aberturaDefaultId, setAberturaDefaultId] = useState<string | null>(null);
+  const [continuacaoTemplates, setContinuacaoTemplates] = useState<ContinuacaoListItem[]>([]);
+  const [continuacaoDefaultId, setContinuacaoDefaultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -148,21 +272,33 @@ export default function PaginasPage({ params }: { params: Promise<{ id: string }
     else setAberturaTemplates(templatesRes.templates ?? []);
   }
 
+  async function loadContinuacoes() {
+    const [catalogRes, templatesRes] = await Promise.all([getCatalog(catalogId), listContinuacaoTemplates(catalogId)]);
+    if (catalogRes.error) setError(catalogRes.error);
+    else setContinuacaoDefaultId(catalogRes.catalog?.continuacaoDefaultId ?? null);
+    if (templatesRes.error) setError(templatesRes.error);
+    else setContinuacaoTemplates(templatesRes.templates ?? []);
+  }
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       getCatalog(catalogId),
       listAberturaSecaoTemplates(catalogId),
+      listContinuacaoTemplates(catalogId),
       ...PAGE_TIPOS.map((t) => getPageTemplate(catalogId, t.value)),
-    ]).then(([catalogRes, templatesRes, ...templateResults]) => {
+    ]).then(([catalogRes, templatesRes, continuacaoRes, ...templateResults]) => {
       if (cancelled) return;
       if (catalogRes.error) setError(catalogRes.error);
       else {
         setCatalogNome(catalogRes.catalog?.nome ?? "");
         setAberturaDefaultId(catalogRes.catalog?.aberturaSecaoDefaultId ?? null);
+        setContinuacaoDefaultId(catalogRes.catalog?.continuacaoDefaultId ?? null);
       }
       if (templatesRes.error) setError(templatesRes.error);
       else setAberturaTemplates(templatesRes.templates ?? []);
+      if (continuacaoRes.error) setError(continuacaoRes.error);
+      else setContinuacaoTemplates(continuacaoRes.templates ?? []);
 
       const next: Partial<Record<PageTipo, boolean>> = {};
       PAGE_TIPOS.forEach((t, i) => {
@@ -208,6 +344,12 @@ export default function PaginasPage({ params }: { params: Promise<{ id: string }
         ))}
 
         <AberturaSecaoList catalogId={catalogId} templates={aberturaTemplates} defaultId={aberturaDefaultId} onChange={loadAberturas} />
+        <ContinuacaoList
+          catalogId={catalogId}
+          templates={continuacaoTemplates}
+          defaultId={continuacaoDefaultId}
+          onChange={loadContinuacoes}
+        />
       </div>
     </div>
   );

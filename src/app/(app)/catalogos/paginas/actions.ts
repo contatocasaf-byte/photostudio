@@ -28,15 +28,16 @@ async function requireUser() {
   return { supabase, user };
 }
 
-// No máximo 1 page_template por (catalog_id, tipo) pros tipos "fixos"
-// capa/continuacao — upsert por essa dupla em vez de por id (ver
-// decisão na Parte 3 do plano: `tipo = "custom"`, pra override de
-// página específica, fica de fora desta entrega — só faz sentido
-// quando existir uma página gerada pelo motor de reflow, que ainda não
-// existe). `abertura_secao` saiu dessa regra na Parte 15 — pode ter
-// várias variantes por catálogo, ver getAberturaSecaoTemplate/
-// saveAberturaSecaoTemplate abaixo, que operam por `id` da linha em
-// vez de por (catalog_id, tipo).
+// No máximo 1 page_template por (catalog_id, tipo) só pro tipo "fixo"
+// capa — upsert por essa dupla em vez de por id (ver decisão na Parte
+// 3 do plano: `tipo = "custom"`, pra override de página específica,
+// fica de fora desta entrega — só faz sentido quando existir uma
+// página gerada pelo motor de reflow, que ainda não existe).
+// `abertura_secao` saiu dessa regra na Parte 15, e `continuacao` pelo
+// mesmo motivo depois — podem ter várias variantes por catálogo, ver
+// getAberturaSecaoTemplate/saveAberturaSecaoTemplate e
+// getContinuacaoTemplate/saveContinuacaoTemplate abaixo, que operam
+// por `id` da linha em vez de por (catalog_id, tipo).
 export type PageTemplateData = {
   layout: PageLayout;
   elementosHabilitados: PageFieldKey[];
@@ -319,6 +320,160 @@ export async function updateAberturaSecaoNome(id: string, nome: string): Promise
 // são "on delete set null" — apagar aqui nunca deixa referência solta,
 // só faz quem apontava pra essa variante voltar a herdar o padrão.
 export async function deleteAberturaSecaoTemplate(id: string): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { error } = await supabase.from("page_templates").delete().eq("id", id);
+  if (error) return { error: error.message };
+  return {};
+}
+
+// Variantes de "Continuação" — mesmo padrão de Abertura de Seção
+// acima (Fase 5, Parte 15), aplicado depois à continuação por pedido
+// do usuário: várias por catálogo, cada uma com `nome` próprio, cada
+// seção escolhendo qual usar (ver sections.continuacao_template_id/
+// catalogs.continuacao_default_id em catalogos/actions.ts). Sem
+// constraint de unicidade nova no banco — mesma mudança 100% de lógica
+// de aplicação, operando por `id` da linha em vez de por
+// (catalog_id, tipo).
+export type ContinuacaoListItem = { id: string; nome: string; configurado: boolean };
+
+export async function listContinuacaoTemplates(catalogId: string): Promise<{ templates?: ContinuacaoListItem[]; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { data, error } = await supabase
+    .from("page_templates")
+    .select("id, nome, header_json, footer_json, fundo_key")
+    .eq("catalog_id", catalogId)
+    .eq("tipo", "continuacao")
+    .order("criado_em", { ascending: true });
+  if (error) return { error: error.message };
+  return {
+    templates: (data ?? []).map((row) => {
+      const header = (row.header_json as Record<string, unknown>) ?? {};
+      const footer = (row.footer_json as Record<string, unknown>) ?? {};
+      return {
+        id: row.id as string,
+        nome: (row.nome as string | null) ?? "Sem nome",
+        configurado: Object.keys(header).length > 0 || Object.keys(footer).length > 0 || !!row.fundo_key,
+      };
+    }),
+  };
+}
+
+export async function createContinuacaoTemplate(catalogId: string, nome: string): Promise<{ id?: string; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const trimmed = nome.trim();
+  if (!trimmed) return { error: "Nome é obrigatório." };
+
+  const { data: catalog, error: catalogErr } = await supabase
+    .from("catalogs")
+    .select("pagina_largura, pagina_altura")
+    .eq("id", catalogId)
+    .single();
+  if (catalogErr) return { error: catalogErr.message };
+
+  const { data, error } = await supabase
+    .from("page_templates")
+    .insert({
+      catalog_id: catalogId,
+      tipo: "continuacao",
+      is_default: false,
+      nome: trimmed,
+      header_json: {},
+      footer_json: {},
+      margens: defaultMargens(catalog.pagina_largura, catalog.pagina_altura),
+    })
+    .select("id")
+    .single();
+  if (error) return { error: error.message };
+  return { id: data.id };
+}
+
+export type ContinuacaoDetail = {
+  id: string;
+  nome: string;
+  template: PageTemplateData & { fundoUrl: string | null };
+};
+
+export async function getContinuacaoTemplate(id: string): Promise<{ detail?: ContinuacaoDetail; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { data, error } = await supabase
+    .from("page_templates")
+    .select("nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json")
+    .eq("id", id)
+    .single();
+  if (error) return { error: error.message };
+
+  const rawHeader = (data.header_json as Record<string, unknown>) ?? {};
+  const layout = { ...rawHeader, ...((data.footer_json as object) ?? {}) } as PageLayout;
+
+  let illustracoes = ((data.illustracoes_json as PageIllustration[] | null) ?? []) as PageIllustration[];
+  const legacyIlustracao = rawHeader.ilustracao as PageImageElementConfig | undefined;
+  if (illustracoes.length === 0 && legacyIlustracao) {
+    illustracoes = [{ id: randomUUID(), ...legacyIlustracao }];
+  }
+
+  return {
+    detail: {
+      id,
+      nome: (data.nome as string | null) ?? "Sem nome",
+      template: {
+        layout,
+        elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
+        margens: data.margens as Margens,
+        fundoKey: data.fundo_key,
+        fundoPdfKey: data.fundo_pdf_key,
+        fundoUrl: data.fundo_key ? getPublicUrl(data.fundo_key) : null,
+        illustracoes,
+        formas: ((data.formas_json as PageShape[] | null) ?? []) as PageShape[],
+      },
+    },
+  };
+}
+
+export async function saveContinuacaoTemplate(id: string, data: PageTemplateData): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const header: Partial<PageLayout> = {};
+  const footer: Partial<PageLayout> = {};
+  for (const def of PAGE_FIELD_DEFS) {
+    if (!data.elementosHabilitados.includes(def.key)) continue;
+    const target = def.zone === "header" ? header : footer;
+    target[def.key] = data.layout[def.key];
+  }
+
+  const { error } = await supabase
+    .from("page_templates")
+    .update({
+      header_json: header,
+      footer_json: footer,
+      margens: data.margens,
+      fundo_key: data.fundoKey,
+      fundo_pdf_key: data.fundoPdfKey,
+      illustracoes_json: data.illustracoes,
+      formas_json: data.formas,
+    })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function updateContinuacaoNome(id: string, nome: string): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const trimmed = nome.trim();
+  if (!trimmed) return { error: "Nome é obrigatório." };
+  const { error } = await supabase.from("page_templates").update({ nome: trimmed }).eq("id", id);
+  if (error) return { error: error.message };
+  return {};
+}
+
+// sections.continuacao_template_id e catalogs.continuacao_default_id
+// são "on delete set null" — apagar aqui nunca deixa referência solta.
+export async function deleteContinuacaoTemplate(id: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
   const { error } = await supabase.from("page_templates").delete().eq("id", id);

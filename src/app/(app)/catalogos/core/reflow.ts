@@ -64,6 +64,10 @@ export type SectionReflowInput = {
   // padrão do catálogo (pageTemplates.abertura_secao, resolvido em
   // preview/actions.ts a partir de catalogs.abertura_secao_default_id).
   aberturaTemplate: PageTemplateInput | null;
+  // Mesma ideia pra "Continuação" — null cai pro padrão do catálogo
+  // (pageTemplates.continuacao, resolvido a partir de
+  // catalogs.continuacao_default_id).
+  continuacaoTemplate: PageTemplateInput | null;
 };
 
 export type PageTemplateInput = {
@@ -250,8 +254,11 @@ function reflowSection(
     const tipoPagina: PageTipo = primeiraPagina ? "abertura_secao" : "continuacao";
     // Primeira página da seção: usa a variante de abertura ESCOLHIDA
     // por essa seção (Parte 15), se houver — senão cai pro padrão do
-    // catálogo. Continuação nunca varia por seção, sempre o slot único.
-    const pageTemplate = primeiraPagina ? (section.aberturaTemplate ?? pageTemplates.abertura_secao ?? null) : (pageTemplates[tipoPagina] ?? null);
+    // catálogo. Páginas de continuação seguem a mesma ideia (variante
+    // escolhida pela seção, ou padrão do catálogo).
+    const pageTemplate = primeiraPagina
+      ? (section.aberturaTemplate ?? pageTemplates.abertura_secao ?? null)
+      : (section.continuacaoTemplate ?? pageTemplates.continuacao ?? null);
     const areaUtilAltura = pageTemplate ? paginaAltura - pageTemplate.margens.top - pageTemplate.margens.bottom : paginaAltura;
     const areaUtilLargura = pageTemplate ? paginaLargura - pageTemplate.margens.left - pageTemplate.margens.right : paginaLargura;
 
