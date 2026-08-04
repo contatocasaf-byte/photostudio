@@ -1,7 +1,9 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentAccess, temPermissao } from "@/lib/auth/access";
 import type { CardBorda, CardFieldKey, CardLayout, CardShape } from "./core/cardConfig";
+import type { PermissaoChave } from "@/lib/auth/permissoes";
 
 // Primeiro módulo da suite que lê/escreve Postgres além de autenticação
 // (Studio e Ofertas usam só R2) — ver esquema em
@@ -36,6 +38,17 @@ async function requireUser() {
   return { supabase, user };
 }
 
+// Checagem de permissão granular pras ações de criar/editar/excluir
+// catálogo e seção (divisão pedida pelo usuário, separando o que antes
+// era uma permissão só "Gerenciar catálogos"). Checado DENTRO da
+// action, não só escondendo o botão na tela — mesmo padrão já usado
+// nas actions de planilhas (deletePlanilha/atualizarPlanilha).
+async function requirePermissaoCatalogos(chave: PermissaoChave): Promise<string | null> {
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, chave)) return "Sem permissão pra essa ação.";
+  return null;
+}
+
 export async function listCatalogs(): Promise<{ catalogs?: Catalog[]; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -63,6 +76,8 @@ export async function listCatalogs(): Promise<{ catalogs?: Catalog[]; error?: st
 export async function createCatalog(nome: string): Promise<{ id?: string; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_criar_catalogos");
+  if (permErr) return { error: permErr };
   const trimmed = nome.trim();
   if (!trimmed) return { error: "Nome do catálogo é obrigatório." };
 
@@ -74,6 +89,8 @@ export async function createCatalog(nome: string): Promise<{ id?: string; error?
 export async function renameCatalog(id: string, nome: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_editar_catalogos");
+  if (permErr) return { error: permErr };
   const trimmed = nome.trim();
   if (!trimmed) return { error: "Nome do catálogo é obrigatório." };
 
@@ -88,6 +105,8 @@ export async function renameCatalog(id: string, nome: string): Promise<{ error?:
 export async function deleteCatalog(id: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_excluir_catalogos");
+  if (permErr) return { error: permErr };
   const { error } = await supabase.from("catalogs").delete().eq("id", id);
   if (error) return { error: error.message };
   return {};
@@ -182,6 +201,8 @@ export async function createSection(params: {
 }): Promise<{ id?: string; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_criar_secoes");
+  if (permErr) return { error: permErr };
   const titulo = params.titulo.trim();
   if (!titulo) return { error: "Título da seção é obrigatório." };
 
@@ -225,6 +246,8 @@ export async function updateSection(
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_editar_secoes");
+  if (permErr) return { error: permErr };
 
   const update: Record<string, unknown> = {};
   if (patch.numero !== undefined) update.numero = patch.numero.trim() || null;
@@ -245,14 +268,20 @@ export async function updateSection(
 export async function deleteSection(id: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_excluir_secoes");
+  if (permErr) return { error: permErr };
   const { error } = await supabase.from("sections").delete().eq("id", id);
   if (error) return { error: error.message };
   return {};
 }
 
+// Reordenar é tratado como "editar seções" (muda ordem, não cria/apaga
+// nada) — mesma permissão de updateSection.
 export async function reorderSections(orderedIds: string[]): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_editar_secoes");
+  if (permErr) return { error: permErr };
 
   // Sem transação multi-linha no supabase-js — dispara os updates em
   // paralelo (cada um só toca a própria linha por id, sem conflito
@@ -324,6 +353,8 @@ export async function saveCardTemplate(
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  const permErr = await requirePermissaoCatalogos("catalogos_card_molde");
+  if (permErr) return { error: permErr };
 
   const row = {
     layout_json: data.layout,

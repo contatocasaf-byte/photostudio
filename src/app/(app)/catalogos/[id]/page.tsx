@@ -1,5 +1,6 @@
 import PermissaoGate from "@/components/PermissaoGate";
 import { getCurrentAccess, temPermissao } from "@/lib/auth/access";
+import { permissoesDoModulo } from "@/lib/auth/permissoes";
 import CatalogDetailClient from "./CatalogDetailClient";
 
 export default async function CatalogDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -9,10 +10,22 @@ export default async function CatalogDetailPage({ params }: { params: Promise<{ 
   const access = await getCurrentAccess();
   const podeExcluirPlanilhas = temPermissao(access, "catalogos_excluir_planilhas");
   const podeAtualizarPlanilhas = temPermissao(access, "catalogos_atualizar_planilhas");
+  const podeEditarCatalogo = temPermissao(access, "catalogos_editar_catalogos");
+  const podeCriarSecoes = temPermissao(access, "catalogos_criar_secoes");
+  const podeEditarSecoes = temPermissao(access, "catalogos_editar_secoes");
+  const podeExcluirSecoes = temPermissao(access, "catalogos_excluir_secoes");
 
   return (
-    <PermissaoGate chave="catalogos_gerenciar">
-      <CatalogDetailClient params={params} podeExcluirPlanilhas={podeExcluirPlanilhas} podeAtualizarPlanilhas={podeAtualizarPlanilhas} />
+    <PermissaoGate chave={permissoesDoModulo("catalogos").map((p) => p.chave)}>
+      <CatalogDetailClient
+        params={params}
+        podeExcluirPlanilhas={podeExcluirPlanilhas}
+        podeAtualizarPlanilhas={podeAtualizarPlanilhas}
+        podeEditarCatalogo={podeEditarCatalogo}
+        podeCriarSecoes={podeCriarSecoes}
+        podeEditarSecoes={podeEditarSecoes}
+        podeExcluirSecoes={podeExcluirSecoes}
+      />
     </PermissaoGate>
   );
 }

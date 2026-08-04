@@ -153,6 +153,8 @@ function SectionRow({
   section,
   aberturaOptions,
   continuacaoOptions,
+  podeEditarSecoes,
+  podeExcluirSecoes,
   onSave,
   onDelete,
 }: {
@@ -160,6 +162,8 @@ function SectionRow({
   section: Section;
   aberturaOptions: AberturaSecaoListItem[];
   continuacaoOptions: ContinuacaoListItem[];
+  podeEditarSecoes: boolean;
+  podeExcluirSecoes: boolean;
   onSave: (values: SectionFormValues) => Promise<void>;
   onDelete: () => void;
 }) {
@@ -172,7 +176,7 @@ function SectionRow({
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
       className="rounded-md border border-slate-200 bg-white px-3 py-2.5"
     >
-      {editing ? (
+      {editing && podeEditarSecoes ? (
         <SectionForm
           initial={{
             numero: section.numero ?? "",
@@ -192,9 +196,13 @@ function SectionRow({
         />
       ) : (
         <div className="flex items-center gap-2">
-          <button {...attributes} {...listeners} className="cursor-grab px-1 text-slate-300 hover:text-slate-600" title="Arrastar">
-            ⠿
-          </button>
+          {podeEditarSecoes ? (
+            <button {...attributes} {...listeners} className="cursor-grab px-1 text-slate-300 hover:text-slate-600" title="Arrastar">
+              ⠿
+            </button>
+          ) : (
+            <span className="px-1 text-slate-200">⠿</span>
+          )}
           <span className="w-8 shrink-0 text-xs font-semibold text-slate-400">{section.numero || "—"}</span>
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{section.titulo}</span>
           <span className="shrink-0 text-xs text-slate-400">{section.colunas} colunas</span>
@@ -210,18 +218,22 @@ function SectionRow({
           >
             Produtos
           </Link>
-          <button
-            onClick={() => setEditing(true)}
-            className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
-          >
-            Editar
-          </button>
-          <button
-            onClick={onDelete}
-            className="shrink-0 rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
-          >
-            Excluir
-          </button>
+          {podeEditarSecoes && (
+            <button
+              onClick={() => setEditing(true)}
+              className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            >
+              Editar
+            </button>
+          )}
+          {podeExcluirSecoes && (
+            <button
+              onClick={onDelete}
+              className="shrink-0 rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+            >
+              Excluir
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -353,10 +365,18 @@ export default function CatalogDetailPage({
   params,
   podeExcluirPlanilhas,
   podeAtualizarPlanilhas,
+  podeEditarCatalogo,
+  podeCriarSecoes,
+  podeEditarSecoes,
+  podeExcluirSecoes,
 }: {
   params: Promise<{ id: string }>;
   podeExcluirPlanilhas: boolean;
   podeAtualizarPlanilhas: boolean;
+  podeEditarCatalogo: boolean;
+  podeCriarSecoes: boolean;
+  podeEditarSecoes: boolean;
+  podeExcluirSecoes: boolean;
 }) {
   const { id } = use(params);
 
@@ -496,7 +516,7 @@ export default function CatalogDetailPage({
       </Link>
 
       <div className="mt-2">
-        {editingNome ? (
+        {editingNome && podeEditarCatalogo ? (
           <div className="flex items-center gap-2">
             <input
               value={nomeDraft}
@@ -512,7 +532,7 @@ export default function CatalogDetailPage({
               Cancelar
             </button>
           </div>
-        ) : (
+        ) : podeEditarCatalogo ? (
           <h1
             className="cursor-pointer text-lg font-semibold text-slate-900 hover:underline"
             title="Clique para renomear"
@@ -523,6 +543,8 @@ export default function CatalogDetailPage({
           >
             {catalogNome}
           </h1>
+        ) : (
+          <h1 className="text-lg font-semibold text-slate-900">{catalogNome}</h1>
         )}
       </div>
 
@@ -568,7 +590,7 @@ export default function CatalogDetailPage({
 
       <div className="mt-6 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Seções</p>
-        {!showNewForm && (
+        {podeCriarSecoes && !showNewForm && (
           <button
             onClick={() => setShowNewForm(true)}
             className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
@@ -578,7 +600,7 @@ export default function CatalogDetailPage({
         )}
       </div>
 
-      {showNewForm && (
+      {podeCriarSecoes && showNewForm && (
         <div className="mt-2 rounded-md border border-dashed border-slate-300 p-3">
           <SectionForm
             initial={{ numero: "", titulo: "", colunas: 3, aberturaTemplateId: null, continuacaoTemplateId: null }}
@@ -610,6 +632,8 @@ export default function CatalogDetailPage({
                     section={s}
                     aberturaOptions={aberturaOptions}
                     continuacaoOptions={continuacaoOptions}
+                    podeEditarSecoes={podeEditarSecoes}
+                    podeExcluirSecoes={podeExcluirSecoes}
                     onSave={(values) => handleSaveSection(s.id, values)}
                     onDelete={() => handleDeleteSection(s)}
                   />

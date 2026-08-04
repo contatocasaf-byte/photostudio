@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { listCatalogs, createCatalog, deleteCatalog, type Catalog } from "./actions";
 
-export default function CatalogosPage() {
+export default function CatalogosPage({
+  podeCriarCatalogos,
+  podeExcluirCatalogos,
+}: {
+  podeCriarCatalogos: boolean;
+  podeExcluirCatalogos: boolean;
+}) {
   const [catalogs, setCatalogs] = useState<Catalog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,22 +80,24 @@ export default function CatalogosPage() {
         Cada catálogo é dividido em seções, com um card-molde próprio por seção.
       </p>
 
-      <div className="mt-4 flex gap-2">
-        <input
-          value={novoNome}
-          onChange={(e) => setNovoNome(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-          placeholder="Nome do novo catálogo"
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-        <button
-          onClick={handleCreate}
-          disabled={creating || !novoNome.trim()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {creating ? "Criando..." : "Criar catálogo"}
-        </button>
-      </div>
+      {podeCriarCatalogos && (
+        <div className="mt-4 flex gap-2">
+          <input
+            value={novoNome}
+            onChange={(e) => setNovoNome(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            placeholder="Nome do novo catálogo"
+            className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={creating || !novoNome.trim()}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {creating ? "Criando..." : "Criar catálogo"}
+          </button>
+        </div>
+      )}
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       {loading && <p className="mt-4 text-sm text-slate-400">Carregando catálogos...</p>}
@@ -112,12 +120,14 @@ export default function CatalogosPage() {
                   {new Date(c.criado_em).toLocaleDateString("pt-BR")}
                 </p>
               </Link>
-              <button
-                onClick={() => handleDelete(c)}
-                className="ml-3 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-              >
-                Excluir
-              </button>
+              {podeExcluirCatalogos && (
+                <button
+                  onClick={() => handleDelete(c)}
+                  className="ml-3 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                >
+                  Excluir
+                </button>
+              )}
             </li>
           ))}
         </ul>

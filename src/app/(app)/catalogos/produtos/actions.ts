@@ -333,6 +333,11 @@ export async function addProductToSection(sectionId: string, productId: string):
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, "catalogos_produtos_secao")) {
+    return { error: "Sem permissão pra editar produtos da seção." };
+  }
+
   const [{ data: existing, error: existingErr }, { data: section, error: sectionErr }] = await Promise.all([
     supabase.from("catalog_items").select("ordem").eq("section_id", sectionId).order("ordem", { ascending: false }).limit(1),
     supabase.from("sections").select("card_template_id").eq("id", sectionId).single(),
@@ -379,6 +384,12 @@ export async function sectionHasItems(sectionId: string): Promise<{ hasItems?: b
 export async function removeSectionItem(itemId: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, "catalogos_produtos_secao")) {
+    return { error: "Sem permissão pra editar produtos da seção." };
+  }
+
   const { error } = await supabase.from("catalog_items").delete().eq("id", itemId);
   if (error) return { error: error.message };
   return {};
@@ -387,6 +398,12 @@ export async function removeSectionItem(itemId: string): Promise<{ error?: strin
 export async function reorderSectionItems(orderedItemIds: string[]): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, "catalogos_produtos_secao")) {
+    return { error: "Sem permissão pra editar produtos da seção." };
+  }
+
   const results = await Promise.all(
     orderedItemIds.map((id, index) => supabase.from("catalog_items").update({ ordem: index }).eq("id", id))
   );

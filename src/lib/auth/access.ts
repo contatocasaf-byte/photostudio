@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import type { PermissaoChave } from "./permissoes";
+import { permissoesDoModulo, type PermissaoChave } from "./permissoes";
 
 export type Papel = "usuario" | "supervisor" | "administrador";
 
@@ -62,7 +62,11 @@ export function primeiraRotaAcessivel(access: Access | null): string | null {
   if (!access) return null;
   if (temAlgumaPermissao(access, ["studio_editor", "studio_marca_dagua", "studio_renomeador", "studio_comparador"])) return "/studio";
   if (temAlgumaPermissao(access, ["ofertas_gerar", "ofertas_lote", "ofertas_layout"])) return "/ofertas";
-  if (temPermissao(access, "catalogos_gerenciar")) return "/catalogos";
+  // "Gerenciar catálogos" foi dividida em 6 permissões — QUALQUER
+  // permissão do módulo Catálogos já libera entrada (mesmo padrão de
+  // Studio/Ofertas acima), calculado dinamicamente pra nunca precisar
+  // atualizar essa lista à mão quando uma permissão nova for criada.
+  if (temAlgumaPermissao(access, permissoesDoModulo("catalogos").map((p) => p.chave))) return "/catalogos";
   if (temPermissao(access, "criar_usuarios")) return "/usuarios";
   return null;
 }

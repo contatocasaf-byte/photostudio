@@ -11,9 +11,15 @@ export type PermissaoChave =
   | "ofertas_gerar"
   | "ofertas_lote"
   | "ofertas_layout"
-  | "catalogos_gerenciar"
+  | "catalogos_criar_catalogos"
+  | "catalogos_editar_catalogos"
+  | "catalogos_excluir_catalogos"
+  | "catalogos_criar_secoes"
+  | "catalogos_editar_secoes"
+  | "catalogos_excluir_secoes"
   | "catalogos_modelos_pagina"
-  | "catalogos_cards_produtos"
+  | "catalogos_card_molde"
+  | "catalogos_produtos_secao"
   | "catalogos_galeria"
   | "catalogos_preview_pdf"
   | "catalogos_excluir_planilhas"
@@ -36,12 +42,23 @@ export const PERMISSOES: PermissaoDef[] = [
   { chave: "ofertas_gerar", modulo: "ofertas", label: "Gerar Oferta" },
   { chave: "ofertas_lote", modulo: "ofertas", label: "Gerar em Lote" },
   { chave: "ofertas_layout", modulo: "ofertas", label: "Editor de Layout" },
-  // "Gerenciar catálogos" é pré-requisito de entrada no módulo inteiro
-  // (decisão do usuário) — sem ela, as outras 4 permissões de
-  // catálogos não abrem sozinhas nenhuma tela, mesmo marcadas.
-  { chave: "catalogos_gerenciar", modulo: "catalogos", label: "Gerenciar catálogos (criar/editar/excluir catálogo e seções)" },
+  // "Gerenciar catálogos" (permissão única) foi dividida em 6 — pedido
+  // explícito do usuário. Entrada no módulo (ver a lista/abrir um
+  // catálogo) mudou de regra junto: antes só essa permissão liberava
+  // entrada pras outras 4 (efeito aceito documentado na Fase 6); agora
+  // QUALQUER permissão de Catálogos libera entrada (mesmo padrão já
+  // usado em Studio/Ofertas) — ver primeiraRotaAcessivel/layout.tsx,
+  // que calculam isso dinamicamente via permissoesDoModulo("catalogos"),
+  // nunca listando as chaves na mão.
+  { chave: "catalogos_criar_catalogos", modulo: "catalogos", label: "Criar catálogos" },
+  { chave: "catalogos_editar_catalogos", modulo: "catalogos", label: "Editar catálogos (renomear)" },
+  { chave: "catalogos_excluir_catalogos", modulo: "catalogos", label: "Excluir catálogos" },
+  { chave: "catalogos_criar_secoes", modulo: "catalogos", label: "Criar seções" },
+  { chave: "catalogos_editar_secoes", modulo: "catalogos", label: "Editar seções (inclusive reordenar)" },
+  { chave: "catalogos_excluir_secoes", modulo: "catalogos", label: "Excluir seções" },
   { chave: "catalogos_modelos_pagina", modulo: "catalogos", label: "Editar modelos de página (capa, continuação, aberturas, avulsas)" },
-  { chave: "catalogos_cards_produtos", modulo: "catalogos", label: "Editar card-molde e produtos da seção" },
+  { chave: "catalogos_card_molde", modulo: "catalogos", label: "Editar card-molde da seção" },
+  { chave: "catalogos_produtos_secao", modulo: "catalogos", label: "Editar produtos da seção" },
   { chave: "catalogos_galeria", modulo: "catalogos", label: "Configurar galeria de fotos" },
   { chave: "catalogos_preview_pdf", modulo: "catalogos", label: "Ver catálogo e baixar PDF" },
   { chave: "catalogos_excluir_planilhas", modulo: "catalogos", label: "Excluir planilhas de produtos" },

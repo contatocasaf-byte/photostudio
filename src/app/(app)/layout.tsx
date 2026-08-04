@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { getCurrentAccess, temAlgumaPermissao, temPermissao } from "@/lib/auth/access";
+import { permissoesDoModulo } from "@/lib/auth/permissoes";
 
 // Server Component (Fase 6) — cada link só aparece se o usuário logado
 // tiver PELO MENOS UMA permissão daquele módulo marcada (ou for
@@ -12,7 +13,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const access = await getCurrentAccess();
   const vePermissoesStudio = temAlgumaPermissao(access, ["studio_editor", "studio_marca_dagua", "studio_renomeador", "studio_comparador"]);
   const veOfertas = temAlgumaPermissao(access, ["ofertas_gerar", "ofertas_lote", "ofertas_layout"]);
-  const veCatalogos = temPermissao(access, "catalogos_gerenciar");
+  // "Gerenciar catálogos" foi dividida em 6 — qualquer permissão do
+  // módulo já mostra o link (mesmo padrão de Studio/Ofertas acima).
+  const veCatalogos = temAlgumaPermissao(access, permissoesDoModulo("catalogos").map((p) => p.chave));
   const veUsuarios = temPermissao(access, "criar_usuarios");
 
   return (
