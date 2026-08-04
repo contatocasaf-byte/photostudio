@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* App inteiro usa classes Tailwind fixas de tema claro (bg-white,
+     text-slate-900 etc.) — nenhum componente tem variante dark:. Sem
+     isso, o navegador aplicava estilo nativo escuro em inputs/selects
+     (herdado do prefers-color-scheme abaixo), deixando campo de texto
+     escuro dentro de card branco, ilegível. */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -10,13 +16,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
