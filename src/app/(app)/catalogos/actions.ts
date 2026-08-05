@@ -28,6 +28,10 @@ export type Section = {
   abertura_template_id: string | null;
   // Mesma ideia pra "Continuação" — null = herda catalogs.continuacao_default_id.
   continuacao_template_id: string | null;
+  // Seção cujo card-molde esta seção "segue" — quando a origem salva
+  // com "replicar", uma versão nova é criada aqui também. Setado só
+  // via saveCardTemplate (nunca em createSection/updateSection).
+  segue_secao_id: string | null;
 };
 
 async function requireUser() {
@@ -172,7 +176,7 @@ export async function getSection(id: string): Promise<{ section?: Section; error
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("sections")
-    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id, continuacao_template_id")
+    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id, continuacao_template_id, segue_secao_id")
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -184,7 +188,7 @@ export async function listSections(catalogId: string): Promise<{ sections?: Sect
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("sections")
-    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id, continuacao_template_id")
+    .select("id, catalog_id, numero, titulo, ordem, colunas, abertura_template_id, continuacao_template_id, segue_secao_id")
     .eq("catalog_id", catalogId)
     .order("ordem", { ascending: true });
   if (error) return { error: error.message };
@@ -346,10 +350,91 @@ export async function getCardTemplate(sectionId: string): Promise<{ template?: C
   };
 }
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+// Aplica uma linha de card-molde (já resolvida a partir de
+// CardTemplateData) a UMA seção — extraído pra ser reaproveitado tanto
+// pra seção que está sendo editada quanto, em "replicar pras
+// seguidoras" (ver saveCardTemplate), pra cada seção que segue ela.
+// Mesma regra de sempre: sem produto posicionado ainda, UPDATE in
+// place; com produto posicionado, sempre INSERT versão nova.
+async function applyCardTemplateRow(
+  supabase: SupabaseServerClient,
+  targetSectionId: string,
+  row: Record<string, unknown>,
+  modo: SaveCardTemplateMode
+): Promise<{ error?: string }> {
+  const { data: existing, error: existingErr } = await supabase
+    .from("card_templates")
+    .select("id, versao")
+    .eq("section_id", targetSectionId)
+    .order("versao", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingErr) return { error: existingErr.message };
+
+  if (!existing) {
+    const { data: inserted, error: insertErr } = await supabase
+      .from("card_templates")
+      .insert({ section_id: targetSectionId, ...row })
+      .select("id")
+      .single();
+    if (insertErr) return { error: insertErr.message };
+
+    const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
+    if (linkErr) return { error: linkErr.message };
+    return {};
+  }
+
+  const { data: itemRows, error: itemsErr } = await supabase.from("catalog_items").select("id").eq("section_id", targetSectionId).limit(1);
+  if (itemsErr) return { error: itemsErr.message };
+  const hasItems = (itemRows?.length ?? 0) > 0;
+
+  if (!hasItems) {
+    const { error } = await supabase.from("card_templates").update(row).eq("id", existing.id);
+    if (error) return { error: error.message };
+    return {};
+  }
+
+  const proximaVersao = (existing.versao as number) + 1;
+  const { data: inserted, error: insertErr } = await supabase
+    .from("card_templates")
+    .insert({ section_id: targetSectionId, versao: proximaVersao, ...row })
+    .select("id")
+    .single();
+  if (insertErr) return { error: insertErr.message };
+
+  const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
+  if (linkErr) return { error: linkErr.message };
+
+  if (modo === "aplicar_todos") {
+    const { error: migrateErr } = await supabase
+      .from("catalog_items")
+      .update({ card_template_versao: proximaVersao })
+      .eq("section_id", targetSectionId);
+    if (migrateErr) return { error: migrateErr.message };
+  }
+
+  return {};
+}
+
 export async function saveCardTemplate(
   sectionId: string,
   data: CardTemplateData,
-  modo: SaveCardTemplateMode = "aplicar_todos"
+  modo: SaveCardTemplateMode = "aplicar_todos",
+  // Vínculo "esta seção segue aquela" (ver Section.segue_secao_id) —
+  // null = não segue ninguém (ou parou de seguir). Decidido no
+  // cliente: só fica != null quando o formulário, no momento do
+  // Salvar, está idêntico ao que "Reaproveitar de outra seção" acabou
+  // de copiar (qualquer edição manual depois de copiar já quebra o
+  // vínculo antes mesmo de chegar aqui — ver CardEditorClient.tsx).
+  segueSecaoId: string | null = null,
+  // true = replica essa mesma alteração (a mesma `row`) pras seções
+  // que seguem `sectionId`, cada uma recebendo sua PRÓPRIA versão nova
+  // (nunca a mesma linha compartilhada). Sempre em modo "aplicar_todos"
+  // pra cada seguidora — seguir significa ficar visualmente idêntica,
+  // não faz sentido a seguidora ganhar produtos "no molde antigo".
+  replicarParaSeguidoras: boolean = false
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -368,71 +453,20 @@ export async function saveCardTemplate(
     borda_json: data.borda,
   };
 
-  const { data: existing, error: existingErr } = await supabase
-    .from("card_templates")
-    .select("id, versao")
-    .eq("section_id", sectionId)
-    .order("versao", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (existingErr) return { error: existingErr.message };
+  const applyErr = await applyCardTemplateRow(supabase, sectionId, row, modo);
+  if (applyErr.error) return applyErr;
 
-  // Primeira vez que essa seção ganha um card-molde — sem versão
-  // anterior pra "conflitar" com produto nenhum, não tem por que criar
-  // conceito de versão ainda.
-  if (!existing) {
-    const { data: inserted, error: insertErr } = await supabase
-      .from("card_templates")
-      .insert({ section_id: sectionId, ...row })
-      .select("id")
-      .single();
-    if (insertErr) return { error: insertErr.message };
+  const { error: followErr } = await supabase.from("sections").update({ segue_secao_id: segueSecaoId }).eq("id", sectionId);
+  if (followErr) return { error: followErr.message };
 
-    const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", sectionId);
-    if (linkErr) return { error: linkErr.message };
-    return {};
-  }
+  if (replicarParaSeguidoras) {
+    const { data: followers, error: followersErr } = await supabase.from("sections").select("id").eq("segue_secao_id", sectionId);
+    if (followersErr) return { error: followersErr.message };
 
-  const { data: itemRows, error: itemsErr } = await supabase.from("catalog_items").select("id").eq("section_id", sectionId).limit(1);
-  if (itemsErr) return { error: itemsErr.message };
-  const hasItems = (itemRows?.length ?? 0) > 0;
-
-  // Seção ainda em fase de desenho (sem produto posicionado) —
-  // continua como sempre foi: UPDATE na mesma linha, sem gerar versão
-  // nova, pra não empilhar versões inúteis enquanto o usuário ainda
-  // está iterando no design do card antes de popular a seção.
-  if (!hasItems) {
-    const { error } = await supabase.from("card_templates").update(row).eq("id", existing.id);
-    if (error) return { error: error.message };
-    return {};
-  }
-
-  // Já tem produto posicionado — spec 3.5: sempre cria uma versão
-  // NOVA (nunca sobrescreve a antiga, que continua servindo os itens
-  // que apontam pra ela). `versao` não é uma sequence no banco (é só
-  // um `default 1`), então o próximo número precisa ser calculado aqui
-  // — mesma lógica já usada pra `ordem` em seções/itens.
-  const proximaVersao = (existing.versao as number) + 1;
-  const { data: inserted, error: insertErr } = await supabase
-    .from("card_templates")
-    .insert({ section_id: sectionId, versao: proximaVersao, ...row })
-    .select("id")
-    .single();
-  if (insertErr) return { error: insertErr.message };
-
-  const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", sectionId);
-  if (linkErr) return { error: linkErr.message };
-
-  // "aplicar_todos" migra todos os produtos JÁ posicionados pra essa
-  // versão nova — "aplicar_novos" deixa a linha antiga intacta
-  // (produtos antigos continuam apontando pra ela); só os produtos
-  // adicionados dali pra frente (addProductToSection) pegam a nova.
-  if (modo === "aplicar_todos") {
-    const { error: migrateErr } = await supabase
-      .from("catalog_items")
-      .update({ card_template_versao: proximaVersao })
-      .eq("section_id", sectionId);
-    if (migrateErr) return { error: migrateErr.message };
+    for (const follower of followers ?? []) {
+      const followerErr = await applyCardTemplateRow(supabase, follower.id as string, row, "aplicar_todos");
+      if (followerErr.error) return followerErr;
+    }
   }
 
   return {};

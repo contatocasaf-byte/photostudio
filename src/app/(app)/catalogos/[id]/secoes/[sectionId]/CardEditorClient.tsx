@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   getSection,
@@ -31,6 +31,25 @@ import {
 import CardEditorCanvas from "./CardEditorCanvas";
 import { CardStructurePanel, ElementsPanel, SelectedElementPanel } from "./PropertiesPanel";
 import FontManager from "@/components/fonts/FontManager";
+
+// Serializa só os campos que definem a APARÊNCIA do card (nunca
+// incluir sectionId/versao/ids) — usado pra comparar "o que está na
+// tela agora" contra "o que acabou de ser copiado/carregado", e assim
+// saber se o vínculo de "seguir outra seção" (ver segue_secao_id)
+// ainda é válido ou já foi quebrado por uma edição manual.
+function snapshotCard(input: {
+  layout: CardLayout;
+  camposHabilitados: CardFieldKey[];
+  largura: number;
+  alturaMinima: number;
+  alturaCresceCom: CardFieldKey | null;
+  gutterX: number | null;
+  gutterY: number | null;
+  shapes: CardShape[];
+  borda: CardBorda;
+}): string {
+  return JSON.stringify(input);
+}
 
 export default function CardEditorPage({ params }: { params: Promise<{ id: string; sectionId: string }> }) {
   const { id: catalogId, sectionId } = use(params);
@@ -69,6 +88,17 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [copySourceId, setCopySourceId] = useState("");
   const [copying, setCopying] = useState(false);
 
+  // Vínculo "esta seção segue aquela" (pedido do usuário: manter a
+  // dinâmica de "Reaproveitar" mas, opcionalmente, replicar
+  // atualizações futuras da origem pra cá automaticamente).
+  // followSourceId != null só enquanto a tela estiver EXATAMENTE igual
+  // ao que foi copiado/carregado (ver isFollowDirty) — qualquer edição
+  // manual depois disso já não persiste o vínculo no próximo Salvar,
+  // sem precisar interceptar cada onChange do canvas/painel um por um.
+  const [followSourceId, setFollowSourceId] = useState<string | null>(null);
+  const [copiedSnapshot, setCopiedSnapshot] = useState<string | null>(null);
+  const [replicarSeguidoras, setReplicarSeguidoras] = useState(true);
+
   // Versionamento pós-criação (Fase 5, Parte 8, spec 3.5) — a pergunta
   // "aplicar a todos vs. só aos novos" só faz sentido se a seção já
   // tem produto posicionado; sem isso, Salvar continua direto (sem
@@ -99,6 +129,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       if (cancelled) return;
       if (sectionRes.error) setError(sectionRes.error);
       else setSection(sectionRes.section ?? null);
+      if (!sectionRes.error) setFollowSourceId(sectionRes.section?.segue_secao_id ?? null);
       if (templateRes.error) setError(templateRes.error);
       else if (templateRes.template) {
         const t = templateRes.template;
@@ -108,15 +139,35 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         // preco pra codigo/ref/preco_1/preco_2) deixa os campos NOVOS
         // com config `undefined`, quebrando o canvas inteiro ao tentar
         // desenhar um campo sem posição/tamanho.
-        setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
-        setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+        const merged = { ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout };
+        const campos = t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS;
+        const bordaVal = t.borda ?? defaultCardBorda();
+        setLayout(merged);
+        setCamposHabilitados(campos);
         setLargura(t.largura);
         setAlturaMinima(t.alturaMinima);
         setAlturaCresceCom(t.alturaCresceCom);
         setGutterX(t.gutterX);
         setGutterY(t.gutterY);
         setShapes(t.shapes);
-        setBorda(t.borda ?? defaultCardBorda());
+        setBorda(bordaVal);
+        // Ponto de partida pra comparação de "ainda igual ao que veio
+        // salvo" (ver isFollowDirty) — sem isso, uma seção que já
+        // segue outra ao ser recarregada seria tratada como "editada"
+        // na primeira renderização, quebrando o vínculo à toa.
+        setCopiedSnapshot(
+          snapshotCard({
+            layout: merged,
+            camposHabilitados: campos,
+            largura: t.largura,
+            alturaMinima: t.alturaMinima,
+            alturaCresceCom: t.alturaCresceCom,
+            gutterX: t.gutterX,
+            gutterY: t.gutterY,
+            shapes: t.shapes,
+            borda: bordaVal,
+          })
+        );
       }
       if (!sectionsRes.error) setOtherSections((sectionsRes.sections ?? []).filter((s) => s.id !== sectionId));
       if (!hasItemsRes.error) setHasItems(hasItemsRes.hasItems ?? false);
@@ -143,20 +194,47 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         return;
       }
       const t = res.template;
-      setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
-      setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
+      const merged = { ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout };
+      const campos = t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS;
+      const bordaVal = t.borda ?? defaultCardBorda();
+      setLayout(merged);
+      setCamposHabilitados(campos);
       setLargura(t.largura);
       setAlturaMinima(t.alturaMinima);
       setAlturaCresceCom(t.alturaCresceCom);
       setGutterX(t.gutterX);
       setGutterY(t.gutterY);
       setShapes(t.shapes);
-      setBorda(t.borda ?? defaultCardBorda());
+      setBorda(bordaVal);
       handleClearSelection();
-      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar nesta seção.");
+      // Marca a origem copiada como "seguida" — só é persistido de
+      // verdade se o Salvar acontecer sem nenhuma edição no meio (ver
+      // isFollowDirty); editar qualquer coisa depois de copiar já
+      // desfaz essa intenção automaticamente.
+      setFollowSourceId(copySourceId);
+      setCopiedSnapshot(
+        snapshotCard({
+          layout: merged,
+          camposHabilitados: campos,
+          largura: t.largura,
+          alturaMinima: t.alturaMinima,
+          alturaCresceCom: t.alturaCresceCom,
+          gutterX: t.gutterX,
+          gutterY: t.gutterY,
+          shapes: t.shapes,
+          borda: bordaVal,
+        })
+      );
+      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar nesta seção (fica sincronizada com essa origem enquanto você não editar nada).");
     } finally {
       setCopying(false);
     }
+  }
+
+  function handleUnfollow() {
+    setFollowSourceId(null);
+    setCopiedSnapshot(null);
+    setStatus("Vínculo removido — clique em Salvar pra confirmar.");
   }
 
   function handleLoadVersion(v: CardTemplateVersion) {
@@ -278,12 +356,27 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setBorda((prev) => ({ ...prev, ...patch }));
   }
 
-  // Seção sem produto posicionado ainda: salva direto (modo é
-  // irrelevante — saveCardTemplate nem chega a versionar nesse caso).
-  // Com produto já posicionado: mostra a escolha antes de salvar de
-  // verdade (ver `doSave`).
+  // Seções que seguem ESTA (ver segue_secao_id) — ao salvar aqui, o
+  // usuário pode escolher replicar a mudança pra elas também.
+  const followers = otherSections.filter((s) => s.segue_secao_id === sectionId);
+
+  // Estado atual comparado ao que foi copiado/carregado por último
+  // (ver copiedSnapshot) — qualquer edição depois disso já invalida o
+  // vínculo de "seguir", sem precisar interceptar cada onChange do
+  // canvas/painel um por um.
+  const currentSnapshot = useMemo(
+    () => snapshotCard({ layout, camposHabilitados, largura, alturaMinima, alturaCresceCom, gutterX, gutterY, shapes, borda }),
+    [layout, camposHabilitados, largura, alturaMinima, alturaCresceCom, gutterX, gutterY, shapes, borda]
+  );
+  const isFollowDirty = followSourceId !== null && copiedSnapshot !== null && currentSnapshot !== copiedSnapshot;
+  const followSourceTitle = followSourceId ? (otherSections.find((s) => s.id === followSourceId)?.titulo ?? "outra seção") : null;
+
+  // Seção sem produto posicionado e sem seguidoras: salva direto (nada
+  // pra perguntar). Com produto posicionado e/ou seguidoras: mostra a
+  // escolha antes de salvar de verdade (ver `doSave`).
   function handleSave() {
-    if (hasItems) {
+    if (hasItems || followers.length > 0) {
+      setReplicarSeguidoras(true);
       setShowVersionChoice(true);
       return;
     }
@@ -295,6 +388,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setStatus(null);
     setShowVersionChoice(false);
     try {
+      const segueSecaoId = followSourceId !== null && !isFollowDirty ? followSourceId : null;
       const res = await saveCardTemplate(
         sectionId,
         {
@@ -308,7 +402,9 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           shapes,
           borda,
         },
-        modo
+        modo,
+        segueSecaoId,
+        followers.length > 0 && replicarSeguidoras
       );
       setStatus(res.error ? `⚠ ${res.error}` : "✔ Card-molde salvo.");
     } finally {
@@ -340,27 +436,43 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       <FontManager />
 
       {otherSections.length > 0 && (
-        <div className="mt-3 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-          <label className="text-xs text-slate-500">Reaproveitar configuração de:</label>
-          <select
-            value={copySourceId}
-            onChange={(e) => setCopySourceId(e.target.value)}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-          >
-            <option value="">Selecione uma seção...</option>
-            {otherSections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.numero ? `${s.numero} — ${s.titulo}` : s.titulo}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={handleCopyFrom}
-            disabled={!copySourceId || copying}
-            className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
-          >
-            {copying ? "Copiando..." : "Copiar"}
-          </button>
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500">Reaproveitar configuração de:</label>
+            <select
+              value={copySourceId}
+              onChange={(e) => setCopySourceId(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+            >
+              <option value="">Selecione uma seção...</option>
+              {/* Não deixa seguir uma seção que já segue esta — evita
+                  um vínculo circular direto (A segue B, B segue A). */}
+              {otherSections
+                .filter((s) => s.segue_secao_id !== sectionId)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.numero ? `${s.numero} — ${s.titulo}` : s.titulo}
+                  </option>
+                ))}
+            </select>
+            <button
+              onClick={handleCopyFrom}
+              disabled={!copySourceId || copying}
+              className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+            >
+              {copying ? "Copiando..." : "Copiar"}
+            </button>
+          </div>
+          {followSourceId && (
+            <p className="mt-2 text-xs text-slate-500">
+              {isFollowDirty
+                ? "⚠ Alterado desde a cópia — não será salvo como sincronizado."
+                : `✓ Será salvo como sincronizado com ${followSourceTitle} — atualizações futuras nela podem ser replicadas aqui.`}{" "}
+              <button type="button" onClick={handleUnfollow} className="underline hover:text-slate-700">
+                Parar de seguir
+              </button>
+            </p>
+          )}
         </div>
       )}
 
@@ -394,22 +506,47 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
       {showVersionChoice && (
         <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-          <p className="font-medium">Esta seção já tem produtos posicionados. Aplicar essa alteração a:</p>
+          {hasItems && <p className="font-medium">Esta seção já tem produtos posicionados. Aplicar essa alteração a:</p>}
+          {followers.length > 0 && (
+            <label className="mt-2 flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={replicarSeguidoras}
+                onChange={(e) => setReplicarSeguidoras(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Replicar esta atualização pras seções que seguem este card: {followers.map((f) => f.titulo).join(", ")}
+              </span>
+            </label>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              onClick={() => doSave("aplicar_todos")}
-              disabled={saving}
-              className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              Todos os produtos já posicionados
-            </button>
-            <button
-              onClick={() => doSave("aplicar_novos")}
-              disabled={saving}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Só aos novos a partir de agora
-            </button>
+            {hasItems ? (
+              <>
+                <button
+                  onClick={() => doSave("aplicar_todos")}
+                  disabled={saving}
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Todos os produtos já posicionados
+                </button>
+                <button
+                  onClick={() => doSave("aplicar_novos")}
+                  disabled={saving}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Só aos novos a partir de agora
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => doSave("aplicar_todos")}
+                disabled={saving}
+                className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Salvar
+              </button>
+            )}
             <button
               onClick={() => setShowVersionChoice(false)}
               disabled={saving}
