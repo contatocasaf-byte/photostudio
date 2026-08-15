@@ -130,12 +130,13 @@ function buildPageShapes(page: PreviewPage): PdfShapeSpec[] {
   }));
 }
 
-function buildPageFields(page: PreviewPage, numeroPagina: number): PdfFieldSpec[] {
+function buildPageFields(page: PreviewPage, numeroPagina: number, validadeTexto: string): PdfFieldSpec[] {
   if (!page.pageTemplate) return [];
   const template = page.pageTemplate;
   const placeholderValues: Record<string, string> = {
     secao_titulo: page.sectionTitulo ?? "",
     pagina: String(numeroPagina),
+    validade: validadeTexto,
   };
 
   const ops: PdfFieldSpec[] = [];
@@ -353,12 +354,13 @@ function buildPageSpec(
   paginaLargura: number,
   paginaAltura: number,
   numeroPagina: number,
-  fotoKeyByUrl: Map<string, string>
+  fotoKeyByUrl: Map<string, string>,
+  validadeTexto: string
 ): PdfPageSpec {
   return {
     background: buildBackground(page, paginaLargura, paginaAltura),
     pageShapes: buildPageShapes(page),
-    pageFields: buildPageFields(page, numeroPagina),
+    pageFields: buildPageFields(page, numeroPagina, validadeTexto),
     cardBorders: buildCardBorders(page),
     cardShapes: buildCardShapes(page),
     cardFields: buildCardFields(page, fotoKeyByUrl),
@@ -368,16 +370,19 @@ function buildPageSpec(
 // `fotoKeyByUrl` mapeia fotoUrl (rota-proxy da galeria) -> chave R2 já
 // copiada lá (ver catalogos/pdf/exportPdf.ts) — produtos cuja foto
 // ainda não foi copiada (ou sem foto nenhuma) simplesmente não
-// desenham o campo de foto no PDF.
+// desenham o campo de foto no PDF. `validadeTexto` (Jornal de Ofertas)
+// fica "" pra catálogo comum — disponível como {validade} nos campos
+// de texto de página.
 export function buildPdfExportPayload(
   pages: PreviewPage[],
   paginaLargura: number,
   paginaAltura: number,
-  fotoKeyByUrl: Map<string, string>
+  fotoKeyByUrl: Map<string, string>,
+  validadeTexto: string = ""
 ): PdfExportPayload {
   return {
     paginaLargura,
     paginaAltura,
-    pages: pages.map((page, i) => buildPageSpec(page, paginaLargura, paginaAltura, i + 1, fotoKeyByUrl)),
+    pages: pages.map((page, i) => buildPageSpec(page, paginaLargura, paginaAltura, i + 1, fotoKeyByUrl, validadeTexto)),
   };
 }

@@ -382,6 +382,9 @@ export type PreviewPageCanvasProps = {
   paginaLargura: number;
   paginaAltura: number;
   numeroPagina: number;
+  // Só relevante pra Jornal de Ofertas — "" pra catálogo comum (sem
+  // validade), disponível como {validade} nos campos de texto de página.
+  validadeTexto: string;
   // Incrementado pelo componente pai (page.tsx) quando ensureFontsLoaded
   // resolve pra essa página — força recalcular os canvases de texto já
   // memoizados, que na primeira passada podem ter desenhado com a fonte
@@ -390,16 +393,18 @@ export type PreviewPageCanvasProps = {
 };
 
 // Desenha UMA página do catálogo montado — fundo + cabeçalho/rodapé do
-// page_template (com {secao_titulo}/{pagina} substituídos por valores
-// reais) + grade de cards com dado real do produto. Somente leitura,
-// nenhuma interação (sem Transformer/drag) — é preview, não editor.
-export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, numeroPagina, fontsTick }: PreviewPageCanvasProps) {
+// page_template (com {secao_titulo}/{pagina}/{validade} substituídos
+// por valores reais) + grade de cards com dado real do produto.
+// Somente leitura, nenhuma interação (sem Transformer/drag) — é
+// preview, não editor.
+export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, numeroPagina, validadeTexto, fontsTick }: PreviewPageCanvasProps) {
   const { scale, canvasW, canvasH } = computeScale(paginaLargura, paginaAltura);
   const margens = page.pageTemplate?.margens ?? { top: 0, right: 0, bottom: 0, left: 0 };
 
   const placeholderValues: Record<string, string> = {
     secao_titulo: page.sectionTitulo ?? "",
     pagina: String(numeroPagina),
+    validade: validadeTexto,
   };
 
   return (

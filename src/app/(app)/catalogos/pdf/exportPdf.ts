@@ -36,13 +36,14 @@ export async function exportCatalogPdf(params: {
   paginaLargura: number;
   paginaAltura: number;
   catalogNome: string;
+  validadeTexto?: string;
 }): Promise<void> {
-  const { pages, paginaLargura, paginaAltura, catalogNome } = params;
+  const { pages, paginaLargura, paginaAltura, catalogNome, validadeTexto = "" } = params;
 
   const fotoUrls = collectDistinctFotoUrls(pages);
   const fotoKeyByUrl = await stagePhotosToR2(fotoUrls);
 
-  const payload = buildPdfExportPayload(pages, paginaLargura, paginaAltura, fotoKeyByUrl);
+  const payload = buildPdfExportPayload(pages, paginaLargura, paginaAltura, fotoKeyByUrl, validadeTexto);
 
   const res = await fetch("/api/catalogos/pdf", {
     method: "POST",

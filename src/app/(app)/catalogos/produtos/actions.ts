@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAccess, temPermissao } from "@/lib/auth/access";
+import { getSectionCatalogTipo, permissaoParaAcao, type CatalogTipo } from "../core/permissoes";
 import type { ProdutoImportRow } from "../core/parsePlanilhaProdutos";
 
 async function requireUser() {
@@ -10,6 +11,19 @@ async function requireUser() {
     data: { user },
   } = await supabase.auth.getUser();
   return { supabase, user };
+}
+
+// Mesma ideia de getSectionCatalogTipo (catalogos/actions.ts), mas a
+// partir de um ITEM (catalog_items.id) — removeSectionItem/
+// reorderSectionItems só recebem o id do item, não a seção.
+async function getItemCatalogTipo(supabase: Awaited<ReturnType<typeof createClient>>, itemId: string): Promise<CatalogTipo> {
+  const { data } = await supabase.from("catalog_items").select("sections(catalogs(tipo))").eq("id", itemId).maybeSingle();
+  type Nested = { catalogs?: { tipo?: string } | { tipo?: string }[] | null } | { catalogs?: { tipo?: string } | { tipo?: string }[] | null }[] | null | undefined;
+  const sections = data?.sections as Nested;
+  const sectionObj = Array.isArray(sections) ? sections[0] : sections;
+  const catalogsRel = sectionObj?.catalogs;
+  const tipo = Array.isArray(catalogsRel) ? catalogsRel[0]?.tipo : catalogsRel?.tipo;
+  return (tipo as CatalogTipo | undefined) ?? "catalogo";
 }
 
 export type Planilha = { id: string; nome: string; criadoEm: string; produtoCount: number };
@@ -347,8 +361,9 @@ export async function addProductToSection(sectionId: string, productId: string):
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
+  const tipo = await getSectionCatalogTipo(supabase, sectionId);
   const access = await getCurrentAccess();
-  if (!temPermissao(access, "catalogos_produtos_secao")) {
+  if (!temPermissao(access, permissaoParaAcao(tipo, "produtos_secao"))) {
     return { error: "Sem permissão pra editar produtos da seção." };
   }
 
@@ -399,8 +414,9 @@ export async function removeSectionItem(itemId: string): Promise<{ error?: strin
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
+  const tipo = await getItemCatalogTipo(supabase, itemId);
   const access = await getCurrentAccess();
-  if (!temPermissao(access, "catalogos_produtos_secao")) {
+  if (!temPermissao(access, permissaoParaAcao(tipo, "produtos_secao"))) {
     return { error: "Sem permissão pra editar produtos da seção." };
   }
 
@@ -412,9 +428,11 @@ export async function removeSectionItem(itemId: string): Promise<{ error?: strin
 export async function reorderSectionItems(orderedItemIds: string[]): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
+  if (orderedItemIds.length === 0) return {};
 
+  const tipo = await getItemCatalogTipo(supabase, orderedItemIds[0]);
   const access = await getCurrentAccess();
-  if (!temPermissao(access, "catalogos_produtos_secao")) {
+  if (!temPermissao(access, permissaoParaAcao(tipo, "produtos_secao"))) {
     return { error: "Sem permissão pra editar produtos da seção." };
   }
 

@@ -36,11 +36,14 @@ export const PAGE_FIELD_DEFS: PageFieldDef[] = [
 // numeração não são texto fixo digitado uma vez (cada seção/página é
 // diferente), precisam de substituição na hora de montar o preview/PDF
 // de verdade (mesmo mecanismo já usado no Editor de Layout do Gerador
-// de Ofertas, `substitutePlaceholders`). "Contato" não tem placeholder
-// — é texto fixo mesmo, o mesmo em toda página.
+// de Ofertas, `substitutePlaceholders`). {validade} só resolve pra
+// algo em Jornal de Ofertas — fica "" (placeholder vira texto vazio)
+// num catálogo comum, disponível mesmo assim pra quem quiser usar o
+// mesmo modelo de página nos dois tipos.
 export const PAGE_PLACEHOLDERS: Partial<Record<PageFieldKey, string[]>> = {
-  banner_titulo: ["{secao_titulo}"],
+  banner_titulo: ["{secao_titulo}", "{validade}"],
   numeracao: ["{pagina}"],
+  contato: ["{validade}"],
 };
 
 // Substitui {placeholder} pelo valor correspondente — placeholder sem

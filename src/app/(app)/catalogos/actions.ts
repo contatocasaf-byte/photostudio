@@ -3,16 +3,37 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentAccess, temPermissao } from "@/lib/auth/access";
 import type { CardBorda, CardFieldKey, CardLayout, CardShape } from "./core/cardConfig";
-import type { PermissaoChave } from "@/lib/auth/permissoes";
+import {
+  getCatalogTipo,
+  getSectionCatalogTipo,
+  permissaoParaAcao,
+  type AcaoCatalogo,
+  type CatalogTipo,
+  type SupabaseServerClient,
+} from "./core/permissoes";
 
 // Primeiro módulo da suite que lê/escreve Postgres além de autenticação
 // (Studio e Ofertas usam só R2) — ver esquema em
 // supabase/catalogos_schema.sql (rodado manualmente uma vez no Supabase).
 
+// Jornal de Ofertas (pedido do usuário) É um `catalogs` com
+// tipo='jornal_ofertas' — reaproveita 100% de sections/card_templates/
+// page_templates/planilhas, só muda em capa opcional (já era assim pra
+// catálogo comum, sem coluna nova) e período de validade
+// (validade_inicio/validade_fim). Permissões são PRÓPRIAS e separadas
+// das de catálogo (ver permissaoParaAcao em ./core/permissoes.ts) —
+// mesmas telas, ações diferentes conforme o tipo do catálogo pai.
+// `CatalogTipo` NÃO é re-exportado daqui: um arquivo "use server" só
+// pode exportar funções async (o compilador do Next falha em build
+// pra qualquer outro tipo de export, mesmo um `export type` de
+// re-exportação) — quem precisar do tipo importa direto de
+// ./core/permissoes.
+
 export type Catalog = {
   id: string;
   nome: string;
   criado_em: string;
+  tipo: CatalogTipo;
   sectionCount: number;
 };
 
@@ -42,23 +63,23 @@ async function requireUser() {
   return { supabase, user };
 }
 
-// Checagem de permissão granular pras ações de criar/editar/excluir
-// catálogo e seção (divisão pedida pelo usuário, separando o que antes
-// era uma permissão só "Gerenciar catálogos"). Checado DENTRO da
-// action, não só escondendo o botão na tela — mesmo padrão já usado
-// nas actions de planilhas (deletePlanilha/atualizarPlanilha).
-async function requirePermissaoCatalogos(chave: PermissaoChave): Promise<string | null> {
+// Checagem de permissão DENTRO da action (não só escondendo o botão na
+// tela) — mesmo padrão já usado nas actions de planilhas
+// (deletePlanilha/atualizarPlanilha). Ação genérica (independente de
+// catálogo/jornal) mapeada pra chave certa via permissaoParaAcao
+// (./core/permissoes.ts) conforme o `tipo` do catalogs pai.
+async function requirePermissaoAcao(tipo: CatalogTipo, acao: AcaoCatalogo): Promise<string | null> {
   const access = await getCurrentAccess();
-  if (!temPermissao(access, chave)) return "Sem permissão pra essa ação.";
+  if (!temPermissao(access, permissaoParaAcao(tipo, acao))) return "Sem permissão pra essa ação.";
   return null;
 }
 
-export async function listCatalogs(): Promise<{ catalogs?: Catalog[]; error?: string }> {
+export async function listCatalogs(tipo: CatalogTipo = "catalogo"): Promise<{ catalogs?: Catalog[]; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const [catalogsRes, sectionsRes] = await Promise.all([
-    supabase.from("catalogs").select("id, nome, criado_em").order("criado_em", { ascending: false }),
+    supabase.from("catalogs").select("id, nome, criado_em").eq("tipo", tipo).order("criado_em", { ascending: false }),
     supabase.from("sections").select("catalog_id"),
   ]);
   if (catalogsRes.error) return { error: catalogsRes.error.message };
@@ -71,21 +92,22 @@ export async function listCatalogs(): Promise<{ catalogs?: Catalog[]; error?: st
     id: c.id as string,
     nome: c.nome as string,
     criado_em: c.criado_em as string,
+    tipo,
     sectionCount: counts.get(c.id as string) ?? 0,
   }));
 
   return { catalogs };
 }
 
-export async function createCatalog(nome: string): Promise<{ id?: string; error?: string }> {
+export async function createCatalog(nome: string, tipo: CatalogTipo = "catalogo"): Promise<{ id?: string; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_criar_catalogos");
+  const permErr = await requirePermissaoAcao(tipo, "criar");
   if (permErr) return { error: permErr };
   const trimmed = nome.trim();
   if (!trimmed) return { error: "Nome do catálogo é obrigatório." };
 
-  const { data, error } = await supabase.from("catalogs").insert({ nome: trimmed }).select("id").single();
+  const { data, error } = await supabase.from("catalogs").insert({ nome: trimmed, tipo }).select("id").single();
   if (error) return { error: error.message };
   return { id: data.id };
 }
@@ -93,7 +115,8 @@ export async function createCatalog(nome: string): Promise<{ id?: string; error?
 export async function renameCatalog(id: string, nome: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_editar_catalogos");
+  const tipo = await getCatalogTipo(supabase, id);
+  const permErr = await requirePermissaoAcao(tipo, "editar");
   if (permErr) return { error: permErr };
   const trimmed = nome.trim();
   if (!trimmed) return { error: "Nome do catálogo é obrigatório." };
@@ -106,10 +129,30 @@ export async function renameCatalog(id: string, nome: string): Promise<{ error?:
   return {};
 }
 
+// Só faz sentido pra Jornal de Ofertas (prazo de validade) — mesma
+// permissão de "editar" catálogo/jornal, sem checagem extra de tipo:
+// chamar isso num catálogo comum é inofensivo (grava datas que a UI
+// nunca lê pra esse tipo), não vale a pena bloquear.
+export async function setCatalogValidade(catalogId: string, validadeInicio: string | null, validadeFim: string | null): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const tipo = await getCatalogTipo(supabase, catalogId);
+  const permErr = await requirePermissaoAcao(tipo, "editar");
+  if (permErr) return { error: permErr };
+
+  const { error } = await supabase
+    .from("catalogs")
+    .update({ validade_inicio: validadeInicio, validade_fim: validadeFim })
+    .eq("id", catalogId);
+  if (error) return { error: error.message };
+  return {};
+}
+
 export async function deleteCatalog(id: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_excluir_catalogos");
+  const tipo = await getCatalogTipo(supabase, id);
+  const permErr = await requirePermissaoAcao(tipo, "excluir");
   if (permErr) return { error: permErr };
   const { error } = await supabase.from("catalogs").delete().eq("id", id);
   if (error) return { error: error.message };
@@ -119,6 +162,7 @@ export async function deleteCatalog(id: string): Promise<{ error?: string }> {
 export type CatalogDetail = {
   id: string;
   nome: string;
+  tipo: CatalogTipo;
   paginaLargura: number;
   paginaAltura: number;
   planilhaId: string | null;
@@ -127,6 +171,10 @@ export type CatalogDetail = {
   aberturaSecaoDefaultId: string | null;
   // Mesma ideia pra "Continuação".
   continuacaoDefaultId: string | null;
+  // Só usado quando tipo="jornal_ofertas" — período de validade do
+  // jornal (formato YYYY-MM-DD, direto de <input type="date">).
+  validadeInicio: string | null;
+  validadeFim: string | null;
 };
 
 export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail; error?: string }> {
@@ -134,7 +182,9 @@ export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail;
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("catalogs")
-    .select("id, nome, pagina_largura, pagina_altura, planilha_id, abertura_secao_default_id, continuacao_default_id")
+    .select(
+      "id, nome, tipo, pagina_largura, pagina_altura, planilha_id, abertura_secao_default_id, continuacao_default_id, validade_inicio, validade_fim"
+    )
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -142,11 +192,14 @@ export async function getCatalog(id: string): Promise<{ catalog?: CatalogDetail;
     catalog: {
       id: data.id,
       nome: data.nome,
+      tipo: data.tipo as CatalogTipo,
       paginaLargura: data.pagina_largura,
       paginaAltura: data.pagina_altura,
       planilhaId: data.planilha_id,
       aberturaSecaoDefaultId: data.abertura_secao_default_id,
       continuacaoDefaultId: data.continuacao_default_id,
+      validadeInicio: data.validade_inicio,
+      validadeFim: data.validade_fim,
     },
   };
 }
@@ -205,7 +258,8 @@ export async function createSection(params: {
 }): Promise<{ id?: string; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_criar_secoes");
+  const tipo = await getCatalogTipo(supabase, params.catalogId);
+  const permErr = await requirePermissaoAcao(tipo, "criar_secoes");
   if (permErr) return { error: permErr };
   const titulo = params.titulo.trim();
   if (!titulo) return { error: "Título da seção é obrigatório." };
@@ -250,7 +304,8 @@ export async function updateSection(
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_editar_secoes");
+  const tipo = await getSectionCatalogTipo(supabase, id);
+  const permErr = await requirePermissaoAcao(tipo, "editar_secoes");
   if (permErr) return { error: permErr };
 
   const update: Record<string, unknown> = {};
@@ -272,7 +327,8 @@ export async function updateSection(
 export async function deleteSection(id: string): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_excluir_secoes");
+  const tipo = await getSectionCatalogTipo(supabase, id);
+  const permErr = await requirePermissaoAcao(tipo, "excluir_secoes");
   if (permErr) return { error: permErr };
   const { error } = await supabase.from("sections").delete().eq("id", id);
   if (error) return { error: error.message };
@@ -284,7 +340,11 @@ export async function deleteSection(id: string): Promise<{ error?: string }> {
 export async function reorderSections(orderedIds: string[]): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_editar_secoes");
+  if (orderedIds.length === 0) return {};
+  // Reordenar só acontece dentro da lista de seções de UM catálogo —
+  // basta olhar o tipo do catálogo da primeira seção do lote.
+  const tipo = await getSectionCatalogTipo(supabase, orderedIds[0]);
+  const permErr = await requirePermissaoAcao(tipo, "editar_secoes");
   if (permErr) return { error: permErr };
 
   // Sem transação multi-linha no supabase-js — dispara os updates em
@@ -349,8 +409,6 @@ export async function getCardTemplate(sectionId: string): Promise<{ template?: C
     },
   };
 }
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 // Aplica uma linha de card-molde (já resolvida a partir de
 // CardTemplateData) a UMA seção — extraído pra ser reaproveitado tanto
@@ -438,7 +496,8 @@ export async function saveCardTemplate(
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const permErr = await requirePermissaoCatalogos("catalogos_card_molde");
+  const tipo = await getSectionCatalogTipo(supabase, sectionId);
+  const permErr = await requirePermissaoAcao(tipo, "card_molde");
   if (permErr) return { error: permErr };
 
   const row = {

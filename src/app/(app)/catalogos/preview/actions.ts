@@ -45,10 +45,25 @@ export type CatalogPreviewData = {
   catalogNome: string;
   paginaLargura: number;
   paginaAltura: number;
+  // Só relevante pra Jornal de Ofertas — disponível como placeholder
+  // {validade} nos campos de texto de página (banner/rodapé), formatado
+  // "DD/MM a DD/MM/AAAA" (ou só uma ponta, se só uma data existir).
+  validadeTexto: string;
   pageTemplates: Partial<Record<PageTipo, PageTemplateInput>>;
   sections: SectionReflowInput[];
   paginasAvulsas: PaginaAvulsaInput[];
 };
+
+function formatValidade(inicio: string | null, fim: string | null): string {
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  };
+  if (inicio && fim) return `${fmt(inicio)} a ${fmt(fim)}`;
+  if (inicio) return `A partir de ${fmt(inicio)}`;
+  if (fim) return `Até ${fmt(fim)}`;
+  return "";
+}
 
 // Busca consolidada — catálogo, os 3 page_templates fixos + os
 // page_templates tipo='custom' de páginas avulsas (Fase 5, Parte 12),
@@ -60,7 +75,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
 
   const { data: catalog, error: catalogErr } = await supabase
     .from("catalogs")
-    .select("nome, pagina_largura, pagina_altura, abertura_secao_default_id, continuacao_default_id")
+    .select("nome, pagina_largura, pagina_altura, abertura_secao_default_id, continuacao_default_id, validade_inicio, validade_fim")
     .eq("id", catalogId)
     .single();
   if (catalogErr) return { error: catalogErr.message };
@@ -197,7 +212,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   const productIds = [...new Set((itemRows ?? []).map((r) => r.product_id as string))];
   const { data: productRows, error: prodErr } =
     productIds.length > 0
-      ? await supabase.from("products").select("id, codigo, ref, descricao, preco_1, preco_2").in("id", productIds)
+      ? await supabase.from("products").select("id, codigo, ref, descricao, preco_1, preco_2, quantidade_minima").in("id", productIds)
       : { data: [], error: null };
   if (prodErr) return { error: prodErr.message };
 
@@ -213,6 +228,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
           descricao: p.descricao,
           preco1: p.preco_1,
           preco2: p.preco_2,
+          quantidadeMinima: p.quantidade_minima,
           fotoUrl: fileId ? `/api/catalogos/galeria/${fileId}` : null,
         } as ProductRow,
       ];
@@ -257,6 +273,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       catalogNome: catalog.nome,
       paginaLargura: catalog.pagina_largura,
       paginaAltura: catalog.pagina_altura,
+      validadeTexto: formatValidade(catalog.validade_inicio as string | null, catalog.validade_fim as string | null),
       pageTemplates,
       sections,
       paginasAvulsas,

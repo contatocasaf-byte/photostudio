@@ -24,6 +24,23 @@ export type PermissaoChave =
   | "catalogos_preview_pdf"
   | "catalogos_excluir_planilhas"
   | "catalogos_atualizar_planilhas"
+  // Jornal de Ofertas (dentro do módulo Catálogos, mesma infra de
+  // sections/card_templates/planilhas — só um catalogs.tipo diferente)
+  // com permissões PRÓPRIAS e separadas das de Catálogos, pedido
+  // explícito do usuário — quem pode mexer em catálogo não ganha
+  // acesso a jornal de ofertas de graça, e vice-versa. Continuam no
+  // módulo "catalogos" (ver PERMISSOES abaixo) só pra efeito de
+  // liberar entrada na nav/lista — a distinção fina é feita ação a
+  // ação dentro de cada Server Action (ver permissaoParaAcao em
+  // catalogos/actions.ts).
+  | "jornais_criar_jornais"
+  | "jornais_editar_jornais"
+  | "jornais_excluir_jornais"
+  | "jornais_criar_secoes"
+  | "jornais_editar_secoes"
+  | "jornais_excluir_secoes"
+  | "jornais_card_molde"
+  | "jornais_produtos_secao"
   | "criar_usuarios";
 
 export type ModuloChave = "studio" | "ofertas" | "catalogos" | "sistema";
@@ -63,6 +80,16 @@ export const PERMISSOES: PermissaoDef[] = [
   { chave: "catalogos_preview_pdf", modulo: "catalogos", label: "Ver catálogo e baixar PDF" },
   { chave: "catalogos_excluir_planilhas", modulo: "catalogos", label: "Excluir planilhas de produtos" },
   { chave: "catalogos_atualizar_planilhas", modulo: "catalogos", label: "Atualizar planilhas de produtos (subir arquivo novo)" },
+  // Jornal de Ofertas — mesmo módulo "catalogos" pra efeito de nav (ver
+  // comentário em PermissaoChave), permissões próprias por ação.
+  { chave: "jornais_criar_jornais", modulo: "catalogos", label: "Criar jornais de ofertas" },
+  { chave: "jornais_editar_jornais", modulo: "catalogos", label: "Editar jornais de ofertas (renomear, validade)" },
+  { chave: "jornais_excluir_jornais", modulo: "catalogos", label: "Excluir jornais de ofertas" },
+  { chave: "jornais_criar_secoes", modulo: "catalogos", label: "Criar seções (jornal de ofertas)" },
+  { chave: "jornais_editar_secoes", modulo: "catalogos", label: "Editar seções (jornal de ofertas, inclusive reordenar)" },
+  { chave: "jornais_excluir_secoes", modulo: "catalogos", label: "Excluir seções (jornal de ofertas)" },
+  { chave: "jornais_card_molde", modulo: "catalogos", label: "Editar card-molde da seção (jornal de ofertas)" },
+  { chave: "jornais_produtos_secao", modulo: "catalogos", label: "Editar produtos da seção (jornal de ofertas)" },
   { chave: "criar_usuarios", modulo: "sistema", label: "Criar usuários" },
 ];
 

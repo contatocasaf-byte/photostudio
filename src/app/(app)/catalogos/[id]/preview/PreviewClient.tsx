@@ -21,6 +21,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   const { id: catalogId } = use(params);
 
   const [catalogNome, setCatalogNome] = useState<string | null>(null);
+  const [validadeTexto, setValidadeTexto] = useState("");
   const [paginaLargura, setPaginaLargura] = useState(0);
   const [paginaAltura, setPaginaAltura] = useState(0);
   const [pages, setPages] = useState<PreviewPage[]>([]);
@@ -43,7 +44,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
     setExporting(true);
     setExportError(null);
     try {
-      await exportCatalogPdf({ pages, paginaLargura, paginaAltura, catalogNome: catalogNome ?? "catalogo" });
+      await exportCatalogPdf({ pages, paginaLargura, paginaAltura, catalogNome: catalogNome ?? "catalogo", validadeTexto });
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Falha ao gerar PDF.");
     } finally {
@@ -62,6 +63,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
       }
       const { data } = res;
       setCatalogNome(data.catalogNome);
+      setValidadeTexto(data.validadeTexto);
       setPaginaLargura(data.paginaLargura);
       setPaginaAltura(data.paginaAltura);
       const { pages: computed, skipped: skippedSections } = reflowCatalog({
@@ -211,6 +213,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
                   paginaLargura={paginaLargura}
                   paginaAltura={paginaAltura}
                   numeroPagina={current + 1}
+                  validadeTexto={validadeTexto}
                   fontsTick={fontsTick}
                 />
               </div>

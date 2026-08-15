@@ -15,6 +15,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   getCatalog,
   renameCatalog,
+  setCatalogValidade,
   listSections,
   createSection,
   updateSection,
@@ -22,6 +23,7 @@ import {
   reorderSections,
   type Section,
 } from "../actions";
+import type { CatalogTipo } from "../core/permissoes";
 import PlanilhaPicker from "../produtos/PlanilhaPicker";
 import {
   createPaginaAvulsa,
@@ -381,8 +383,12 @@ export default function CatalogDetailPage({
   const { id } = use(params);
 
   const [catalogNome, setCatalogNome] = useState<string | null>(null);
+  const [tipo, setTipo] = useState<CatalogTipo>("catalogo");
   const [editingNome, setEditingNome] = useState(false);
   const [nomeDraft, setNomeDraft] = useState("");
+  const [validadeInicio, setValidadeInicio] = useState<string>("");
+  const [validadeFim, setValidadeFim] = useState<string>("");
+  const [savingValidade, setSavingValidade] = useState(false);
   const [planilhaId, setPlanilhaId] = useState<string | null>(null);
   const [showPlanilhaPicker, setShowPlanilhaPicker] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
@@ -414,7 +420,10 @@ export default function CatalogDetailPage({
       if (catalogRes.error) setError(catalogRes.error);
       else {
         setCatalogNome(catalogRes.catalog?.nome ?? "");
+        setTipo(catalogRes.catalog?.tipo ?? "catalogo");
         setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+        setValidadeInicio(catalogRes.catalog?.validadeInicio ?? "");
+        setValidadeFim(catalogRes.catalog?.validadeFim ?? "");
       }
       if (sectionsRes.error) setError(sectionsRes.error);
       else setSections(sectionsRes.sections ?? []);
@@ -447,6 +456,16 @@ export default function CatalogDetailPage({
     if (res.error) setError(res.error);
     else setCatalogNome(nomeDraft.trim());
     setEditingNome(false);
+  }
+
+  async function handleSaveValidade() {
+    setSavingValidade(true);
+    try {
+      const res = await setCatalogValidade(id, validadeInicio || null, validadeFim || null);
+      if (res.error) setError(res.error);
+    } finally {
+      setSavingValidade(false);
+    }
   }
 
   async function handleCreateSection(values: SectionFormValues) {
@@ -511,8 +530,8 @@ export default function CatalogDetailPage({
 
   return (
     <div>
-      <Link href="/catalogos" className="text-xs text-slate-500 hover:text-slate-700">
-        ← Catálogos
+      <Link href={tipo === "jornal_ofertas" ? "/catalogos/jornais" : "/catalogos"} className="text-xs text-slate-500 hover:text-slate-700">
+        ← {tipo === "jornal_ofertas" ? "Jornais de Ofertas" : "Catálogos"}
       </Link>
 
       <div className="mt-2">
@@ -564,6 +583,43 @@ export default function CatalogDetailPage({
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {tipo === "jornal_ofertas" && (
+        <div className="mt-4 rounded-lg border border-slate-200 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Prazo de validade</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              De
+              <input
+                type="date"
+                value={validadeInicio}
+                onChange={(e) => setValidadeInicio(e.target.value)}
+                disabled={!podeEditarCatalogo}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-50"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Até
+              <input
+                type="date"
+                value={validadeFim}
+                onChange={(e) => setValidadeFim(e.target.value)}
+                disabled={!podeEditarCatalogo}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-50"
+              />
+            </label>
+            {podeEditarCatalogo && (
+              <button
+                onClick={handleSaveValidade}
+                disabled={savingValidade}
+                className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {savingValidade ? "Salvando..." : "Salvar validade"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 rounded-lg border border-slate-200 p-3">
         <div className="flex items-center justify-between">
