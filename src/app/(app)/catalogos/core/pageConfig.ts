@@ -13,7 +13,12 @@ import type { TextAlign } from "@/lib/canvasText";
 // "ilustracao" saiu daqui na Parte 13 — deixou de ser 1 campo fixo e
 // virou uma lista sem limite (ver PageIllustration abaixo), mesmo
 // padrão já usado pras formas decorativas do card-molde.
-export type PageFieldKey = "banner_titulo" | "logo" | "numeracao" | "contato";
+// "validade" (Jornal de Ofertas) é um campo próprio (posição/estilo
+// configuráveis por página) além de continuar disponível como
+// placeholder embutível em outros campos (ver PAGE_PLACEHOLDERS) —
+// pedido do usuário depois de ver que só o placeholder embutido não
+// dava destaque suficiente na capa/abertura/continuação.
+export type PageFieldKey = "banner_titulo" | "logo" | "numeracao" | "contato" | "validade";
 export type PageFieldType = "image" | "text";
 export type PageZone = "header" | "footer";
 
@@ -30,6 +35,7 @@ export const PAGE_FIELD_DEFS: PageFieldDef[] = [
   { key: "logo", label: "Logo", type: "image", zone: "header", sampleText: null },
   { key: "numeracao", label: "Numeração", type: "text", zone: "footer", sampleText: "1" },
   { key: "contato", label: "Contato", type: "text", zone: "footer", sampleText: "(11) 1234-5678 · loja.com.br" },
+  { key: "validade", label: "Validade (Jornal de Ofertas)", type: "text", zone: "footer", sampleText: "Válido de 01/03/2026 a 15/03/2026" },
 ];
 
 // Placeholders disponíveis pra cada campo de texto — banner_titulo e
@@ -44,6 +50,7 @@ export const PAGE_PLACEHOLDERS: Partial<Record<PageFieldKey, string[]>> = {
   banner_titulo: ["{secao_titulo}", "{validade}"],
   numeracao: ["{pagina}"],
   contato: ["{validade}"],
+  validade: ["{validade}"],
 };
 
 // Substitui {placeholder} pelo valor correspondente — placeholder sem
@@ -272,6 +279,18 @@ export function defaultPageLayout(largura: number = DEFAULT_PAGE_WIDTH, altura: 
       color: "#666666",
       fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "normal",
+      align: "center",
+      maxLines: 1,
+    },
+    validade: {
+      x: margin,
+      y: margin + 150,
+      text: "Validade: {validade}",
+      fontSize: 16,
+      maxW: contentW,
+      color: "#c0392b",
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontWeight: "bold",
       align: "center",
       maxLines: 1,
     },
