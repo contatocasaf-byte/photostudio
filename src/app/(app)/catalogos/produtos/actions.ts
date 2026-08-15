@@ -84,6 +84,7 @@ export async function createPlanilhaComProdutos(
     descricao: p.desc || null,
     preco_1: parsePreco(p.preco1),
     preco_2: parsePreco(p.preco2),
+    quantidade_minima: parsePreco(p.quantidadeMinima),
   }));
 
   const { error: insertErr } = await supabase.from("products").insert(rows);
@@ -137,6 +138,7 @@ export async function atualizarPlanilha(planilhaId: string, produtos: ProdutoImp
     descricao: p.desc || null,
     preco_1: parsePreco(p.preco1),
     preco_2: parsePreco(p.preco2),
+    quantidade_minima: parsePreco(p.quantidadeMinima),
   }));
 
   const { error: upsertErr } = await supabase.from("products").upsert(rows, { onConflict: "planilha_id,codigo" });
@@ -235,6 +237,9 @@ export type ProductRow = {
   descricao: string | null;
   preco1: number | null;
   preco2: number | null;
+  // Compartilhado entre Catálogos ("Múltiplos") e Jornal de Ofertas
+  // ("Quantidade mínima") — mesmo dado, legenda diferente por contexto.
+  quantidadeMinima: number | null;
   // URL da rota-proxy da galeria (Fase 5, Parte 7), resolvida por
   // código a partir da pasta do Drive configurada — null se a galeria
   // não estiver configurada ou nenhuma foto bater com esse código.
@@ -253,12 +258,20 @@ export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produt
   // range() a 1000 linhas por padrão; uma planilha real facilmente
   // passa disso (ex. 3253 produtos), o que truncava a lista sem erro
   // nenhum, deixando parte dos produtos invisíveis pra busca/adição.
-  type Row = { id: string; codigo: string; ref: string | null; descricao: string | null; preco_1: number | null; preco_2: number | null };
+  type Row = {
+    id: string;
+    codigo: string;
+    ref: string | null;
+    descricao: string | null;
+    preco_1: number | null;
+    preco_2: number | null;
+    quantidade_minima: number | null;
+  };
   const rows: Row[] = [];
   for (let from = 0; ; from += SELECT_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("products")
-      .select("id, codigo, ref, descricao, preco_1, preco_2")
+      .select("id, codigo, ref, descricao, preco_1, preco_2, quantidade_minima")
       .eq("planilha_id", planilhaId)
       .order("codigo", { ascending: true })
       .range(from, from + SELECT_PAGE_SIZE - 1);
@@ -275,6 +288,7 @@ export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produt
       descricao: p.descricao,
       preco1: p.preco_1,
       preco2: p.preco_2,
+      quantidadeMinima: p.quantidade_minima,
       fotoUrl: null,
     })),
   };
@@ -297,7 +311,7 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
   const productIds = itemRows.map((r) => r.product_id as string);
   const { data: products, error: productsErr } = await supabase
     .from("products")
-    .select("id, codigo, ref, descricao, preco_1, preco_2")
+    .select("id, codigo, ref, descricao, preco_1, preco_2, quantidade_minima")
     .in("id", productIds);
   if (productsErr) return { error: productsErr.message };
 

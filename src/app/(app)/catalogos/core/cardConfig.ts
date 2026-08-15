@@ -12,7 +12,13 @@ import type { TextAlign } from "@/lib/canvasText";
 // só, que não correspondiam a nenhuma coluna da planilha de catálogo;
 // corrigido na Parte 6a, antes do motor de reflow precisar substituir
 // dado real nesses campos).
-export type CardFieldKey = "foto" | "codigo" | "ref" | "descricao" | "preco_1" | "preco_2";
+// "quantidade_minima" é compartilhado entre Catálogos ("Múltiplos") e
+// Jornal de Ofertas ("Quantidade mínima") — mesma coluna de
+// `products`, só o texto do campo (editável por seção, ver
+// `substitutePlaceholders` abaixo) muda de legenda entre os dois
+// módulos. Opcional (fora de DEFAULT_CAMPOS_HABILITADOS) — nem todo
+// card precisa dele.
+export type CardFieldKey = "foto" | "codigo" | "ref" | "descricao" | "preco_1" | "preco_2" | "quantidade_minima";
 export type CardFieldType = "image" | "text";
 
 export type CardFieldDef = {
@@ -34,6 +40,7 @@ export const CARD_FIELD_DEFS: CardFieldDef[] = [
   },
   { key: "preco_1", label: "Preço 1", type: "text", sampleText: "R$ 99,90" },
   { key: "preco_2", label: "Preço 2", type: "text", sampleText: "R$ 109,90" },
+  { key: "quantidade_minima", label: "Quantidade mínima / Múltiplos", type: "text", sampleText: "20" },
 ];
 
 // Todo campo de texto aceita um rótulo fixo em volta do `{valor}` real
@@ -159,6 +166,18 @@ export function defaultCardLayout(width: number = DEFAULT_CARD_WIDTH, height: nu
       color: "#ff6b35",
       fontFamily: DEFAULT_FONT_FAMILY,
       fontWeight: "bold",
+      align: "left",
+      maxLines: 1,
+    },
+    quantidade_minima: {
+      x: margin,
+      y: textStartY + 124,
+      text: "Quantidade mínima: {valor}",
+      fontSize: 11,
+      maxW: contentW,
+      color: "#666666",
+      fontFamily: DEFAULT_FONT_FAMILY,
+      fontWeight: "normal",
       align: "left",
       maxLines: 1,
     },

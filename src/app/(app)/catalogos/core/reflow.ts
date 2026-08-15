@@ -173,6 +173,8 @@ export function resolveProductFieldText(key: CardFieldKey, product: ProductRow):
       return formatPreco(product.preco1);
     case "preco_2":
       return formatPreco(product.preco2);
+    case "quantidade_minima":
+      return product.quantidadeMinima !== null ? String(product.quantidadeMinima) : "";
     case "foto":
       return "";
   }

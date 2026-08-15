@@ -13,6 +13,10 @@ export type ProdutoImportRow = {
   desc: string;
   preco1: string;
   preco2: string;
+  // Compartilhado entre Catálogos ("Múltiplos") e Jornal de Ofertas
+  // ("Quantidade mínima") — mesma coluna/dado, só o texto do card-molde
+  // (editável por seção) muda de legenda entre os dois módulos.
+  quantidadeMinima: string;
 };
 
 function normalizeHeader(h: unknown): string {
@@ -68,6 +72,16 @@ export async function parsePlanilhaProdutos(file: File): Promise<ProdutoImportRo
       desc: getCol(normalizedRow, headers, ["DESCRIÇÃO", "DESCRICAO", "DESC"]),
       preco1: getCol(normalizedRow, headers, ["PREÇO 1", "PRECO 1", "PREÇO1", "PRECO1"]),
       preco2: getCol(normalizedRow, headers, ["PREÇO 2", "PRECO 2", "PREÇO2", "PRECO2"]),
+      quantidadeMinima: getCol(normalizedRow, headers, [
+        "QUANTIDADE MÍNIMA",
+        "QUANTIDADE MINIMA",
+        "QTD MÍNIMA",
+        "QTD MINIMA",
+        "QTD MIN",
+        "MÚLTIPLO",
+        "MULTIPLO",
+        "MULTIPLOS",
+      ]),
     });
   }
   return produtos;
