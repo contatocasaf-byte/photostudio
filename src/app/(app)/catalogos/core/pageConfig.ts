@@ -38,6 +38,26 @@ export const PAGE_FIELD_DEFS: PageFieldDef[] = [
   { key: "validade", label: "Validade (Jornal de Ofertas)", type: "text", zone: "footer", sampleText: "Válido de 01/03/2026 a 15/03/2026" },
 ];
 
+// Partes reaproveitáveis/"seguíveis" entre modelos de página — cada
+// campo individual (mesmas keys de PAGE_FIELD_DEFS) mais os 4 blocos
+// que não são campo (margens/fundo/ilustrações/formas). Pedido do
+// usuário depois de testar o escopo binário completo/campos: em vez de
+// só "tudo" ou "só os 5 campos fixos", ele quer marcar EXATAMENTE quais
+// partes entram numa cópia/vínculo — cada uma marcável independente.
+export type PageCopyPart = PageFieldKey | "margens" | "fundo" | "ilustracoes" | "formas";
+
+export const PAGE_COPY_PART_DEFS: { key: PageCopyPart; label: string }[] = [
+  ...PAGE_FIELD_DEFS.map((d) => ({ key: d.key as PageCopyPart, label: d.label })),
+  { key: "margens", label: "Margens" },
+  { key: "fundo", label: "Fundo" },
+  { key: "ilustracoes", label: "Ilustrações" },
+  { key: "formas", label: "Formas" },
+];
+
+// Seleção padrão (nenhuma escolha feita ainda) — todas as partes,
+// equivalente ao antigo escopo "completo".
+export const ALL_PAGE_COPY_PARTS: PageCopyPart[] = PAGE_COPY_PART_DEFS.map((d) => d.key);
+
 // Placeholders disponíveis pra cada campo de texto — banner_titulo e
 // numeração não são texto fixo digitado uma vez (cada seção/página é
 // diferente), precisam de substituição na hora de montar o preview/PDF
