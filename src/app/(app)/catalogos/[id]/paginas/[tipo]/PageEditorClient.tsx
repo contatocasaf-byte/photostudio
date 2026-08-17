@@ -1,9 +1,16 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getCatalog } from "../../../actions";
-import { getPageTemplate, savePageTemplate, updateCatalogPageSize } from "../../../paginas/actions";
+import {
+  getPageTemplate,
+  getPageTemplateFieldsById,
+  listAllPageTemplates,
+  savePageTemplate,
+  updateCatalogPageSize,
+  type PageTemplateListItem,
+} from "../../../paginas/actions";
 import {
   defaultMargens,
   defaultPageIllustration,
@@ -31,6 +38,23 @@ function isPageTipo(v: string): v is PageTipo {
   return PAGE_TIPOS.some((t) => t.value === v);
 }
 
+// Serializa só os campos que "Reaproveitar"/"seguir" transferem (não
+// inclui id/tipo/nome) — usado pra comparar "o que está na tela agora"
+// contra "o que acabou de ser copiado/carregado", pra saber se o
+// vínculo de seguir ainda vale ou já foi quebrado por edição manual.
+// Mesma técnica já usada no card-molde (snapshotCard).
+function snapshotPageFields(input: {
+  layout: PageLayout;
+  elementosHabilitados: PageFieldKey[];
+  margens: Margens;
+  fundoKey: string | null;
+  fundoPdfKey: string | null;
+  illustracoes: PageIllustration[];
+  formas: PageShape[];
+}): string {
+  return JSON.stringify(input);
+}
+
 export default function PageEditorPage({ params }: { params: Promise<{ id: string; tipo: string }> }) {
   const { id: catalogId, tipo: tipoParam } = use(params);
   const tipo: PageTipo | null = isPageTipo(tipoParam) ? tipoParam : null;
@@ -56,42 +80,122 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const [formas, setFormas] = useState<PageShape[]>([]);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
 
+  // Reaproveitar/"seguir" configuração de qualquer outro modelo de
+  // página do catálogo (Capa/Abertura de Seção/Continuação, pedido do
+  // usuário: não só dentro do mesmo tipo) — mesma mecânica do
+  // card-molde: "Copiar" só carrega os valores no estado local;
+  // followSourceId só persiste como vínculo se o Salvar acontecer sem
+  // nenhuma edição no meio (ver isFollowDirty).
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [otherTemplates, setOtherTemplates] = useState<PageTemplateListItem[]>([]);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [copying, setCopying] = useState(false);
+  const [followSourceId, setFollowSourceId] = useState<string | null>(null);
+  const [copiedSnapshot, setCopiedSnapshot] = useState<string | null>(null);
+  const [replicarSeguidoras, setReplicarSeguidoras] = useState(true);
+  const [showConfirm, setShowConfirm] = useState(false);
+
   useEffect(() => {
     if (!tipo) return;
     let cancelled = false;
-    Promise.all([getCatalog(catalogId), getPageTemplate(catalogId, tipo)]).then(([catalogRes, templateRes]) => {
-      if (cancelled) return;
-      if (catalogRes.error) setError(catalogRes.error);
-      else if (catalogRes.catalog) {
-        setCatalogNome(catalogRes.catalog.nome);
-        setLargura(catalogRes.catalog.paginaLargura);
-        setAltura(catalogRes.catalog.paginaAltura);
+    Promise.all([getCatalog(catalogId), getPageTemplate(catalogId, tipo), listAllPageTemplates(catalogId)]).then(
+      ([catalogRes, templateRes, allRes]) => {
+        if (cancelled) return;
+        if (catalogRes.error) setError(catalogRes.error);
+        else if (catalogRes.catalog) {
+          setCatalogNome(catalogRes.catalog.nome);
+          setLargura(catalogRes.catalog.paginaLargura);
+          setAltura(catalogRes.catalog.paginaAltura);
+        }
+        if (templateRes.error) setError(templateRes.error);
+        else if (templateRes.template) {
+          const largura = catalogRes.catalog?.paginaLargura ?? DEFAULT_PAGE_WIDTH;
+          const altura = catalogRes.catalog?.paginaAltura ?? DEFAULT_PAGE_HEIGHT;
+          const t = templateRes.template;
+          // Só campos habilitados foram salvos — mescla por cima dos
+          // padrões pra qualquer campo desligado já ter uma posição
+          // pronta pra quando o usuário religar.
+          const merged = { ...defaultPageLayout(largura, altura), ...t.layout };
+          setLayout(merged);
+          setMargens(t.margens);
+          setElementosHabilitados(t.elementosHabilitados);
+          setFundoKey(t.fundoKey);
+          setFundoPdfKey(t.fundoPdfKey);
+          setFundoUrl(t.fundoUrl);
+          setIllustracoes(t.illustracoes);
+          setFormas(t.formas);
+          setTemplateId(t.id);
+          setFollowSourceId(t.segueTemplateId);
+          setCopiedSnapshot(
+            snapshotPageFields({
+              layout: merged,
+              elementosHabilitados: t.elementosHabilitados,
+              margens: t.margens,
+              fundoKey: t.fundoKey,
+              fundoPdfKey: t.fundoPdfKey,
+              illustracoes: t.illustracoes,
+              formas: t.formas,
+            })
+          );
+        } else if (catalogRes.catalog) {
+          setLayout(defaultPageLayout(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
+          setMargens(defaultMargens(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
+        }
+        if (!allRes.error) setOtherTemplates(allRes.templates ?? []);
+        setLoading(false);
       }
-      if (templateRes.error) setError(templateRes.error);
-      else if (templateRes.template) {
-        const largura = catalogRes.catalog?.paginaLargura ?? DEFAULT_PAGE_WIDTH;
-        const altura = catalogRes.catalog?.paginaAltura ?? DEFAULT_PAGE_HEIGHT;
-        // Só campos habilitados foram salvos — mescla por cima dos
-        // padrões pra qualquer campo desligado já ter uma posição
-        // pronta pra quando o usuário religar.
-        setLayout({ ...defaultPageLayout(largura, altura), ...templateRes.template.layout });
-        setMargens(templateRes.template.margens);
-        setElementosHabilitados(templateRes.template.elementosHabilitados);
-        setFundoKey(templateRes.template.fundoKey);
-        setFundoPdfKey(templateRes.template.fundoPdfKey);
-        setFundoUrl(templateRes.template.fundoUrl);
-        setIllustracoes(templateRes.template.illustracoes);
-        setFormas(templateRes.template.formas);
-      } else if (catalogRes.catalog) {
-        setLayout(defaultPageLayout(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
-        setMargens(defaultMargens(catalogRes.catalog.paginaLargura, catalogRes.catalog.paginaAltura));
-      }
-      setLoading(false);
-    });
+    );
     return () => {
       cancelled = true;
     };
   }, [catalogId, tipo]);
+
+  async function handleCopyFrom() {
+    if (!copySourceId) return;
+    setCopying(true);
+    setStatus(null);
+    try {
+      const res = await getPageTemplateFieldsById(copySourceId);
+      if (res.error || !res.template) {
+        setStatus(`⚠ ${res.error ?? "Modelo não encontrado."}`);
+        return;
+      }
+      const t = res.template;
+      const merged = { ...defaultPageLayout(largura, altura), ...t.layout };
+      setLayout(merged);
+      setMargens(t.margens);
+      setElementosHabilitados(t.elementosHabilitados);
+      setFundoKey(t.fundoKey);
+      setFundoPdfKey(t.fundoPdfKey);
+      setFundoUrl(t.fundoUrl);
+      setIllustracoes(t.illustracoes);
+      setFormas(t.formas);
+      setSelectedKey(null);
+      setSelectedIllustrationId(null);
+      setSelectedShapeId(null);
+      setFollowSourceId(copySourceId);
+      setCopiedSnapshot(
+        snapshotPageFields({
+          layout: merged,
+          elementosHabilitados: t.elementosHabilitados,
+          margens: t.margens,
+          fundoKey: t.fundoKey,
+          fundoPdfKey: t.fundoPdfKey,
+          illustracoes: t.illustracoes,
+          formas: t.formas,
+        })
+      );
+      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar (fica sincronizada com essa origem enquanto você não editar nada).");
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  function handleUnfollow() {
+    setFollowSourceId(null);
+    setCopiedSnapshot(null);
+    setStatus("Vínculo removido — clique em Salvar pra confirmar.");
+  }
 
   function handleToggleElemento(key: PageFieldKey, habilitado: boolean) {
     setElementosHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
@@ -150,14 +254,42 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
     setFormas((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
-  async function handleSave() {
+  // Modelos que seguem ESTE (só depois de existir — ver templateId) —
+  // ao salvar, o usuário pode escolher replicar a mudança pra eles.
+  const followers = templateId ? otherTemplates.filter((t) => t.segueTemplateId === templateId) : [];
+
+  const currentSnapshot = useMemo(
+    () => snapshotPageFields({ layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
+    [layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas]
+  );
+  const isFollowDirty = followSourceId !== null && copiedSnapshot !== null && currentSnapshot !== copiedSnapshot;
+  const followSourceLabel = followSourceId ? (otherTemplates.find((t) => t.id === followSourceId)?.label ?? "outro modelo") : null;
+
+  function handleSave() {
+    if (followers.length > 0) {
+      setReplicarSeguidoras(true);
+      setShowConfirm(true);
+      return;
+    }
+    doSave();
+  }
+
+  async function doSave() {
     if (!tipo) return;
     setSaving(true);
     setStatus(null);
+    setShowConfirm(false);
     try {
+      const segueTemplateId = followSourceId !== null && !isFollowDirty ? followSourceId : null;
       const [sizeRes, templateRes] = await Promise.all([
         updateCatalogPageSize(catalogId, { largura, altura }),
-        savePageTemplate(catalogId, tipo, { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
+        savePageTemplate(
+          catalogId,
+          tipo,
+          { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas },
+          segueTemplateId,
+          followers.length > 0 && replicarSeguidoras
+        ),
       ]);
       const err = sizeRes.error ?? templateRes.error;
       setStatus(err ? `⚠ ${err}` : "✔ Modelo de página salvo.");
@@ -189,6 +321,75 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
       </div>
 
       <FontManager />
+
+      {otherTemplates.length > 0 && (
+        <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500">Reaproveitar configuração de:</label>
+            <select
+              value={copySourceId}
+              onChange={(e) => setCopySourceId(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+            >
+              <option value="">Selecione um modelo...</option>
+              {otherTemplates
+                .filter((t) => t.id !== templateId && t.segueTemplateId !== templateId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+            </select>
+            <button
+              onClick={handleCopyFrom}
+              disabled={!copySourceId || copying}
+              className="rounded-md bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+            >
+              {copying ? "Copiando..." : "Copiar"}
+            </button>
+          </div>
+          {followSourceId && (
+            <p className="mt-2 text-xs text-slate-500">
+              {isFollowDirty
+                ? "⚠ Alterado desde a cópia — não será salvo como sincronizado."
+                : `✓ Será salvo como sincronizado com ${followSourceLabel} — atualizações futuras nele podem ser replicadas aqui.`}{" "}
+              <button type="button" onClick={handleUnfollow} className="underline hover:text-slate-700">
+                Parar de seguir
+              </button>
+            </p>
+          )}
+        </div>
+      )}
+
+      {showConfirm && (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+          <label className="flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={replicarSeguidoras}
+              onChange={(e) => setReplicarSeguidoras(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>Replicar esta atualização pros modelos que seguem este: {followers.map((f) => f.label).join(", ")}</span>
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={doSave}
+              disabled={saving}
+              className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button
+              onClick={() => setShowConfirm(false)}
+              disabled={saving}
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-amber-800 hover:underline disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}
