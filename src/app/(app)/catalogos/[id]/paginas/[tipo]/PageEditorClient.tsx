@@ -10,6 +10,7 @@ import {
   savePageTemplate,
   updateCatalogPageSize,
   type PageTemplateListItem,
+  type SegueEscopo,
 } from "../../../paginas/actions";
 import {
   defaultMargens,
@@ -38,20 +39,29 @@ function isPageTipo(v: string): v is PageTipo {
   return PAGE_TIPOS.some((t) => t.value === v);
 }
 
-// Serializa só os campos que "Reaproveitar"/"seguir" transferem (não
-// inclui id/tipo/nome) — usado pra comparar "o que está na tela agora"
-// contra "o que acabou de ser copiado/carregado", pra saber se o
-// vínculo de seguir ainda vale ou já foi quebrado por edição manual.
-// Mesma técnica já usada no card-molde (snapshotCard).
-function snapshotPageFields(input: {
-  layout: PageLayout;
-  elementosHabilitados: PageFieldKey[];
-  margens: Margens;
-  fundoKey: string | null;
-  fundoPdfKey: string | null;
-  illustracoes: PageIllustration[];
-  formas: PageShape[];
-}): string {
+// Serializa só os campos que "Reaproveitar"/"seguir" transferem nesse
+// ESCOPO — usado pra comparar "o que está na tela agora" contra "o que
+// acabou de ser copiado/carregado", pra saber se o vínculo de seguir
+// ainda vale ou já foi quebrado por edição manual. Mesma técnica já
+// usada no card-molde (snapshotCard). Escopo "campos" (pedido do
+// usuário) ignora margens/fundo/ilustrações/formas de propósito — só
+// Banner de Título/Logo/Numeração/Contato/Validade (layout +
+// elementosHabilitados) contam pra decidir se ainda está "igual".
+function snapshotPageFields(
+  escopo: SegueEscopo,
+  input: {
+    layout: PageLayout;
+    elementosHabilitados: PageFieldKey[];
+    margens: Margens;
+    fundoKey: string | null;
+    fundoPdfKey: string | null;
+    illustracoes: PageIllustration[];
+    formas: PageShape[];
+  }
+): string {
+  if (escopo === "campos") {
+    return JSON.stringify({ layout: input.layout, elementosHabilitados: input.elementosHabilitados });
+  }
   return JSON.stringify(input);
 }
 
@@ -92,6 +102,12 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const [copying, setCopying] = useState(false);
   const [followSourceId, setFollowSourceId] = useState<string | null>(null);
   const [copiedSnapshot, setCopiedSnapshot] = useState<string | null>(null);
+  // "completo" (padrão, comportamento original) ou "campos" (só Banner
+  // de Título/Logo/Numeração/Contato/Validade — pedido do usuário
+  // depois de testar: às vezes não quer levar fundo/ilustrações/formas/
+  // margens junto). Escolhido ANTES de clicar Copiar; carregado do
+  // servidor se este modelo já seguir alguém.
+  const [escopoCopia, setEscopoCopia] = useState<SegueEscopo>("completo");
   const [replicarSeguidoras, setReplicarSeguidoras] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -126,8 +142,9 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           setFormas(t.formas);
           setTemplateId(t.id);
           setFollowSourceId(t.segueTemplateId);
+          setEscopoCopia(t.segueEscopo);
           setCopiedSnapshot(
-            snapshotPageFields({
+            snapshotPageFields(t.segueEscopo, {
               layout: merged,
               elementosHabilitados: t.elementosHabilitados,
               margens: t.margens,
@@ -163,29 +180,37 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
       const t = res.template;
       const merged = { ...defaultPageLayout(largura, altura), ...t.layout };
       setLayout(merged);
-      setMargens(t.margens);
       setElementosHabilitados(t.elementosHabilitados);
-      setFundoKey(t.fundoKey);
-      setFundoPdfKey(t.fundoPdfKey);
-      setFundoUrl(t.fundoUrl);
-      setIllustracoes(t.illustracoes);
-      setFormas(t.formas);
+      // Escopo "campos": não mexe em fundo/ilustrações/formas/margens
+      // — mantém o que já estava na tela.
+      if (escopoCopia === "completo") {
+        setMargens(t.margens);
+        setFundoKey(t.fundoKey);
+        setFundoPdfKey(t.fundoPdfKey);
+        setFundoUrl(t.fundoUrl);
+        setIllustracoes(t.illustracoes);
+        setFormas(t.formas);
+      }
       setSelectedKey(null);
       setSelectedIllustrationId(null);
       setSelectedShapeId(null);
       setFollowSourceId(copySourceId);
       setCopiedSnapshot(
-        snapshotPageFields({
+        snapshotPageFields(escopoCopia, {
           layout: merged,
           elementosHabilitados: t.elementosHabilitados,
-          margens: t.margens,
-          fundoKey: t.fundoKey,
-          fundoPdfKey: t.fundoPdfKey,
-          illustracoes: t.illustracoes,
-          formas: t.formas,
+          margens: escopoCopia === "completo" ? t.margens : margens,
+          fundoKey: escopoCopia === "completo" ? t.fundoKey : fundoKey,
+          fundoPdfKey: escopoCopia === "completo" ? t.fundoPdfKey : fundoPdfKey,
+          illustracoes: escopoCopia === "completo" ? t.illustracoes : illustracoes,
+          formas: escopoCopia === "completo" ? t.formas : formas,
         })
       );
-      setStatus("✔ Configuração copiada — clique em Salvar pra aplicar (fica sincronizada com essa origem enquanto você não editar nada).");
+      setStatus(
+        escopoCopia === "campos"
+          ? "✔ Campos comuns copiados (Banner/Logo/Numeração/Contato/Validade) — clique em Salvar pra aplicar (fica sincronizado com essa origem enquanto você não editar nada)."
+          : "✔ Configuração copiada — clique em Salvar pra aplicar (fica sincronizada com essa origem enquanto você não editar nada)."
+      );
     } finally {
       setCopying(false);
     }
@@ -259,8 +284,8 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
   const followers = templateId ? otherTemplates.filter((t) => t.segueTemplateId === templateId) : [];
 
   const currentSnapshot = useMemo(
-    () => snapshotPageFields({ layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
-    [layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas]
+    () => snapshotPageFields(escopoCopia, { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas }),
+    [escopoCopia, layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas]
   );
   const isFollowDirty = followSourceId !== null && copiedSnapshot !== null && currentSnapshot !== copiedSnapshot;
   const followSourceLabel = followSourceId ? (otherTemplates.find((t) => t.id === followSourceId)?.label ?? "outro modelo") : null;
@@ -288,6 +313,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
           tipo,
           { layout, elementosHabilitados, margens, fundoKey, fundoPdfKey, illustracoes, formas },
           segueTemplateId,
+          escopoCopia,
           followers.length > 0 && replicarSeguidoras
         ),
       ]);
@@ -348,6 +374,14 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
               {copying ? "Copiando..." : "Copiar"}
             </button>
           </div>
+          <label className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+            <input
+              type="checkbox"
+              checked={escopoCopia === "campos"}
+              onChange={(e) => setEscopoCopia(e.target.checked ? "campos" : "completo")}
+            />
+            Só os campos comuns (Banner de Título, Logo, Numeração, Contato, Validade) — não leva fundo/ilustrações/formas/margens
+          </label>
           {followSourceId && (
             <p className="mt-2 text-xs text-slate-500">
               {isFollowDirty

@@ -54,19 +54,37 @@ function buildPageTemplateRow(data: PageTemplateData): Record<string, unknown> {
   };
 }
 
+// Escopo do vínculo "seguir" — pedido do usuário depois de testar:
+// "completo" replica tudo (comportamento original: header/footer/
+// margens/fundo/ilustrações/formas); "campos" replica só header_json/
+// footer_json (Banner de Título/Logo/Numeração/Contato/Validade — os
+// campos citados no pedido), sem tocar fundo/ilustrações/formas/
+// margens do seguidor. Cada seguidor guarda o PRÓPRIO escopo (gravado
+// no momento em que ele passou a seguir), não a origem — dois
+// seguidores da mesma origem podem ter escopos diferentes.
+export type SegueEscopo = "completo" | "campos";
+
 // Vínculo "este modelo segue aquele" (Fase 5, "Reaproveitar" +
 // "seguir", pedido do usuário) — mesma mecânica já usada em
 // sections.segue_secao_id/saveCardTemplate: ao salvar um modelo que
 // tem outros modelos apontando pra ele (segue_template_id), o usuário
-// pode optar por replicar a MESMA linha (header/footer/margens/fundo/
-// ilustrações/formas — tudo que "Reaproveitar" também copia) pra cada
-// seguidor. Uma coluna só (page_templates.segue_template_id) serve
-// capa/abertura_secao/continuacao, já que são todas linhas da mesma
-// tabela.
-async function replicateToFollowers(supabase: SupabaseServerClient, templateId: string, row: Record<string, unknown>): Promise<{ error?: string }> {
-  const { data: followers, error: followersErr } = await supabase.from("page_templates").select("id").eq("segue_template_id", templateId);
+// pode optar por replicar a atualização pra cada seguidor, respeitando
+// o escopo que CADA seguidor escolheu (ver SegueEscopo acima). Uma
+// coluna só (page_templates.segue_template_id) serve capa/
+// abertura_secao/continuacao, já que são todas linhas da mesma tabela.
+async function replicateToFollowers(
+  supabase: SupabaseServerClient,
+  templateId: string,
+  fullRow: Record<string, unknown>,
+  fieldsOnlyRow: Record<string, unknown>
+): Promise<{ error?: string }> {
+  const { data: followers, error: followersErr } = await supabase
+    .from("page_templates")
+    .select("id, segue_escopo")
+    .eq("segue_template_id", templateId);
   if (followersErr) return { error: followersErr.message };
   for (const follower of followers ?? []) {
+    const row = follower.segue_escopo === "campos" ? fieldsOnlyRow : fullRow;
     const { error } = await supabase.from("page_templates").update(row).eq("id", follower.id as string);
     if (error) return { error: error.message };
   }
@@ -171,13 +189,16 @@ export type PageTemplateData = {
 export async function getPageTemplate(
   catalogId: string,
   tipo: PageTipo
-): Promise<{ template?: (PageTemplateData & { id: string; segueTemplateId: string | null; fundoUrl: string | null }) | null; error?: string }> {
+): Promise<{
+  template?: (PageTemplateData & { id: string; segueTemplateId: string | null; segueEscopo: SegueEscopo; fundoUrl: string | null }) | null;
+  error?: string;
+}> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const { data, error } = await supabase
     .from("page_templates")
-    .select("id, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id")
+    .select("id, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id, segue_escopo")
     .eq("catalog_id", catalogId)
     .eq("tipo", tipo)
     .maybeSingle();
@@ -209,6 +230,7 @@ export async function getPageTemplate(
     template: {
       id: data.id as string,
       segueTemplateId: data.segue_template_id as string | null,
+      segueEscopo: (data.segue_escopo as SegueEscopo | null) ?? "completo",
       layout,
       elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
       margens: data.margens as Margens,
@@ -232,14 +254,18 @@ export async function savePageTemplate(
   // edição manual depois de copiar já quebra o vínculo antes de
   // chegar aqui — ver *Client.tsx).
   segueTemplateId: string | null = null,
-  // true = replica a MESMA linha (header/footer/margens/fundo/
-  // ilustrações/formas) pros modelos que seguem este.
+  // "completo" ou "campos" (ver SegueEscopo acima) — só importa quando
+  // segueTemplateId != null.
+  segueEscopo: SegueEscopo = "completo",
+  // true = replica a atualização pros modelos que seguem este, cada um
+  // no PRÓPRIO escopo (ver replicateToFollowers).
   replicarParaSeguidoras: boolean = false
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const row = buildPageTemplateRow(data);
+  const fieldsOnlyRow = { header_json: row.header_json, footer_json: row.footer_json };
 
   const { data: existing, error: existingErr } = await supabase
     .from("page_templates")
@@ -252,12 +278,15 @@ export async function savePageTemplate(
   let templateId: string;
   if (existing) {
     templateId = existing.id as string;
-    const { error } = await supabase.from("page_templates").update({ ...row, segue_template_id: segueTemplateId }).eq("id", templateId);
+    const { error } = await supabase
+      .from("page_templates")
+      .update({ ...row, segue_template_id: segueTemplateId, segue_escopo: segueEscopo })
+      .eq("id", templateId);
     if (error) return { error: error.message };
   } else {
     const { data: inserted, error: insertErr } = await supabase
       .from("page_templates")
-      .insert({ catalog_id: catalogId, tipo, is_default: true, segue_template_id: segueTemplateId, ...row })
+      .insert({ catalog_id: catalogId, tipo, is_default: true, segue_template_id: segueTemplateId, segue_escopo: segueEscopo, ...row })
       .select("id")
       .single();
     if (insertErr) return { error: insertErr.message };
@@ -265,7 +294,7 @@ export async function savePageTemplate(
   }
 
   if (replicarParaSeguidoras) {
-    const replicateErr = await replicateToFollowers(supabase, templateId, row);
+    const replicateErr = await replicateToFollowers(supabase, templateId, row, fieldsOnlyRow);
     if (replicateErr.error) return replicateErr;
   }
 
@@ -355,6 +384,7 @@ export type AberturaSecaoDetail = {
   id: string;
   nome: string;
   segueTemplateId: string | null;
+  segueEscopo: SegueEscopo;
   template: PageTemplateData & { fundoUrl: string | null };
 };
 
@@ -363,7 +393,9 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("page_templates")
-    .select("nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id")
+    .select(
+      "nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id, segue_escopo"
+    )
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -386,6 +418,7 @@ export async function getAberturaSecaoTemplate(id: string): Promise<{ detail?: A
       id,
       nome: (data.nome as string | null) ?? "Sem nome",
       segueTemplateId: data.segue_template_id as string | null,
+      segueEscopo: (data.segue_escopo as SegueEscopo | null) ?? "completo",
       template: {
         layout,
         elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
@@ -406,21 +439,23 @@ export async function saveAberturaSecaoTemplate(
   id: string,
   data: PageTemplateData,
   segueTemplateId: string | null = null,
+  segueEscopo: SegueEscopo = "completo",
   replicarParaSeguidoras: boolean = false
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const row = buildPageTemplateRow(data);
+  const fieldsOnlyRow = { header_json: row.header_json, footer_json: row.footer_json };
 
   const { error } = await supabase
     .from("page_templates")
-    .update({ ...row, segue_template_id: segueTemplateId })
+    .update({ ...row, segue_template_id: segueTemplateId, segue_escopo: segueEscopo })
     .eq("id", id);
   if (error) return { error: error.message };
 
   if (replicarParaSeguidoras) {
-    const replicateErr = await replicateToFollowers(supabase, id, row);
+    const replicateErr = await replicateToFollowers(supabase, id, row, fieldsOnlyRow);
     if (replicateErr.error) return replicateErr;
   }
 
@@ -515,6 +550,7 @@ export type ContinuacaoDetail = {
   id: string;
   nome: string;
   segueTemplateId: string | null;
+  segueEscopo: SegueEscopo;
   template: PageTemplateData & { fundoUrl: string | null };
 };
 
@@ -523,7 +559,9 @@ export async function getContinuacaoTemplate(id: string): Promise<{ detail?: Con
   if (!user) return { error: "Sessão inválida." };
   const { data, error } = await supabase
     .from("page_templates")
-    .select("nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id")
+    .select(
+      "nome, header_json, footer_json, margens, fundo_key, fundo_pdf_key, illustracoes_json, formas_json, segue_template_id, segue_escopo"
+    )
     .eq("id", id)
     .single();
   if (error) return { error: error.message };
@@ -542,6 +580,7 @@ export async function getContinuacaoTemplate(id: string): Promise<{ detail?: Con
       id,
       nome: (data.nome as string | null) ?? "Sem nome",
       segueTemplateId: data.segue_template_id as string | null,
+      segueEscopo: (data.segue_escopo as SegueEscopo | null) ?? "completo",
       template: {
         layout,
         elementosHabilitados: Object.keys(layout).filter((k) => k !== "ilustracao") as PageFieldKey[],
@@ -560,21 +599,23 @@ export async function saveContinuacaoTemplate(
   id: string,
   data: PageTemplateData,
   segueTemplateId: string | null = null,
+  segueEscopo: SegueEscopo = "completo",
   replicarParaSeguidoras: boolean = false
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const row = buildPageTemplateRow(data);
+  const fieldsOnlyRow = { header_json: row.header_json, footer_json: row.footer_json };
 
   const { error } = await supabase
     .from("page_templates")
-    .update({ ...row, segue_template_id: segueTemplateId })
+    .update({ ...row, segue_template_id: segueTemplateId, segue_escopo: segueEscopo })
     .eq("id", id);
   if (error) return { error: error.message };
 
   if (replicarParaSeguidoras) {
-    const replicateErr = await replicateToFollowers(supabase, id, row);
+    const replicateErr = await replicateToFollowers(supabase, id, row, fieldsOnlyRow);
     if (replicateErr.error) return replicateErr;
   }
 
