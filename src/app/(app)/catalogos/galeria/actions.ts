@@ -3,7 +3,7 @@
 import { unstable_cache } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createDriveClient, getServiceAccountEmail } from "@/lib/googleDrive";
-import type { GaleriaFile } from "../core/matchGaleriaFoto";
+import { buildGaleriaIndex, resolveGaleriaFoto, type GaleriaFile } from "../core/matchGaleriaFoto";
 
 // Galeria de fotos via Google Drive (Fase 5, Parte 7) — configuração
 // GLOBAL (não por catálogo), sempre uma linha só em `galeria_config`;
@@ -131,6 +131,119 @@ const listImagesCached = unstable_cache(
   ["galeria-drive-images"],
   { revalidate: 90 }
 );
+
+export type DiagnosticoGaleria = {
+  folderId: string;
+  totalNaPasta: number;
+  imagensReconhecidas: number;
+  subpastas: number;
+  atalhos: number;
+  outrosTipos: { mimeType: string; count: number }[];
+  arquivosComCodigo: { name: string; mimeType: string; reconhecido: boolean; naPasta: boolean }[];
+  // O que o app realmente usa (listagem cacheada, 90s) vs. o que o Drive
+  // tem agora — se divergirem, é cache; se os dois forem null, o arquivo
+  // não está sendo reconhecido de verdade.
+  resultadoApp: string | null;
+  resultadoAoVivo: string | null;
+};
+
+// Diagnóstico de "por que a foto deste código não aparece": lista a
+// pasta ao vivo SEM filtro de tipo, mostra o que existe com esse código
+// (qualquer tipo, dentro ou fora da pasta) e se o casamento do app
+// encontraria a foto. Pedido depois de fotos presentes na pasta não
+// aparecerem no catálogo.
+export async function diagnosticarCodigoGaleria(codigoInput: string): Promise<{ diagnostico?: DiagnosticoGaleria; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const codigo = codigoInput.trim();
+  if (!codigo) return { error: "Informe um código." };
+
+  const { data, error } = await supabase
+    .from("galeria_config")
+    .select("drive_folder_id")
+    .order("atualizado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data?.drive_folder_id) return { error: "Nenhuma pasta configurada ainda." };
+  const folderId = data.drive_folder_id as string;
+
+  try {
+    const drive = createDriveClient();
+
+    type Item = { id: string; name: string; mimeType: string; parents: string[] };
+    const todos: Item[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: "nextPageToken, files(id, name, mimeType, parents)",
+        pageSize: 1000,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      for (const f of res.data.files ?? []) {
+        if (f.id && f.name) todos.push({ id: f.id, name: f.name, mimeType: f.mimeType ?? "", parents: f.parents ?? [] });
+      }
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    const reconhecido = (m: string) => IMAGE_MIME_TYPES.includes(m);
+    const imagens = todos.filter((f) => reconhecido(f.mimeType));
+    const tiposContados = new Map<string, number>();
+    for (const f of todos) {
+      if (reconhecido(f.mimeType)) continue;
+      tiposContados.set(f.mimeType, (tiposContados.get(f.mimeType) ?? 0) + 1);
+    }
+
+    const alvo = codigo.toLowerCase();
+    const arquivosComCodigo: DiagnosticoGaleria["arquivosComCodigo"] = todos
+      .filter((f) => f.name.toLowerCase().includes(alvo))
+      .map((f) => ({ name: f.name, mimeType: f.mimeType, reconhecido: reconhecido(f.mimeType), naPasta: true }));
+
+    // Busca ampla (qualquer pasta que a service account enxergue) —
+    // acha o arquivo se ele estiver numa subpasta ou em outra pasta.
+    const escaped = codigo.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const amplo = await drive.files.list({
+      q: `name contains '${escaped}' and trashed = false`,
+      fields: "files(id, name, mimeType, parents)",
+      pageSize: 100,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const f of amplo.data.files ?? []) {
+      if (!f.id || !f.name) continue;
+      if (todos.some((t) => t.id === f.id)) continue;
+      arquivosComCodigo.push({ name: f.name, mimeType: f.mimeType ?? "", reconhecido: reconhecido(f.mimeType ?? ""), naPasta: false });
+    }
+
+    const aoVivo = resolveGaleriaFoto(
+      buildGaleriaIndex(imagens.map((f) => ({ id: f.id, name: f.name }))),
+      codigo
+    );
+    const nomeDe = (id: string | null) => (id ? (todos.find((f) => f.id === id)?.name ?? id) : null);
+
+    const app = await listGaleriaImages();
+    const resultadoApp = app.files ? resolveGaleriaFoto(buildGaleriaIndex(app.files), codigo) : null;
+
+    return {
+      diagnostico: {
+        folderId,
+        totalNaPasta: todos.length,
+        imagensReconhecidas: imagens.length,
+        subpastas: todos.filter((f) => f.mimeType === "application/vnd.google-apps.folder").length,
+        atalhos: todos.filter((f) => f.mimeType === "application/vnd.google-apps.shortcut").length,
+        outrosTipos: [...tiposContados.entries()].map(([mimeType, count]) => ({ mimeType, count })).sort((a, b) => b.count - a.count),
+        arquivosComCodigo,
+        resultadoApp: resultadoApp ? (app.files?.find((f) => f.id === resultadoApp)?.name ?? resultadoApp) : null,
+        resultadoAoVivo: nomeDe(aoVivo),
+      },
+    };
+  } catch (e) {
+    return { error: `Falha ao consultar o Drive: ${e instanceof Error ? e.message : "erro desconhecido"}` };
+  }
+}
 
 export async function listGaleriaImages(): Promise<{ files?: GaleriaFile[]; error?: string }> {
   const { supabase, user } = await requireUser();

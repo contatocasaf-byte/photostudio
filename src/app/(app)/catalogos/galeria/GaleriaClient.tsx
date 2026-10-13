@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getGaleriaConfig, saveGaleriaConfig, testGaleriaConnection } from "./actions";
+import {
+  diagnosticarCodigoGaleria,
+  getGaleriaConfig,
+  saveGaleriaConfig,
+  testGaleriaConnection,
+  type DiagnosticoGaleria,
+} from "./actions";
 
 export default function GaleriaFotosPage() {
   const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
@@ -14,6 +20,10 @@ export default function GaleriaFotosPage() {
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [diagCodigo, setDiagCodigo] = useState("");
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
+  const [diag, setDiag] = useState<DiagnosticoGaleria | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +53,20 @@ export default function GaleriaFotosPage() {
       else setTestResult(`✔ Conexão OK — ${res.count} foto(s) encontrada(s) na pasta.`);
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleDiagnosticar() {
+    if (!diagCodigo.trim()) return;
+    setDiagLoading(true);
+    setDiagError(null);
+    setDiag(null);
+    try {
+      const res = await diagnosticarCodigoGaleria(diagCodigo);
+      if (res.error) setDiagError(res.error);
+      else setDiag(res.diagnostico ?? null);
+    } finally {
+      setDiagLoading(false);
     }
   }
 
@@ -122,6 +146,64 @@ export default function GaleriaFotosPage() {
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
           {testResult && <p className="mt-3 text-sm text-emerald-700">{testResult}</p>}
           {status && <p className="mt-3 text-sm text-slate-500">{status}</p>}
+
+          <div className="mt-8 rounded-md border border-slate-200 px-3 py-3">
+            <h2 className="text-sm font-semibold text-slate-900">Diagnosticar um código</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              A foto de um produto não aparece no catálogo? Digite o código e veja o que existe no Drive pra ele.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={diagCodigo}
+                onChange={(e) => setDiagCodigo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleDiagnosticar()}
+                placeholder="Ex.: 15919"
+                className="w-48 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={handleDiagnosticar}
+                disabled={diagLoading || !diagCodigo.trim()}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {diagLoading ? "Consultando..." : "Diagnosticar"}
+              </button>
+            </div>
+            {diagError && <p className="mt-2 text-sm text-red-600">{diagError}</p>}
+            {diag && (
+              <div className="mt-3 space-y-2 text-xs text-slate-700">
+                <p>
+                  Pasta: <b>{diag.totalNaPasta}</b> item(ns) no total, <b>{diag.imagensReconhecidas}</b> reconhecido(s) como imagem (JPEG/PNG/WebP),{" "}
+                  <b>{diag.subpastas}</b> subpasta(s) (não são lidas), <b>{diag.atalhos}</b> atalho(s).
+                </p>
+                {diag.outrosTipos.length > 0 && (
+                  <p className="text-slate-500">
+                    Outros tipos na pasta (ignorados): {diag.outrosTipos.map((t) => `${t.mimeType || "sem tipo"} × ${t.count}`).join(", ")}
+                  </p>
+                )}
+                <div>
+                  <p className="font-medium">Arquivos com &quot;{diagCodigo.trim()}&quot; no nome:</p>
+                  {diag.arquivosComCodigo.length === 0 ? (
+                    <p className="text-red-600">Nenhum — o Drive (visto pela conta de serviço) não tem arquivo com esse código.</p>
+                  ) : (
+                    <ul className="mt-1 list-disc pl-5">
+                      {diag.arquivosComCodigo.map((f, i) => (
+                        <li key={i}>
+                          <code>{f.name}</code> — {f.mimeType || "sem tipo"} —{" "}
+                          {f.naPasta ? "na pasta" : <span className="text-amber-700">FORA da pasta configurada (subpasta ou outra pasta)</span>} —{" "}
+                          {f.reconhecido ? "tipo reconhecido" : <span className="text-amber-700">tipo NÃO reconhecido (ignorado)</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <p>
+                  Foto que o app usa agora (cache de até 90s): <b>{diag.resultadoApp ?? "nenhuma"}</b>
+                  <br />
+                  Foto que o Drive tem ao vivo: <b>{diag.resultadoAoVivo ?? "nenhuma"}</b>
+                </p>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
