@@ -173,7 +173,7 @@ export default function GaleriaFotosPage() {
               <div className="mt-3 space-y-2 text-xs text-slate-700">
                 <p>
                   Pasta: <b>{diag.totalNaPasta}</b> item(ns) no total, <b>{diag.imagensReconhecidas}</b> reconhecido(s) como imagem (JPEG/PNG/WebP),{" "}
-                  <b>{diag.subpastas}</b> subpasta(s) (também são lidas), <b>{diag.atalhos}</b> atalho(s).
+                  <b>{diag.subpastas}</b> subpasta(s) (não são lidas), <b>{diag.atalhos}</b> atalho(s).
                 </p>
                 {diag.outrosTipos.length > 0 && (
                   <p className="text-slate-500">
@@ -189,7 +189,7 @@ export default function GaleriaFotosPage() {
                       {diag.arquivosComCodigo.map((f, i) => (
                         <li key={i}>
                           <code>{f.name}</code> — {f.mimeType || "sem tipo"} —{" "}
-                          {f.naPasta ? "na pasta principal" : <span className="text-amber-700">fora da pasta principal (subpasta ou outra pasta)</span>} —{" "}
+                          {f.naPasta ? "na pasta" : <span className="text-amber-700">FORA da pasta configurada (subpasta ou outra pasta)</span>} —{" "}
                           {f.reconhecido ? "tipo reconhecido" : <span className="text-amber-700">tipo NÃO reconhecido (ignorado)</span>}
                         </li>
                       ))}

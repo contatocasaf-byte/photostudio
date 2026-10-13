@@ -33,45 +33,27 @@ function extractDriveFolderId(input: string): string {
   return trimmed;
 }
 
-const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
-// Teto de segurança: evita varrer uma árvore enorme (ou com ciclo via
-// atalhos) a cada listagem — fotos organizadas em subpastas até esse
-// limite continuam sendo encontradas.
-const MAX_SUBFOLDERS = 200;
-
-// Lê a pasta configurada E todas as subpastas dela (pedido depois de
-// fotos guardadas numa subpasta não aparecerem no catálogo).
-async function listAllImagesInFolder(rootFolderId: string): Promise<GaleriaFile[]> {
+async function listAllImagesInFolder(folderId: string): Promise<GaleriaFile[]> {
   const drive = createDriveClient();
-  const mimeQuery = [...IMAGE_MIME_TYPES, FOLDER_MIME_TYPE].map((t) => `mimeType = '${t}'`).join(" or ");
+  const mimeQuery = IMAGE_MIME_TYPES.map((t) => `mimeType = '${t}'`).join(" or ");
+  const q = `'${folderId}' in parents and trashed = false and (${mimeQuery})`;
 
   const files: GaleriaFile[] = [];
-  const pending = [rootFolderId];
-  const visited = new Set<string>();
-
-  while (pending.length > 0 && visited.size <= MAX_SUBFOLDERS) {
-    const folderId = pending.shift() as string;
-    if (visited.has(folderId)) continue;
-    visited.add(folderId);
-
-    let pageToken: string | undefined;
-    do {
-      const res = await drive.files.list({
-        q: `'${folderId}' in parents and trashed = false and (${mimeQuery})`,
-        fields: "nextPageToken, files(id, name, mimeType)",
-        pageSize: 1000,
-        pageToken,
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-      });
-      for (const f of res.data.files ?? []) {
-        if (!f.id || !f.name) continue;
-        if (f.mimeType === FOLDER_MIME_TYPE) pending.push(f.id);
-        else files.push({ id: f.id, name: f.name });
-      }
-      pageToken = res.data.nextPageToken ?? undefined;
-    } while (pageToken);
-  }
+  let pageToken: string | undefined;
+  do {
+    const res = await drive.files.list({
+      q,
+      fields: "nextPageToken, files(id, name)",
+      pageSize: 1000,
+      pageToken,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const f of res.data.files ?? []) {
+      if (f.id && f.name) files.push({ id: f.id, name: f.name });
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
 
   return files;
 }
@@ -236,10 +218,11 @@ export async function diagnosticarCodigoGaleria(codigoInput: string): Promise<{ 
       arquivosComCodigo.push({ name: f.name, mimeType: f.mimeType ?? "", reconhecido: reconhecido(f.mimeType ?? ""), naPasta: false });
     }
 
-    // Ao vivo = mesma varredura recursiva (pasta + subpastas) que o app usa.
-    const arvore = await listAllImagesInFolder(folderId);
-    const aoVivo = resolveGaleriaFoto(buildGaleriaIndex(arvore), codigo);
-    const nomeDe = (id: string | null) => (id ? (arvore.find((f) => f.id === id)?.name ?? id) : null);
+    const aoVivo = resolveGaleriaFoto(
+      buildGaleriaIndex(imagens.map((f) => ({ id: f.id, name: f.name }))),
+      codigo
+    );
+    const nomeDe = (id: string | null) => (id ? (todos.find((f) => f.id === id)?.name ?? id) : null);
 
     const app = await listGaleriaImages();
     const resultadoApp = app.files ? resolveGaleriaFoto(buildGaleriaIndex(app.files), codigo) : null;
