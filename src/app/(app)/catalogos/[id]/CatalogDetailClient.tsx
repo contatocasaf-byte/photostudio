@@ -24,6 +24,8 @@ import {
   type Section,
 } from "../actions";
 import type { CatalogTipo } from "../core/permissoes";
+import { getCatalogFotoStats, type CatalogFotoStats, type FotoStats } from "../fotos/actions";
+import FotoStatsResumo, { percentual } from "../fotos/FotoStatsResumo";
 import PlanilhaPicker from "../produtos/PlanilhaPicker";
 import {
   createPaginaAvulsa,
@@ -157,6 +159,7 @@ function SectionRow({
   continuacaoOptions,
   podeEditarSecoes,
   podeExcluirSecoes,
+  fotoStats,
   onSave,
   onDelete,
 }: {
@@ -166,6 +169,7 @@ function SectionRow({
   continuacaoOptions: ContinuacaoListItem[];
   podeEditarSecoes: boolean;
   podeExcluirSecoes: boolean;
+  fotoStats?: FotoStats;
   onSave: (values: SectionFormValues) => Promise<void>;
   onDelete: () => void;
 }) {
@@ -207,6 +211,17 @@ function SectionRow({
           )}
           <span className="w-8 shrink-0 text-xs font-semibold text-slate-400">{section.numero || "—"}</span>
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{section.titulo}</span>
+          {fotoStats && (
+            <span
+              className={`shrink-0 text-xs font-medium ${
+                fotoStats.total === 0 ? "text-slate-300" : fotoStats.comFoto === fotoStats.total ? "text-emerald-700" : "text-amber-700"
+              }`}
+              title="Produtos com foto / produtos listados na seção"
+            >
+              {fotoStats.comFoto}/{fotoStats.total}
+              {percentual(fotoStats) !== null && <span className="ml-1.5">{percentual(fotoStats)}%</span>}
+            </span>
+          )}
           <span className="shrink-0 text-xs text-slate-400">{section.colunas} colunas</span>
           <Link
             href={`/catalogos/${catalogId}/secoes/${section.id}`}
@@ -398,6 +413,33 @@ export default function CatalogDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [fotoStats, setFotoStats] = useState<CatalogFotoStats | null>(null);
+  const [fotoStatsLoading, setFotoStatsLoading] = useState(true);
+
+  async function loadFotoStats() {
+    setFotoStatsLoading(true);
+    try {
+      const res = await getCatalogFotoStats(id);
+      if (res.stats) setFotoStats(res.stats);
+    } finally {
+      setFotoStatsLoading(false);
+    }
+  }
+
+  // Carrega à parte do resto da tela — listar a galeria do Drive pode
+  // demorar na 1ª vez (depois fica em cache por 90s) e não deve segurar
+  // a lista de seções.
+  useEffect(() => {
+    let cancelled = false;
+    getCatalogFotoStats(id).then((res) => {
+      if (cancelled) return;
+      if (res.stats) setFotoStats(res.stats);
+      setFotoStatsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -656,6 +698,8 @@ export default function CatalogDetailPage({
         )}
       </div>
 
+      <FotoStatsResumo catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
+
       {podeCriarSecoes && showNewForm && (
         <div className="mt-2 rounded-md border border-dashed border-slate-300 p-3">
           <SectionForm
@@ -690,6 +734,7 @@ export default function CatalogDetailPage({
                     continuacaoOptions={continuacaoOptions}
                     podeEditarSecoes={podeEditarSecoes}
                     podeExcluirSecoes={podeExcluirSecoes}
+                    fotoStats={fotoStats?.porSecao[s.id]}
                     onSave={(values) => handleSaveSection(s.id, values)}
                     onDelete={() => handleDeleteSection(s)}
                   />

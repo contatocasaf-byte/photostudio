@@ -5,6 +5,8 @@ import Link from "next/link";
 import { getCatalogPreviewData } from "../../preview/actions";
 import { fontPairsFromPreviewPages, reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
 import { exportCatalogPdf } from "../../pdf/exportPdf";
+import { getCatalogFotoStats, type CatalogFotoStats } from "../../fotos/actions";
+import FotoStatsResumo from "../../fotos/FotoStatsResumo";
 import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 import PreviewPageCanvas, { computeStageSize } from "./PreviewPageCanvas";
 
@@ -40,6 +42,30 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportInfo, setExportInfo] = useState<string | null>(null);
   const [fontsTick, setFontsTick] = useState(0);
+  const [fotoStats, setFotoStats] = useState<CatalogFotoStats | null>(null);
+  const [fotoStatsLoading, setFotoStatsLoading] = useState(true);
+
+  async function loadFotoStats() {
+    setFotoStatsLoading(true);
+    try {
+      const res = await getCatalogFotoStats(catalogId);
+      if (res.stats) setFotoStats(res.stats);
+    } finally {
+      setFotoStatsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    getCatalogFotoStats(catalogId).then((res) => {
+      if (cancelled) return;
+      if (res.stats) setFotoStats(res.stats);
+      setFotoStatsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogId]);
 
   async function handleExportPdf() {
     setExporting(true);
@@ -132,6 +158,8 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
           {exporting ? "Gerando PDF..." : "Baixar PDF"}
         </button>
       </div>
+
+      <FotoStatsResumo catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
