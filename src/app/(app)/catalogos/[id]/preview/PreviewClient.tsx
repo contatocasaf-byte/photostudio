@@ -38,14 +38,29 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
   const [zoom, setZoom] = useState(0.55);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportInfo, setExportInfo] = useState<string | null>(null);
   const [fontsTick, setFontsTick] = useState(0);
 
   async function handleExportPdf() {
     setExporting(true);
     setExportError(null);
+    setExportInfo(null);
     try {
-      await exportCatalogPdf({ pages, paginaLargura, paginaAltura, catalogNome: catalogNome ?? "catalogo", validadeTexto });
+      const { fotosFalharam } = await exportCatalogPdf({
+        pages,
+        paginaLargura,
+        paginaAltura,
+        catalogNome: catalogNome ?? "catalogo",
+        validadeTexto,
+        onProgress: setExportInfo,
+      });
+      setExportInfo(
+        fotosFalharam > 0
+          ? `⚠ PDF gerado, mas ${fotosFalharam} foto(s) não puderam ser incluídas (falha ao baixar do Drive ou enviar). Tente gerar de novo.`
+          : null
+      );
     } catch (e) {
+      setExportInfo(null);
       setExportError(e instanceof Error ? e.message : "Falha ao gerar PDF.");
     } finally {
       setExporting(false);
@@ -120,6 +135,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
+      {exportInfo && <p className="mt-2 text-sm text-slate-600">{exportInfo}</p>}
 
       {skipped.length > 0 && (
         <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
