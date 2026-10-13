@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
+import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { defaultCardBorda } from "../core/cardConfig";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
@@ -181,25 +182,38 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   // continua sendo "a atual", usada pra estrutura da grade) — pra
   // resolver o molde de cada item pela sua própria versão gravada.
   const sectionIds = (sectionRows ?? []).map((s) => s.id as string);
-  const [{ data: cardTemplateRows, error: ctErr }, { data: itemRows, error: itemsErr }] = await Promise.all([
+  // Paginados: o Supabase corta select() em 1000 linhas sem avisar —
+  // catálogo com mais de 1000 itens perdia os últimos no preview/PDF.
+  const [cardTemplatesRes, itemsRes] = await Promise.all([
     sectionIds.length > 0
-      ? supabase
-          .from("card_templates")
-          .select(
-            "id, section_id, versao, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
-          )
-          .in("section_id", sectionIds)
-      : Promise.resolve({ data: [], error: null }),
+      ? fetchAllPages<Record<string, unknown>>((from, to) =>
+          supabase
+            .from("card_templates")
+            .select(
+              "id, section_id, versao, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
+            )
+            .in("section_id", sectionIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : Promise.resolve({ data: [] as Record<string, unknown>[], error: undefined as string | undefined }),
     sectionIds.length > 0
-      ? supabase
-          .from("catalog_items")
-          .select("section_id, ordem, product_id, card_template_versao")
-          .in("section_id", sectionIds)
-          .order("ordem", { ascending: true })
-      : Promise.resolve({ data: [], error: null }),
+      ? fetchAllPages<Record<string, unknown>>((from, to) =>
+          supabase
+            .from("catalog_items")
+            .select("id, section_id, ordem, product_id, card_template_versao")
+            .in("section_id", sectionIds)
+            .order("section_id", { ascending: true })
+            .order("ordem", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : Promise.resolve({ data: [] as Record<string, unknown>[], error: undefined as string | undefined }),
   ]);
-  if (ctErr) return { error: ctErr.message };
-  if (itemsErr) return { error: itemsErr.message };
+  if (cardTemplatesRes.error) return { error: cardTemplatesRes.error };
+  if (itemsRes.error) return { error: itemsRes.error };
+  const cardTemplateRows = cardTemplatesRes.data;
+  const itemRows = itemsRes.data;
 
   const templatesBySection = new Map<string, { id: string; versao: number; template: CardTemplateInput }[]>();
   for (const row of cardTemplateRows ?? []) {
@@ -210,14 +224,16 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   }
 
   const productIds = [...new Set((itemRows ?? []).map((r) => r.product_id as string))];
-  const { data: productRows, error: prodErr } =
-    productIds.length > 0
-      ? await supabase.from("products").select("id, codigo, ref, descricao, preco_1, preco_2, quantidade_minima").in("id", productIds)
-      : { data: [], error: null };
-  if (prodErr) return { error: prodErr.message };
+  // Em blocos de 150 ids por consulta — um .in() com milhares de uuids
+  // estoura o tamanho da URL.
+  const productsRes = await fetchInChunks<Record<string, unknown>, string>(productIds, 150, (chunk) =>
+    supabase.from("products").select("id, codigo, ref, descricao, preco_1, preco_2, quantidade_minima").in("id", chunk)
+  );
+  if (productsRes.error) return { error: productsRes.error };
+  const productRows = productsRes.data;
 
   const productById = new Map(
-    (productRows ?? []).map((p) => {
+    productRows.map((p) => {
       const fileId = resolveGaleriaFoto(galeriaIndex, p.codigo as string);
       return [
         p.id as string,

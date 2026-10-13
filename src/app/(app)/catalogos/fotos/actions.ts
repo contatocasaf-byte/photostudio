@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
 
@@ -24,7 +25,6 @@ export type CatalogFotoStats = {
   galeriaIndisponivel: boolean;
 };
 
-const PAGE_SIZE = 1000;
 const IN_CHUNK = 150;
 
 async function requireUser() {
@@ -52,39 +52,35 @@ export async function getCatalogFotoStats(catalogId: string): Promise<{ stats?: 
   const galeriaIndisponivel = !!galeriaRes.error || files.length === 0;
   const index = buildGaleriaIndex(files);
 
-  // Itens da seção, paginados (o Supabase corta em 1000 linhas por
-  // consulta — catálogo grande passa disso).
-  const items: { section_id: string; product_id: string; ordem: number }[] = [];
-  if (sectionIds.length > 0) {
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data, error } = await supabase
-        .from("catalog_items")
-        .select("section_id, product_id, ordem")
-        .in("section_id", sectionIds)
-        .order("section_id", { ascending: true })
-        .order("ordem", { ascending: true })
-        .range(from, from + PAGE_SIZE - 1);
-      if (error) return { error: error.message };
-      items.push(...((data ?? []) as typeof items));
-      if (!data || data.length < PAGE_SIZE) break;
-    }
-  }
+  type ItemRow = { section_id: string; product_id: string; ordem: number };
+  const itemsRes =
+    sectionIds.length > 0
+      ? await fetchAllPages<ItemRow>((from, to) =>
+          supabase
+            .from("catalog_items")
+            .select("section_id, product_id, ordem")
+            .in("section_id", sectionIds)
+            .order("section_id", { ascending: true })
+            .order("ordem", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : { data: [] as ItemRow[], error: undefined as string | undefined };
+  if (itemsRes.error) return { error: itemsRes.error };
+  const items = itemsRes.data;
 
   const productIds = [...new Set(items.map((i) => i.product_id))];
+  const productsRes = await fetchInChunks<Record<string, unknown>, string>(productIds, IN_CHUNK, (chunk) =>
+    supabase.from("products").select("id, codigo, ref, descricao").in("id", chunk)
+  );
+  if (productsRes.error) return { error: productsRes.error };
   const productById = new Map<string, { codigo: string; ref: string; descricao: string }>();
-  for (let i = 0; i < productIds.length; i += IN_CHUNK) {
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, codigo, ref, descricao")
-      .in("id", productIds.slice(i, i + IN_CHUNK));
-    if (error) return { error: error.message };
-    for (const p of data ?? []) {
-      productById.set(p.id as string, {
-        codigo: String(p.codigo ?? ""),
-        ref: String(p.ref ?? ""),
-        descricao: String(p.descricao ?? ""),
-      });
-    }
+  for (const p of productsRes.data) {
+    productById.set(p.id as string, {
+      codigo: String(p.codigo ?? ""),
+      ref: String(p.ref ?? ""),
+      descricao: String(p.descricao ?? ""),
+    });
   }
 
   const temFoto = new Map<string, boolean>();
