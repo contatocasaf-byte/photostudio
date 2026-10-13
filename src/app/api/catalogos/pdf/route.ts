@@ -6,9 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 // checa a sessão Supabase aqui já que o Python só confere o segredo
 // compartilhado, não sabe nada de usuário).
 //
-// Mesmo teto de 60s do plano Hobby da Vercel — catálogos muito grandes
-// (muitas páginas × muitas fotos) podem esbarrar nisso; aceito como
-// limitação desta primeira entrega (ver plano, Fase 5 Parte 10).
+// Só INICIA a geração e devolve o id do trabalho na hora: a rota da
+// Vercel tem teto de 60s por requisição (plano Hobby), e catálogo grande
+// passa disso. O andamento é consultado em ./status/[jobId].
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Catálogo sem páginas pra exportar." }, { status: 400 });
   }
 
-  const res = await fetch(`${process.env.BACKEND_URL}/catalogos/pdf`, {
+  const res = await fetch(`${process.env.BACKEND_URL}/catalogos/pdf/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -36,9 +36,8 @@ export async function POST(request: Request) {
 
   if (!res.ok) {
     const detail = await res.text();
-    return NextResponse.json({ error: `Falha ao gerar PDF: ${detail}` }, { status: 502 });
+    return NextResponse.json({ error: `Falha ao iniciar a geração do PDF: ${detail}` }, { status: 502 });
   }
 
-  const data = await res.json();
-  return NextResponse.json(data);
+  return NextResponse.json(await res.json());
 }
