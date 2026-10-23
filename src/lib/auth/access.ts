@@ -1,5 +1,7 @@
 import { cache } from "react";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { readVerifiedUser, VERIFIED_USER_HEADER } from "./verifiedUser";
 import { permissoesDoModulo, type PermissaoChave } from "./permissoes";
 
 export type Papel = "usuario" | "supervisor" | "administrador";
@@ -17,12 +19,22 @@ export type Access = {
 // (auth.getUser + perfis + permissoes_usuario) entre as várias
 // chamadas que acontecem na MESMA requisição/navegação, em vez de
 // bater no banco de novo a cada componente que precisa saber o acesso.
+//
+// O usuário normalmente já vem validado pelo proxy (cabeçalho assinado,
+// ver auth/verifiedUser.ts), o que pula um supabase.auth.getUser() — uma
+// ida e volta inteira ao Supabase por navegação. Sem cabeçalho (ou com
+// assinatura inválida/expirada), valida do jeito de sempre.
 export const getCurrentAccess = cache(async (): Promise<Access | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+
+  let user: { id: string; email: string } | null = await readVerifiedUser((await headers()).get(VERIFIED_USER_HEADER));
+  if (!user) {
+    const {
+      data: { user: fetched },
+    } = await supabase.auth.getUser();
+    if (!fetched) return null;
+    user = { id: fetched.id, email: fetched.email ?? "" };
+  }
 
   const [{ data: perfil }, { data: permissoesRows }] = await Promise.all([
     supabase.from("perfis").select("papel, email").eq("id", user.id).maybeSingle(),
@@ -36,7 +48,7 @@ export const getCurrentAccess = cache(async (): Promise<Access | null> => {
 
   return {
     userId: user.id,
-    email: perfil?.email ?? user.email ?? "",
+    email: perfil?.email ?? user.email,
     papel,
     isAdmin: papel === "administrador",
     permissoes: new Set((permissoesRows ?? []).map((r) => r.chave as string)),
