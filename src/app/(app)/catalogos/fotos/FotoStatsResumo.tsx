@@ -35,11 +35,21 @@ export default function FotoStatsResumo({
       const res = await getCatalogItensRelatorio(catalogId);
       if (res.error || !res.itens) setErroRelatorio(res.error ?? "Falha ao montar o relatório.");
       else if (res.itens.length === 0) setErroRelatorio("Este catálogo ainda não tem itens cadastrados.");
-      else baixarRelatorioItens(catalogNome, res.itens);
+      else await baixarRelatorioItens(catalogNome, res.itens);
     } catch (e) {
       setErroRelatorio(e instanceof Error ? e.message : "Falha ao montar o relatório.");
     } finally {
       setGerandoItens(false);
+    }
+  }
+
+  async function handleRelatorioSemFoto() {
+    if (!stats) return;
+    setErroRelatorio(null);
+    try {
+      await baixarRelatorioSemFoto(catalogNome, stats.semFoto);
+    } catch (e) {
+      setErroRelatorio(e instanceof Error ? e.message : "Falha ao montar o relatório.");
     }
   }
 
@@ -67,7 +77,7 @@ export default function FotoStatsResumo({
           <div className={`h-full ${completo ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${pct ?? 0}%` }} />
         </div>
         <button
-          onClick={() => baixarRelatorioSemFoto(catalogNome, stats.semFoto)}
+          onClick={handleRelatorioSemFoto}
           disabled={stats.semFoto.length === 0}
           className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           title="Planilha Excel com Código, Referência e Descrição dos itens sem foto"
