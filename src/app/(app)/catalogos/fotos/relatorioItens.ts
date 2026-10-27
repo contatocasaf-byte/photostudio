@@ -24,6 +24,7 @@ const COLUNAS: Coluna[] = [
   { titulo: "Referência", largura: 20, alinhar: "left" },
   { titulo: "Descrição", largura: 62.8, alinhar: "left" },
   { titulo: "Fotos", largura: 16, alinhar: "center" },
+  { titulo: "Extensão", largura: 13, alinhar: "center" },
 ];
 
 // Texto da aba "Como funciona" — quem recebe a planilha (editores,
@@ -38,6 +39,8 @@ export const INFO_BLOCOS: { titulo: string; linhas: string[] }[] = [
       "• O texto \"📷 N fotos\" vem da lista de fotos Brasmam (planilha do Google, atualizada todo dia por volta das 6h).",
       "• Código que não está na lista aparece como \"sem foto\", sem link.",
       "• Código com letra ou hífen (ex.: 18-05-048) aparece como \"—\", sem link: a galeria só entende códigos numéricos.",
+      "• A coluna \"Extensão\" mostra a extensão do arquivo da foto que o catálogo usa (ex.: JPG, JPEG, PNG). Use o filtro da coluna para listar, por exemplo, só os JPG/JPEG.",
+      "• Na coluna \"Extensão\", \"sem foto\" indica que o catálogo não tem foto para o código, e \"—\" que a galeria do catálogo não pôde ser lida.",
     ],
   },
   {
@@ -45,7 +48,7 @@ export const INFO_BLOCOS: { titulo: string; linhas: string[] }[] = [
     linhas: [
       "1. A galeria abre com a conta Google de quem clica: só vê as fotos quem tem acesso às pastas no Drive.",
       "2. A lista é atualizada uma vez por dia: uma foto adicionada hoje pode aparecer como \"sem foto\" até o dia seguinte.",
-      "3. A lista conta as duas pastas (com e sem marca d'água); a barra de fotos do catálogo no sistema conta só a pasta sem marca d'água. Por isso o mesmo código pode ter foto neste relatório e aparecer sem foto na barra do catálogo.",
+      "3. A lista conta as duas pastas (com e sem marca d'água); a barra de fotos do catálogo no sistema e a coluna \"Extensão\" consideram só a pasta sem marca d'água. Por isso o mesmo código pode ter link em \"Fotos\" e aparecer \"sem foto\" na barra do catálogo e na \"Extensão\".",
       "4. Se o endereço da galeria ou da lista mudar (nova publicação do app), a configuração do sistema precisa ser atualizada: peça a quem mantém o sistema.",
     ],
   },
@@ -54,6 +57,13 @@ export const INFO_BLOCOS: { titulo: string; linhas: string[] }[] = [
 function celulaFotos(item: ItemRelatorio): Celula {
   if (item.fotosUrl) return { texto: item.fotosRotulo, url: item.fotosUrl };
   return { texto: item.fotosRotulo, apagado: true };
+}
+
+// "sem foto" / "—" ficam apagados (cinza), igual à coluna Fotos; a
+// extensão real (JPG, JPEG, PNG...) fica em texto normal, filtrável.
+function celulaExtensao(item: ItemRelatorio): Celula {
+  const apagado = item.extensao === "sem foto" || item.extensao === "—";
+  return apagado ? { texto: item.extensao, apagado: true } : item.extensao;
 }
 
 export async function montarRelatorioItens(catalogNome: string, itens: ItemRelatorio[], logo: string | null): Promise<Workbook> {
@@ -74,7 +84,7 @@ export async function montarRelatorioItens(catalogNome: string, itens: ItemRelat
     ws,
     7,
     COLUNAS,
-    itens.map((i) => [i.codigo, i.ref, i.descricao, celulaFotos(i)])
+    itens.map((i) => [i.codigo, i.ref, i.descricao, celulaFotos(i), celulaExtensao(i)])
   );
 
   // --- aba 2: como funciona ---

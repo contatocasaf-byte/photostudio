@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
-import { chaveLista, codigoNumerico, linkGaleria, LISTA_FOTOS_CSV_URL, parseListaFotosCsv } from "./galeriaLink";
+import { chaveLista, codigoNumerico, extensaoDoArquivo, linkGaleria, LISTA_FOTOS_CSV_URL, parseListaFotosCsv } from "./galeriaLink";
 
 // Cobertura de fotos do catálogo (quantos itens já têm foto na galeria
 // do Drive) — mostrada na lista de seções e no "Ver catálogo", e base
@@ -98,6 +98,11 @@ export type ItemRelatorio = {
   // o que abrir.
   fotosRotulo: string;
   fotosUrl: string | null;
+  // Extensão do arquivo da foto que o CATÁLOGO usa de fato (a da galeria
+  // configurada — pasta sem marca d'água —, a mesma do preview/PDF):
+  // "JPG", "JPEG", "PNG"... ; "sem foto" se o catálogo não tem foto
+  // pra esse código; "—" se a galeria não pôde ser lida.
+  extensao: string;
 };
 
 // Relatório de TODOS os itens cadastrados no catálogo (um por produto,
@@ -122,6 +127,14 @@ export async function getCatalogItensRelatorio(catalogId: string): Promise<{ ite
     };
   }
 
+  // Foto que o catálogo usa (galeria configurada) — mesma resolução do
+  // preview/PDF; dela sai a extensão do arquivo.
+  const galeriaRes = await listGaleriaImages();
+  const galeriaFiles = galeriaRes.files ?? [];
+  const galeriaLegivel = !galeriaRes.error && galeriaFiles.length > 0;
+  const galeriaIndex = buildGaleriaIndex(galeriaFiles);
+  const nomePorId = new Map(galeriaFiles.map((f) => [f.id, f.name]));
+
   const itensPorSecao = new Map<string, ItemRow[]>();
   for (const item of carregado.items) {
     const list = itensPorSecao.get(item.section_id) ?? [];
@@ -139,10 +152,17 @@ export async function getCatalogItensRelatorio(catalogId: string): Promise<{ ite
 
       const numerico = codigoNumerico(produto.codigo);
       const rotulo = numerico ? lista.get(chaveLista(numerico)) : undefined;
+      let extensao = "—";
+      if (galeriaLegivel) {
+        const fileId = resolveGaleriaFoto(galeriaIndex, produto.codigo);
+        extensao = fileId ? extensaoDoArquivo(nomePorId.get(fileId) ?? "") || "—" : "sem foto";
+      }
+
       itens.push({
         ...produto,
         fotosRotulo: !numerico ? "—" : (rotulo ?? "sem foto"),
         fotosUrl: numerico && rotulo ? linkGaleria(numerico) : null,
+        extensao,
       });
     }
   }

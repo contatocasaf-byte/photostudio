@@ -27,6 +27,13 @@ export function codigoNumerico(codigo: string): string | null {
   return /^\d+$/.test(limpo) ? limpo : null;
 }
 
+// Extensão do arquivo em maiúsculas ("15919_1.jpg" -> "JPG", "x.JPEG" ->
+// "JPEG"). Sem extensão reconhecível, devolve "" (o chamador mostra "—").
+export function extensaoDoArquivo(nome: string): string {
+  const m = /\.([A-Za-z0-9]{2,5})\s*$/.exec(nome.trim());
+  return m ? m[1].toUpperCase() : "";
+}
+
 // Mesma chave da lista: número sem zeros à esquerda ("00123" -> "123").
 export function chaveLista(codigoNum: string): string {
   return String(parseInt(codigoNum, 10));
