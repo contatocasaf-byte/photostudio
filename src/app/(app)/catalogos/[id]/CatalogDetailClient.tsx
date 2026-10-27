@@ -698,7 +698,7 @@ export default function CatalogDetailPage({
         )}
       </div>
 
-      <FotoStatsResumo catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
+      <FotoStatsResumo catalogId={id} catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
 
       {podeCriarSecoes && showNewForm && (
         <div className="mt-2 rounded-md border border-dashed border-slate-300 p-3">

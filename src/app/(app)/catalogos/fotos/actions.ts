@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
 import { listGaleriaImages } from "../galeria/actions";
+import { chaveLista, codigoNumerico, linkGaleria, LISTA_FOTOS_CSV_URL, parseListaFotosCsv } from "./galeriaLink";
 
 // Cobertura de fotos do catálogo (quantos itens já têm foto na galeria
 // do Drive) — mostrada na lista de seções e no "Ver catálogo", e base
@@ -35,24 +36,26 @@ async function requireUser() {
   return { supabase, user };
 }
 
-export async function getCatalogFotoStats(catalogId: string): Promise<{ stats?: CatalogFotoStats; error?: string }> {
-  const { supabase, user } = await requireUser();
-  if (!user) return { error: "Sessão inválida." };
+type ItemRow = { section_id: string; product_id: string; ordem: number };
+type ProdutoBasico = { codigo: string; ref: string; descricao: string };
+
+// Itens do catálogo (seções na ordem, itens na ordem de cada seção) e os
+// dados básicos de cada produto — compartilhado pelas estatísticas de
+// foto e pelo relatório de itens.
+async function carregarItensDoCatalogo(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  catalogId: string
+): Promise<{ sectionIds: string[]; items: ItemRow[]; productById: Map<string, ProdutoBasico>; error?: string }> {
+  const vazio = { sectionIds: [] as string[], items: [] as ItemRow[], productById: new Map<string, ProdutoBasico>() };
 
   const { data: sectionRows, error: secErr } = await supabase
     .from("sections")
     .select("id, ordem")
     .eq("catalog_id", catalogId)
     .order("ordem", { ascending: true });
-  if (secErr) return { error: secErr.message };
+  if (secErr) return { ...vazio, error: secErr.message };
   const sectionIds = (sectionRows ?? []).map((s) => s.id as string);
 
-  const galeriaRes = await listGaleriaImages();
-  const files = galeriaRes.files ?? [];
-  const galeriaIndisponivel = !!galeriaRes.error || files.length === 0;
-  const index = buildGaleriaIndex(files);
-
-  type ItemRow = { section_id: string; product_id: string; ordem: number };
   const itemsRes =
     sectionIds.length > 0
       ? await fetchAllPages<ItemRow>((from, to) =>
@@ -66,15 +69,15 @@ export async function getCatalogFotoStats(catalogId: string): Promise<{ stats?: 
             .range(from, to)
         )
       : { data: [] as ItemRow[], error: undefined as string | undefined };
-  if (itemsRes.error) return { error: itemsRes.error };
+  if (itemsRes.error) return { ...vazio, sectionIds, error: itemsRes.error };
   const items = itemsRes.data;
 
   const productIds = [...new Set(items.map((i) => i.product_id))];
   const productsRes = await fetchInChunks<Record<string, unknown>, string>(productIds, IN_CHUNK, (chunk) =>
     supabase.from("products").select("id, codigo, ref, descricao").in("id", chunk)
   );
-  if (productsRes.error) return { error: productsRes.error };
-  const productById = new Map<string, { codigo: string; ref: string; descricao: string }>();
+  if (productsRes.error) return { ...vazio, sectionIds, items, error: productsRes.error };
+  const productById = new Map<string, ProdutoBasico>();
   for (const p of productsRes.data) {
     productById.set(p.id as string, {
       codigo: String(p.codigo ?? ""),
@@ -82,6 +85,83 @@ export async function getCatalogFotoStats(catalogId: string): Promise<{ stats?: 
       descricao: String(p.descricao ?? ""),
     });
   }
+
+  return { sectionIds, items, productById };
+}
+
+export type ItemRelatorio = {
+  codigo: string;
+  ref: string;
+  descricao: string;
+  // Rótulo "📷 N fotos" ("sem foto" se o código não está na lista, "—"
+  // se o código não é numérico) e link da galeria — null quando não há
+  // o que abrir.
+  fotosRotulo: string;
+  fotosUrl: string | null;
+};
+
+// Relatório de TODOS os itens cadastrados no catálogo (um por produto,
+// na ordem das seções), com link pra mesma página de galeria do
+// catálogo ZENOAH — ver galeriaLink.ts.
+export async function getCatalogItensRelatorio(catalogId: string): Promise<{ itens?: ItemRelatorio[]; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const carregado = await carregarItensDoCatalogo(supabase, catalogId);
+  if (carregado.error) return { error: carregado.error };
+
+  let lista: Map<string, string>;
+  try {
+    const res = await fetch(LISTA_FOTOS_CSV_URL, { next: { revalidate: 300 } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    lista = parseListaFotosCsv(await res.text());
+    if (lista.size === 0) throw new Error("lista vazia");
+  } catch (e) {
+    return {
+      error: `Não foi possível ler a lista de fotos (planilha publicada do Google): ${e instanceof Error ? e.message : "erro desconhecido"}. Tente de novo em instantes.`,
+    };
+  }
+
+  const itensPorSecao = new Map<string, ItemRow[]>();
+  for (const item of carregado.items) {
+    const list = itensPorSecao.get(item.section_id) ?? [];
+    list.push(item);
+    itensPorSecao.set(item.section_id, list);
+  }
+
+  const itens: ItemRelatorio[] = [];
+  const jaListado = new Set<string>();
+  for (const sectionId of carregado.sectionIds) {
+    for (const item of itensPorSecao.get(sectionId) ?? []) {
+      const produto = carregado.productById.get(item.product_id);
+      if (!produto || jaListado.has(item.product_id)) continue;
+      jaListado.add(item.product_id);
+
+      const numerico = codigoNumerico(produto.codigo);
+      const rotulo = numerico ? lista.get(chaveLista(numerico)) : undefined;
+      itens.push({
+        ...produto,
+        fotosRotulo: !numerico ? "—" : (rotulo ?? "sem foto"),
+        fotosUrl: numerico && rotulo ? linkGaleria(numerico) : null,
+      });
+    }
+  }
+
+  return { itens };
+}
+
+export async function getCatalogFotoStats(catalogId: string): Promise<{ stats?: CatalogFotoStats; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const carregado = await carregarItensDoCatalogo(supabase, catalogId);
+  if (carregado.error) return { error: carregado.error };
+  const { sectionIds, items, productById } = carregado;
+
+  const galeriaRes = await listGaleriaImages();
+  const files = galeriaRes.files ?? [];
+  const galeriaIndisponivel = !!galeriaRes.error || files.length === 0;
+  const index = buildGaleriaIndex(files);
 
   const temFoto = new Map<string, boolean>();
   for (const [id, p] of productById) temFoto.set(id, resolveGaleriaFoto(index, p.codigo) !== null);

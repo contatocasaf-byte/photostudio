@@ -159,7 +159,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
         </button>
       </div>
 
-      <FotoStatsResumo catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
+      <FotoStatsResumo catalogId={catalogId} catalogNome={catalogNome ?? ""} stats={fotoStats} loading={fotoStatsLoading} onRefresh={loadFotoStats} />
 
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
