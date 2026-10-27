@@ -33,7 +33,7 @@ export const INFO_BLOCOS: { titulo: string; linhas: string[] }[] = [
   {
     titulo: "Como as fotos funcionam",
     linhas: [
-      "• O link da coluna \"Fotos\" abre a galeria de fotos Brasmam (a mesma do catálogo ZENOAH G5200), no endereço da galeria + ?cod=<código>.",
+      "• O link da coluna \"Fotos\" abre a galeria de fotos Brasmam, no endereço da galeria + ?cod=<código>.",
       "• A galeria mostra as fotos do código nas duas pastas do Drive: com marca d'água e sem marca d'água.",
       "• O texto \"📷 N fotos\" vem da lista de fotos Brasmam (planilha do Google, atualizada todo dia por volta das 6h).",
       "• Código que não está na lista aparece como \"sem foto\", sem link.",
