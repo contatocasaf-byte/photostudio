@@ -33,6 +33,14 @@ function extractDriveFolderId(input: string): string {
   return trimmed;
 }
 
+// Assinatura do conteúdo: md5 do arquivo (mudou o conteúdo, mudou o md5 —
+// vale tanto pra "nova versão" no mesmo arquivo quanto pra arquivo novo com
+// o mesmo nome). Sem md5, cai na data de modificação.
+function versaoDoArquivo(md5?: string | null, modifiedTime?: string | null): string | undefined {
+  const bruta = md5 || (modifiedTime ? modifiedTime.replace(/\D/g, "") : "");
+  return bruta ? bruta.replace(/[^A-Za-z0-9_-]/g, "_") : undefined;
+}
+
 async function listAllImagesInFolder(folderId: string): Promise<GaleriaFile[]> {
   const drive = createDriveClient();
   const mimeQuery = IMAGE_MIME_TYPES.map((t) => `mimeType = '${t}'`).join(" or ");
@@ -43,14 +51,14 @@ async function listAllImagesInFolder(folderId: string): Promise<GaleriaFile[]> {
   do {
     const res = await drive.files.list({
       q,
-      fields: "nextPageToken, files(id, name)",
+      fields: "nextPageToken, files(id, name, md5Checksum, modifiedTime)",
       pageSize: 1000,
       pageToken,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     });
     for (const f of res.data.files ?? []) {
-      if (f.id && f.name) files.push({ id: f.id, name: f.name });
+      if (f.id && f.name) files.push({ id: f.id, name: f.name, version: versaoDoArquivo(f.md5Checksum, f.modifiedTime) });
     }
     pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);

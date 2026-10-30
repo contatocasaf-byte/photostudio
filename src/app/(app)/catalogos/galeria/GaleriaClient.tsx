@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   diagnosticarCodigoGaleria,
@@ -9,6 +9,7 @@ import {
   testGaleriaConnection,
   type DiagnosticoGaleria,
 } from "./actions";
+import { getGaleriaCacheStatus, garantirFotosNoCache, listarPendentesCache, type CacheStatus } from "./cacheActions";
 
 export default function GaleriaFotosPage() {
   const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
@@ -24,6 +25,60 @@ export default function GaleriaFotosPage() {
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticoGaleria | null>(null);
+
+  // Cache das fotos no R2 (ver src/lib/galeriaCacheCore.ts).
+  const [cache, setCache] = useState<CacheStatus | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [sincMsg, setSincMsg] = useState<string | null>(null);
+  const cancelarSinc = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getGaleriaCacheStatus().then((res) => {
+      if (!cancelled) setCache(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSincronizar() {
+    setSincronizando(true);
+    setSincMsg("Verificando quais fotos faltam...");
+    cancelarSinc.current = false;
+    try {
+      const lista = await listarPendentesCache();
+      if (lista.error || !lista.pendentes) {
+        setSincMsg(`⚠ ${lista.error ?? "Falha ao verificar o cache."}`);
+        return;
+      }
+      const pendentes = lista.pendentes;
+      if (pendentes.length === 0) {
+        setSincMsg("✔ Todas as fotos já estão no cache.");
+        return;
+      }
+      let feitas = 0;
+      let falhas = 0;
+      for (let i = 0; i < pendentes.length; i += 10) {
+        if (cancelarSinc.current) {
+          setSincMsg(`Interrompido — ${feitas} de ${pendentes.length} copiadas (as demais ficam para a próxima vez).`);
+          return;
+        }
+        const lote = pendentes.slice(i, i + 10);
+        const res = await garantirFotosNoCache(lote);
+        if (res.error || !res.resultados) falhas += lote.length;
+        else falhas += res.resultados.filter((r) => !r.ok).length;
+        feitas += lote.length;
+        setSincMsg(`Copiando fotos ${feitas}/${pendentes.length}...`);
+      }
+      setSincMsg(falhas > 0 ? `⚠ Concluído, mas ${falhas} foto(s) falharam — clique em Sincronizar de novo para tentar outra vez.` : `✔ ${pendentes.length} foto(s) copiadas.`);
+    } catch (e) {
+      setSincMsg(`⚠ ${e instanceof Error ? e.message : "Falha ao sincronizar."}`);
+    } finally {
+      setSincronizando(false);
+      getGaleriaCacheStatus().then(setCache);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +258,43 @@ export default function GaleriaFotosPage() {
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="mt-8 rounded-md border border-slate-200 px-3 py-3">
+            <h2 className="text-sm font-semibold text-slate-900">Cache das fotos (rápido e protegido)</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              As fotos são copiadas uma vez do Drive para um armazenamento privado e carregadas de lá — mais rápido, sem passar pelo servidor do site, e
+              só quem está logado recebe acesso. Quando uma foto é substituída no Drive (mesmo mantendo o nome), a cópia nova é feita sozinha.
+            </p>
+            {cache === null ? (
+              <p className="mt-2 text-xs text-slate-400">Verificando...</p>
+            ) : !cache.ativo ? (
+              <p className="mt-2 text-xs text-amber-700">
+                {cache.error ?? "Desligado: falta configurar o armazenamento privado (variável R2_GALERIA_BUCKET_NAME). Enquanto isso, o sistema serve as fotos do jeito de antes."}
+              </p>
+            ) : cache.error ? (
+              <p className="mt-2 text-xs text-red-600">{cache.error}</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <p className="text-xs text-slate-700">
+                  <b>{cache.emCache}</b> de <b>{cache.total}</b> fotos no cache
+                  {cache.semVersao ? ` · ${cache.semVersao} sem informação de versão (usam o caminho antigo)` : ""}
+                </p>
+                <button
+                  onClick={handleSincronizar}
+                  disabled={sincronizando}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {sincronizando ? "Sincronizando..." : "Sincronizar fotos"}
+                </button>
+                {sincronizando && (
+                  <button onClick={() => (cancelarSinc.current = true)} className="text-xs text-slate-400 hover:text-slate-700">
+                    Parar
+                  </button>
+                )}
+              </div>
+            )}
+            {sincMsg && <p className="mt-2 text-xs text-slate-600">{sincMsg}</p>}
           </div>
         </>
       )}

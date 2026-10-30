@@ -9,7 +9,11 @@
 // Ofertas tem uma inconsistência aqui — regex do _N é case-sensitive
 // mas o fallback exato não é —, não vale a pena portar isso pro
 // código novo).
-export type GaleriaFile = { id: string; name: string };
+// `version` = "assinatura" do conteúdo no Drive (md5Checksum, ou a data de
+// modificação se o Drive não informar) — muda quando a foto é substituída
+// mesmo mantendo o MESMO nome/id. É o que faz o cache de fotos no R2
+// perceber que a foto trocou (ver src/lib/galeriaCache*.ts).
+export type GaleriaFile = { id: string; name: string; version?: string };
 
 type Candidato = { file: GaleriaFile; n: number | null }; // n = null → match exato CODIGO.ext, sem sufixo
 
@@ -39,17 +43,22 @@ export function buildGaleriaIndex(files: GaleriaFile[]): Map<string, Candidato[]
   return index;
 }
 
-// Retorna o `fileId` do Drive pra montar a URL da rota-proxy, ou null
-// se nenhuma foto bater com esse código.
-export function resolveGaleriaFoto(index: Map<string, Candidato[]>, codigo: string): string | null {
+// Arquivo do Drive que o catálogo usa pra esse código (menor N primeiro,
+// senão o CODIGO.ext exato), ou null se nenhuma foto bater.
+export function resolveGaleriaArquivo(index: Map<string, Candidato[]>, codigo: string): GaleriaFile | null {
   const candidatos = index.get(codigo.trim().toLowerCase());
   if (!candidatos || candidatos.length === 0) return null;
 
   const comSufixo = candidatos.filter((c) => c.n !== null);
   if (comSufixo.length > 0) {
     comSufixo.sort((a, b) => (a.n as number) - (b.n as number));
-    return comSufixo[0].file.id;
+    return comSufixo[0].file;
   }
 
-  return candidatos[0].file.id;
+  return candidatos[0].file;
+}
+
+// Só o `fileId` (usado por quem não precisa do nome/versão).
+export function resolveGaleriaFoto(index: Map<string, Candidato[]>, codigo: string): string | null {
+  return resolveGaleriaArquivo(index, codigo)?.id ?? null;
 }

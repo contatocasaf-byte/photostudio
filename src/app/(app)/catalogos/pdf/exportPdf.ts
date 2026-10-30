@@ -5,6 +5,7 @@ import { getPublicUrl } from "@/lib/storage/public-url";
 import { buildPdfExportPayload, collectDistinctFotoUrls } from "../core/pdfExport";
 import type { PreviewPage } from "../core/reflow";
 import { getCatalogPdfPhotoUploadUrls } from "./actions";
+import { filtrarPendentesCache, galeriaCachePronto, garantirFotosNoCache } from "../galeria/cacheActions";
 
 // Quantas fotos baixam/sobem ao mesmo tempo — baixar todas de uma vez
 // estoura o limite de requisições do Drive e do navegador.
@@ -57,6 +58,63 @@ async function stagePhotosToR2(
   return { keyByUrl, falharam };
 }
 
+const LOTE_CACHE = 10;
+
+type FotoRefLocal = { fileId: string; version: string; key: string };
+
+// Caminho rápido: as fotos já ficam num bucket privado do R2 (cache), então
+// o navegador NÃO baixa nem sobe nada — só pede ao servidor pra copiar as
+// que ainda faltam (1ª vez, ou foto substituída no Drive) e manda as
+// chaves pro servidor de PDF, que lê direto do R2.
+async function prepararFotosNoCache(
+  pages: PreviewPage[],
+  onProgress?: (msg: string) => void
+): Promise<{ keyByUrl: Map<string, string>; falharam: number; urlsSemRef: string[] }> {
+  const refsPorKey = new Map<string, FotoRefLocal>();
+  const urlsPorKey = new Map<string, Set<string>>();
+  const urlsSemRef = new Set<string>();
+  for (const page of pages) {
+    for (const card of page.cards) {
+      const url = card.product.fotoUrl;
+      if (!url) continue;
+      const ref = card.product.fotoRef;
+      if (!ref) {
+        urlsSemRef.add(url);
+        continue;
+      }
+      refsPorKey.set(ref.key, ref);
+      const urls = urlsPorKey.get(ref.key) ?? new Set<string>();
+      urls.add(url);
+      urlsPorKey.set(ref.key, urls);
+    }
+  }
+
+  const falhas = new Set<string>();
+  const filtro = await filtrarPendentesCache([...refsPorKey.values()]);
+  if (filtro.error || !filtro.pendentes) throw new Error(filtro.error ?? "Falha ao consultar o cache de fotos.");
+  const pendentes = filtro.pendentes;
+
+  if (pendentes.length > 0) {
+    let feitas = 0;
+    onProgress?.(`Preparando fotos 0/${pendentes.length}...`);
+    for (let i = 0; i < pendentes.length; i += LOTE_CACHE) {
+      const lote = pendentes.slice(i, i + LOTE_CACHE);
+      const res = await garantirFotosNoCache(lote);
+      if (res.error || !res.resultados) lote.forEach((r) => falhas.add(r.key));
+      else for (const r of res.resultados) if (!r.ok) falhas.add(r.key);
+      feitas += lote.length;
+      onProgress?.(`Preparando fotos ${feitas}/${pendentes.length}...`);
+    }
+  }
+
+  const keyByUrl = new Map<string, string>();
+  for (const [key, urls] of urlsPorKey) {
+    if (falhas.has(key)) continue;
+    for (const url of urls) keyByUrl.set(url, key);
+  }
+  return { keyByUrl, falharam: falhas.size, urlsSemRef: [...urlsSemRef] };
+}
+
 export async function exportCatalogPdf(params: {
   pages: PreviewPage[];
   paginaLargura: number;
@@ -67,8 +125,34 @@ export async function exportCatalogPdf(params: {
 }): Promise<{ fotosFalharam: number }> {
   const { pages, paginaLargura, paginaAltura, catalogNome, validadeTexto = "", onProgress } = params;
 
-  const fotoUrls = collectDistinctFotoUrls(pages);
-  const { keyByUrl: fotoKeyByUrl, falharam } = await stagePhotosToR2(fotoUrls, onProgress);
+  let fotoKeyByUrl = new Map<string, string>();
+  let falharam = 0;
+
+  // Cache de fotos ligado E servidor de PDF também pronto pra ler o bucket:
+  // caminho rápido. Qualquer problema nele cai no caminho antigo (baixar e
+  // subir cada foto), que sempre funciona.
+  let usouCache = false;
+  try {
+    if (await galeriaCachePronto()) {
+      const r = await prepararFotosNoCache(pages, onProgress);
+      fotoKeyByUrl = r.keyByUrl;
+      falharam = r.falharam;
+      if (r.urlsSemRef.length > 0) {
+        const antigo = await stagePhotosToR2(r.urlsSemRef, onProgress);
+        antigo.keyByUrl.forEach((key, url) => fotoKeyByUrl.set(url, key));
+        falharam += antigo.falharam;
+      }
+      usouCache = true;
+    }
+  } catch {
+    usouCache = false;
+  }
+
+  if (!usouCache) {
+    const antigo = await stagePhotosToR2(collectDistinctFotoUrls(pages), onProgress);
+    fotoKeyByUrl = antigo.keyByUrl;
+    falharam = antigo.falharam;
+  }
   onProgress?.("Iniciando a geração do PDF no servidor...");
 
   const payload = buildPdfExportPayload(pages, paginaLargura, paginaAltura, fotoKeyByUrl, validadeTexto);

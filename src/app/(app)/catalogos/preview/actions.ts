@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { defaultCardBorda } from "../core/cardConfig";
-import { buildGaleriaIndex, resolveGaleriaFoto } from "../core/matchGaleriaFoto";
+import { buildGaleriaIndex, resolveGaleriaArquivo } from "../core/matchGaleriaFoto";
+import { chaveDaFoto, chavesEmCache, galeriaCacheAtivo, linkTemporarioDaFoto, type FotoRef } from "@/lib/galeriaCache";
 import { listGaleriaImages } from "../galeria/actions";
 import type { PageIllustration, PageShape, PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, PaginaAvulsaInput, SectionReflowInput } from "../core/reflow";
@@ -81,7 +82,17 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     .single();
   if (catalogErr) return { error: catalogErr.message };
 
-  const [{ data: pageTemplateRows, error: ptErr }, { data: sectionRows, error: secErr }, { data: avulsaRows, error: avErr }, galeriaRes] =
+  // Cache de fotos no R2 (privado): se ligado, as fotos já copiadas chegam
+  // à tela como link temporário direto do R2 (não passam pela Vercel). Se o
+  // bucket falhar, segue como se estivesse desligado.
+  const cacheAtivo = galeriaCacheAtivo();
+  const [
+    { data: pageTemplateRows, error: ptErr },
+    { data: sectionRows, error: secErr },
+    { data: avulsaRows, error: avErr },
+    galeriaRes,
+    chavesCacheadas,
+  ] =
     await Promise.all([
       supabase
         .from("page_templates")
@@ -94,6 +105,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
         .order("ordem", { ascending: true }),
       supabase.from("paginas_avulsas").select("id, titulo, apos_secao_id, ordem, page_template_id").eq("catalog_id", catalogId),
       listGaleriaImages(),
+      cacheAtivo ? chavesEmCache().catch(() => null) : Promise.resolve(null),
     ]);
   if (ptErr) return { error: ptErr.message };
   if (secErr) return { error: secErr.message };
@@ -232,9 +244,28 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   if (productsRes.error) return { error: productsRes.error };
   const productRows = productsRes.data;
 
+  // Foto de cada produto: link temporário direto do R2 se já está no cache;
+  // senão a rota-proxy (que copia pro cache e redireciona); sem cache ligado,
+  // a rota-proxy de sempre.
+  const fotoPorProduto = new Map<string, { url: string; ref: FotoRef | null }>();
+  await Promise.all(
+    productRows.map(async (p) => {
+      const arquivo = resolveGaleriaArquivo(galeriaIndex, p.codigo as string);
+      if (!arquivo) return;
+      if (cacheAtivo && chavesCacheadas && arquivo.version) {
+        const key = chaveDaFoto(arquivo.id, arquivo.version, arquivo.name);
+        const ref: FotoRef = { fileId: arquivo.id, version: arquivo.version, key };
+        const url = chavesCacheadas.has(key) ? await linkTemporarioDaFoto(key) : `/api/catalogos/galeria/${arquivo.id}?v=${arquivo.version}`;
+        fotoPorProduto.set(p.id as string, { url, ref });
+      } else {
+        fotoPorProduto.set(p.id as string, { url: `/api/catalogos/galeria/${arquivo.id}`, ref: null });
+      }
+    })
+  );
+
   const productById = new Map(
     productRows.map((p) => {
-      const fileId = resolveGaleriaFoto(galeriaIndex, p.codigo as string);
+      const foto = fotoPorProduto.get(p.id as string);
       return [
         p.id as string,
         {
@@ -245,7 +276,8 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
           preco1: p.preco_1,
           preco2: p.preco_2,
           quantidadeMinima: p.quantidade_minima,
-          fotoUrl: fileId ? `/api/catalogos/galeria/${fileId}` : null,
+          fotoUrl: foto?.url ?? null,
+          fotoRef: foto?.ref ?? null,
         } as ProductRow,
       ];
     })

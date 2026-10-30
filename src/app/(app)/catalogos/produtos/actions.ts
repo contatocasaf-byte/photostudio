@@ -260,6 +260,10 @@ export type ProductRow = {
   // Só populado em catalogos/preview/actions.ts (onde a foto real
   // importa de fato); aqui fica sempre null, ver decisão na Parte 7.
   fotoUrl: string | null;
+  // Cache de fotos no R2 (só preenchido no preview, com o cache ligado):
+  // arquivo do Drive + versão + chave no bucket privado. É o que a exportação
+  // de PDF usa pra mandar a foto ao servidor sem baixar/subir pelo navegador.
+  fotoRef?: { fileId: string; version: string; key: string } | null;
 };
 
 const SELECT_PAGE_SIZE = 1000;
