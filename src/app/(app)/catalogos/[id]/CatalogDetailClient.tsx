@@ -13,7 +13,6 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  getCatalog,
   renameCatalog,
   setCatalogValidade,
   listSections,
@@ -34,12 +33,8 @@ import {
   swapPaginaAvulsaOrdem,
   type PaginaAvulsaListItem,
 } from "../paginas-avulsas/actions";
-import {
-  listAberturaSecaoTemplates,
-  listContinuacaoTemplates,
-  type AberturaSecaoListItem,
-  type ContinuacaoListItem,
-} from "../paginas/actions";
+import type { AberturaSecaoListItem, ContinuacaoListItem } from "../paginas/actions";
+import { carregarTelaCatalogo } from "../telaCatalogoActions";
 
 type SectionFormValues = {
   numero: string;
@@ -453,14 +448,9 @@ export default function CatalogDetailPage({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getCatalog(id),
-      listSections(id),
-      listPaginasAvulsas(id),
-      listAberturaSecaoTemplates(id),
-      listContinuacaoTemplates(id),
-    ]).then(([catalogRes, sectionsRes, avulsasRes, aberturaRes, continuacaoRes]) => {
+    carregarTelaCatalogo(id).then((tela) => {
       if (cancelled) return;
+      const { catalog: catalogRes, sections: sectionsRes, avulsas: avulsasRes, abertura: aberturaRes, continuacao: continuacaoRes } = tela;
       if (catalogRes.error) setError(catalogRes.error);
       else {
         setCatalogNome(catalogRes.catalog?.nome ?? "");
