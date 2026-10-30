@@ -55,7 +55,10 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  // Só depois do catálogo montado: as chamadas de servidor do cliente
+  // rodam em fila (uma por vez), e esta é pesada — ver CatalogDetailClient.
   useEffect(() => {
+    if (loading) return;
     let cancelled = false;
     getCatalogFotoStats(catalogId).then((res) => {
       if (cancelled) return;
@@ -65,7 +68,7 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
     return () => {
       cancelled = true;
     };
-  }, [catalogId]);
+  }, [catalogId, loading]);
 
   async function handleExportPdf() {
     setExporting(true);

@@ -426,10 +426,12 @@ export default function CatalogDetailPage({
     }
   }
 
-  // Carrega à parte do resto da tela — listar a galeria do Drive pode
-  // demorar na 1ª vez (depois fica em cache por 90s) e não deve segurar
-  // a lista de seções.
+  // Só começa DEPOIS que a tela principal carregou: o Next executa as
+  // chamadas de servidor do cliente uma de cada vez (fila), então esta —
+  // que lê todos os itens do catálogo e lista a galeria do Drive — passava
+  // na frente das demais e segurava o "Carregando catálogo...".
   useEffect(() => {
+    if (loading) return;
     let cancelled = false;
     getCatalogFotoStats(id).then((res) => {
       if (cancelled) return;
@@ -439,7 +441,7 @@ export default function CatalogDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, loading]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
