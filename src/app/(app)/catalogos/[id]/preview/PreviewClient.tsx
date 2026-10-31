@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getCatalogPreviewData } from "../../preview/actions";
 import { fontPairsFromPreviewPages, reflowCatalog, type PreviewPage, type SkippedSection } from "../../core/reflow";
@@ -18,6 +18,51 @@ const MOTIVO_LABEL: Record<SkippedSection["motivo"], string> = {
   sem_card_molde: "sem card-molde configurado",
   sem_produtos: "sem produtos adicionados",
 };
+
+// Número da página atual, editável: clica, digita e Enter (ou sai do campo)
+// pra ir direto à página. Valor fora do intervalo vai pra primeira/última;
+// texto que não é número é ignorado (volta ao valor atual). Esc cancela.
+function PaginaInput({ valor, total, onIr }: { valor: number; total: number; onIr: (pagina: number) => void }) {
+  const [rascunho, setRascunho] = useState<string | null>(null);
+  const cancelado = useRef(false);
+
+  function confirmar() {
+    if (cancelado.current) {
+      cancelado.current = false;
+      setRascunho(null);
+      return;
+    }
+    if (rascunho === null) return;
+    const n = parseInt(rascunho, 10);
+    setRascunho(null);
+    if (Number.isNaN(n)) return;
+    onIr(Math.min(total, Math.max(1, n)));
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={rascunho ?? String(valor)}
+      onFocus={(e) => {
+        setRascunho(String(valor));
+        e.target.select();
+      }}
+      onChange={(e) => setRascunho(e.target.value.replace(/\D/g, ""))}
+      onBlur={confirmar}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        else if (e.key === "Escape") {
+          cancelado.current = true;
+          e.currentTarget.blur();
+        }
+      }}
+      aria-label={`Ir para a página (1 a ${total})`}
+      title={`Digite o número da página (1 a ${total}) e tecle Enter`}
+      className="w-14 rounded-md border border-slate-300 px-2 py-1 text-center text-sm text-slate-800 focus:border-slate-500 focus:outline-none"
+    />
+  );
+}
 
 export default function CatalogPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: catalogId } = use(params);
@@ -191,25 +236,51 @@ export default function CatalogPreviewPage({ params }: { params: Promise<{ id: s
 
       {pages.length > 0 && (
         <>
-          <div className="mt-4 flex items-center justify-between">
-            <button
-              onClick={() => setCurrent((c) => Math.max(0, c - 1))}
-              disabled={current === 0}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-            >
-              ← Anterior
-            </button>
-            <p className="text-sm text-slate-600">
-              Página {current + 1} de {pages.length}
-              {pages[current].sectionTitulo ? ` — ${pages[current].sectionTitulo}` : ""}
-            </p>
-            <button
-              onClick={() => setCurrent((c) => Math.min(pages.length - 1, c + 1))}
-              disabled={current === pages.length - 1}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-            >
-              Próxima →
-            </button>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrent(0)}
+                disabled={current === 0}
+                title="Primeira página"
+                aria-label="Primeira página"
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                «
+              </button>
+              <button
+                onClick={() => setCurrent((c) => Math.max(0, c - 1))}
+                disabled={current === 0}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                ← Anterior
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-slate-600">
+              <span>Página</span>
+              <PaginaInput valor={current + 1} total={pages.length} onIr={(n) => setCurrent(n - 1)} />
+              <span>
+                de {pages.length}
+                {pages[current].sectionTitulo ? ` — ${pages[current].sectionTitulo}` : ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrent((c) => Math.min(pages.length - 1, c + 1))}
+                disabled={current === pages.length - 1}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Próxima →
+              </button>
+              <button
+                onClick={() => setCurrent(pages.length - 1)}
+                disabled={current === pages.length - 1}
+                title="Última página"
+                aria-label="Última página"
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                »
+              </button>
+            </div>
           </div>
 
           <div className="mt-2 flex items-center gap-2">
