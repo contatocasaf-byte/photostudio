@@ -23,18 +23,22 @@ const MOTIVO_LABEL: Record<SkippedSection["motivo"], string> = {
 // pra ir direto à página. Valor fora do intervalo vai pra primeira/última;
 // texto que não é número é ignorado (volta ao valor atual). Esc cancela.
 function PaginaInput({ valor, total, onIr }: { valor: number; total: number; onIr: (pagina: number) => void }) {
+  // `rascunho` (estado) é o que aparece no campo; o ref guarda o mesmo valor
+  // pra confirmar/cancelar sem depender de closure velha (Enter confirma e
+  // depois tira o foco, que dispara o blur de novo).
   const [rascunho, setRascunho] = useState<string | null>(null);
-  const cancelado = useRef(false);
+  const pendente = useRef<string | null>(null);
+
+  function atualizar(texto: string | null) {
+    pendente.current = texto;
+    setRascunho(texto);
+  }
 
   function confirmar() {
-    if (cancelado.current) {
-      cancelado.current = false;
-      setRascunho(null);
-      return;
-    }
-    if (rascunho === null) return;
-    const n = parseInt(rascunho, 10);
-    setRascunho(null);
+    const texto = pendente.current;
+    atualizar(null);
+    if (texto === null) return;
+    const n = parseInt(texto, 10);
     if (Number.isNaN(n)) return;
     onIr(Math.min(total, Math.max(1, n)));
   }
@@ -45,15 +49,17 @@ function PaginaInput({ valor, total, onIr }: { valor: number; total: number; onI
       inputMode="numeric"
       value={rascunho ?? String(valor)}
       onFocus={(e) => {
-        setRascunho(String(valor));
+        atualizar(String(valor));
         e.target.select();
       }}
-      onChange={(e) => setRascunho(e.target.value.replace(/\D/g, ""))}
+      onChange={(e) => atualizar(e.target.value.replace(/\D/g, ""))}
       onBlur={confirmar}
       onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-        else if (e.key === "Escape") {
-          cancelado.current = true;
+        if (e.key === "Enter") {
+          confirmar();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          atualizar(null);
           e.currentTarget.blur();
         }
       }}
