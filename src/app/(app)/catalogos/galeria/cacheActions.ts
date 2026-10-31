@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { chaveDaFoto, chavesEmCache, galeriaCacheAtivo, garantirFotoNoCache, type FotoRef } from "@/lib/galeriaCache";
+import { chaveDaFoto, chaveMiniatura, chavesEmCache, galeriaCacheAtivo, garantirFotoNoCache, type FotoRef } from "@/lib/galeriaCache";
 import { mapComLimite } from "@/lib/galeriaCacheCore";
 import { listGaleriaImages } from "./actions";
 
@@ -21,6 +21,11 @@ async function requireUser() {
 
 export type CacheStatus = { ativo: boolean; total?: number; emCache?: number; semVersao?: number; error?: string };
 
+// Foto "pronta" = original (PDF) + miniatura (visualização) no cache.
+function fotoProntaNoCache(noCache: Set<string>, key: string): boolean {
+  return noCache.has(key) && noCache.has(chaveMiniatura(key));
+}
+
 // Quantas fotos da galeria já estão no cache.
 export async function getGaleriaCacheStatus(): Promise<CacheStatus> {
   if (!(await requireUser())) return { ativo: false, error: "Sessão inválida." };
@@ -35,7 +40,7 @@ export async function getGaleriaCacheStatus(): Promise<CacheStatus> {
     return {
       ativo: true,
       total: comVersao.length,
-      emCache: comVersao.filter((f) => noCache.has(chaveDaFoto(f.id, f.version as string, f.name))).length,
+      emCache: comVersao.filter((f) => fotoProntaNoCache(noCache, chaveDaFoto(f.id, f.version as string, f.name))).length,
       semVersao: files.length - comVersao.length,
     };
   } catch (e) {
@@ -43,7 +48,7 @@ export async function getGaleriaCacheStatus(): Promise<CacheStatus> {
   }
 }
 
-// Fotos da galeria que ainda NÃO foram copiadas.
+// Fotos da galeria que ainda NÃO estão prontas no cache (falta a original ou a miniatura).
 export async function listarPendentesCache(): Promise<{ pendentes?: FotoRef[]; error?: string }> {
   if (!(await requireUser())) return { error: "Sessão inválida." };
   if (!galeriaCacheAtivo()) return { error: "O cache de fotos não está configurado." };
@@ -56,7 +61,7 @@ export async function listarPendentesCache(): Promise<{ pendentes?: FotoRef[]; e
     for (const f of galeria.files ?? []) {
       if (!f.version) continue;
       const key = chaveDaFoto(f.id, f.version, f.name);
-      if (!noCache.has(key)) pendentes.push({ fileId: f.id, version: f.version, key });
+      if (!fotoProntaNoCache(noCache, key)) pendentes.push({ fileId: f.id, version: f.version, key });
     }
     return { pendentes };
   } catch (e) {

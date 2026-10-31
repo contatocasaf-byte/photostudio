@@ -264,7 +264,8 @@ export default function GaleriaFotosPage() {
             <h2 className="text-sm font-semibold text-slate-900">Cache das fotos (rápido e protegido)</h2>
             <p className="mt-1 text-xs text-slate-500">
               As fotos são copiadas uma vez do Drive para um armazenamento privado e carregadas de lá — mais rápido, sem passar pelo servidor do site, e
-              só quem está logado recebe acesso. Quando uma foto é substituída no Drive (mesmo mantendo o nome), a cópia nova é feita sozinha.
+              só quem está logado recebe acesso. Quando uma foto é substituída no Drive (mesmo mantendo o nome), a cópia nova é feita sozinha. Cada
+              foto fica guardada em qualidade total (usada no PDF) e numa versão leve (usada só na visualização do catálogo, para abrir mais rápido).
             </p>
             {cache === null ? (
               <p className="mt-2 text-xs text-slate-400">Verificando...</p>
@@ -277,7 +278,7 @@ export default function GaleriaFotosPage() {
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <p className="text-xs text-slate-700">
-                  <b>{cache.emCache}</b> de <b>{cache.total}</b> fotos no cache
+                  <b>{cache.emCache}</b> de <b>{cache.total}</b> fotos prontas no cache
                   {cache.semVersao ? ` · ${cache.semVersao} sem informação de versão (usam o caminho antigo)` : ""}
                 </p>
                 <button

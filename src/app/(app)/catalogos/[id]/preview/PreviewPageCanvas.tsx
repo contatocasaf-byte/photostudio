@@ -600,7 +600,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 return (
                   <CardPhotoField
                     key={key}
-                    fotoUrl={card.product.fotoUrl}
+                    fotoUrl={card.product.fotoUrlPreview ?? card.product.fotoUrl}
                     imgCfg={imgCfg}
                     originX={originX}
                     originY={originY}

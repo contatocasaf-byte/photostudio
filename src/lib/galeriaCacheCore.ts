@@ -31,7 +31,16 @@ const VALIDADE_S = 12 * 60 * 60;
 export type FotoRef = { fileId: string; version: string; key: string };
 
 export type BaixarDoDrive = (fileId: string) => Promise<{ bytes: Uint8Array; contentType: string }>;
-export type CacheDeps = { s3: S3Client; bucket: string; baixar: BaixarDoDrive };
+// Gera a versão reduzida (leve) da foto, usada só na tela de visualização.
+export type GerarMiniatura = (bytes: Uint8Array) => Promise<Uint8Array>;
+export type CacheDeps = { s3: S3Client; bucket: string; baixar: BaixarDoDrive; miniatura?: GerarMiniatura };
+
+// Cada foto tem 2 cópias no cache: a ORIGINAL (usada no PDF, qualidade total)
+// e uma MINIATURA em WebP (usada na visualização do catálogo — o navegador
+// baixava ~1 MB por foto; a miniatura tem ~100 KB). Mesma pasta, sufixo fixo.
+export function chaveMiniatura(key: string): string {
+  return key.replace(/\.[^./]+$/, "") + ".preview.webp";
+}
 
 const EXT_POR_MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
@@ -60,7 +69,7 @@ export async function listarChavesNoCache(s3: S3Client, bucket: string): Promise
   return chaves;
 }
 
-async function existe(s3: S3Client, bucket: string, key: string): Promise<boolean> {
+export async function existe(s3: S3Client, bucket: string, key: string): Promise<boolean> {
   try {
     await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return true;
@@ -72,14 +81,47 @@ async function existe(s3: S3Client, bucket: string, key: string): Promise<boolea
   }
 }
 
-// Garante que a foto está no cache (copia do Drive se faltar).
+// Garante que a foto (original + miniatura) está no cache: copia do Drive o que
+// faltar. Se só a miniatura falta, lê a original do próprio R2 (não gasta o
+// Drive). Falha ao gerar a miniatura NÃO derruba a cópia: o PDF só usa a
+// original, e a tela de visualização cai pra original se não houver miniatura.
 export async function copiarParaCache(deps: CacheDeps, ref: { fileId: string; key: string }): Promise<"copiada" | "ja_existia"> {
-  if (await existe(deps.s3, deps.bucket, ref.key)) return "ja_existia";
-  const { bytes, contentType } = await deps.baixar(ref.fileId);
-  await deps.s3.send(
-    new PutObjectCommand({ Bucket: deps.bucket, Key: ref.key, Body: bytes, ContentType: contentType || "image/jpeg", CacheControl: CACHE_CONTROL })
-  );
-  return "copiada";
+  const keyMini = deps.miniatura ? chaveMiniatura(ref.key) : null;
+  const [temOriginal, temMini] = await Promise.all([
+    existe(deps.s3, deps.bucket, ref.key),
+    keyMini ? existe(deps.s3, deps.bucket, keyMini) : Promise.resolve(true),
+  ]);
+  if (temOriginal && temMini) return "ja_existia";
+
+  let bytes: Uint8Array;
+  if (temOriginal) {
+    const obj = await deps.s3.send(new GetObjectCommand({ Bucket: deps.bucket, Key: ref.key }));
+    bytes = await obj.Body!.transformToByteArray();
+  } else {
+    const baixada = await deps.baixar(ref.fileId);
+    bytes = baixada.bytes;
+    await deps.s3.send(
+      new PutObjectCommand({
+        Bucket: deps.bucket,
+        Key: ref.key,
+        Body: bytes,
+        ContentType: baixada.contentType || "image/jpeg",
+        CacheControl: CACHE_CONTROL,
+      })
+    );
+  }
+
+  if (deps.miniatura && keyMini && !temMini) {
+    try {
+      const mini = await deps.miniatura(bytes);
+      await deps.s3.send(
+        new PutObjectCommand({ Bucket: deps.bucket, Key: keyMini, Body: mini, ContentType: "image/webp", CacheControl: CACHE_CONTROL })
+      );
+    } catch {
+      // segue só com a original
+    }
+  }
+  return temOriginal ? "ja_existia" : "copiada";
 }
 
 export async function urlAssinada(s3: S3Client, bucket: string, key: string, agora: Date = new Date()): Promise<string> {

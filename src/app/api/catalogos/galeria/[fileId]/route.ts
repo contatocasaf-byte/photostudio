@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createDriveClient } from "@/lib/googleDrive";
-import { chaveDaFoto, galeriaCacheAtivo, garantirFotoNoCache, linkTemporarioDaFoto, metadadosDoArquivo } from "@/lib/galeriaCache";
+import { chaveDaFoto, chaveMiniatura, existeNoCache, galeriaCacheAtivo, garantirFotoNoCache, linkTemporarioDaFoto, metadadosDoArquivo } from "@/lib/galeriaCache";
 
 // Foto da galeria do Drive (Fase 5, Parte 7), sempre atrás do login.
 //
@@ -44,7 +44,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ file
       }
       const key = chaveDaFoto(fileId, version, nome, mime);
       await garantirFotoNoCache({ fileId, version, key });
-      const link = await linkTemporarioDaFoto(key);
+      // ?p=1 = pedido da tela de visualização: miniatura leve, se existir
+      // (senão a original).
+      let keyFinal = key;
+      if (url.searchParams.get("p") === "1") {
+        const keyMini = chaveMiniatura(key);
+        if (await existeNoCache(keyMini)) keyFinal = keyMini;
+      }
+      const link = await linkTemporarioDaFoto(keyFinal);
       return NextResponse.redirect(link, {
         status: 302,
         // O navegador pode guardar o redirecionamento por um tempo — o link

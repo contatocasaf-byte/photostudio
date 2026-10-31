@@ -6,7 +6,7 @@ import { getPublicUrl } from "@/lib/storage/public-url";
 import { fetchAllPages, fetchInChunks } from "@/lib/supabase/fetchAll";
 import { defaultCardBorda } from "../core/cardConfig";
 import { buildGaleriaIndex, resolveGaleriaArquivo } from "../core/matchGaleriaFoto";
-import { chaveDaFoto, chavesEmCache, galeriaCacheAtivo, linkTemporarioDaFoto, type FotoRef } from "@/lib/galeriaCache";
+import { chaveDaFoto, chaveMiniatura, chavesEmCache, galeriaCacheAtivo, linkTemporarioDaFoto, type FotoRef } from "@/lib/galeriaCache";
 import { listGaleriaImages } from "../galeria/actions";
 import type { PageIllustration, PageShape, PageTipo } from "../core/pageConfig";
 import type { CardTemplateInput, PageTemplateInput, PaginaAvulsaInput, SectionReflowInput } from "../core/reflow";
@@ -247,7 +247,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   // Foto de cada produto: link temporário direto do R2 se já está no cache;
   // senão a rota-proxy (que copia pro cache e redireciona); sem cache ligado,
   // a rota-proxy de sempre.
-  const fotoPorProduto = new Map<string, { url: string; ref: FotoRef | null }>();
+  const fotoPorProduto = new Map<string, { url: string; urlPreview: string | null; ref: FotoRef | null }>();
   await Promise.all(
     productRows.map(async (p) => {
       const arquivo = resolveGaleriaArquivo(galeriaIndex, p.codigo as string);
@@ -255,10 +255,15 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       if (cacheAtivo && chavesCacheadas && arquivo.version) {
         const key = chaveDaFoto(arquivo.id, arquivo.version, arquivo.name);
         const ref: FotoRef = { fileId: arquivo.id, version: arquivo.version, key };
-        const url = chavesCacheadas.has(key) ? await linkTemporarioDaFoto(key) : `/api/catalogos/galeria/${arquivo.id}?v=${arquivo.version}`;
-        fotoPorProduto.set(p.id as string, { url, ref });
+        const proxy = `/api/catalogos/galeria/${arquivo.id}?v=${arquivo.version}`;
+        const url = chavesCacheadas.has(key) ? await linkTemporarioDaFoto(key) : proxy;
+        // Para a TELA: miniatura leve (WebP) se já existe; senão a original (se
+        // já está no cache) ou a rota-proxy pedindo a miniatura (?p=1).
+        const keyMini = chaveMiniatura(key);
+        const urlPreview = chavesCacheadas.has(keyMini) ? await linkTemporarioDaFoto(keyMini) : chavesCacheadas.has(key) ? url : `${proxy}&p=1`;
+        fotoPorProduto.set(p.id as string, { url, urlPreview, ref });
       } else {
-        fotoPorProduto.set(p.id as string, { url: `/api/catalogos/galeria/${arquivo.id}`, ref: null });
+        fotoPorProduto.set(p.id as string, { url: `/api/catalogos/galeria/${arquivo.id}`, urlPreview: null, ref: null });
       }
     })
   );
@@ -277,6 +282,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
           preco2: p.preco_2,
           quantidadeMinima: p.quantidade_minima,
           fotoUrl: foto?.url ?? null,
+          fotoUrlPreview: foto?.urlPreview ?? null,
           fotoRef: foto?.ref ?? null,
         } as ProductRow,
       ];

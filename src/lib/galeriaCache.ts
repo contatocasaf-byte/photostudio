@@ -1,9 +1,24 @@
 import "server-only";
 import { createR2Client } from "@/lib/storage/r2";
 import { createDriveClient } from "@/lib/googleDrive";
-import { chaveDaFoto, copiarParaCache, listarChavesNoCache, urlAssinada, type CacheDeps, type FotoRef } from "./galeriaCacheCore";
+import { chaveDaFoto, chaveMiniatura, copiarParaCache, existe, listarChavesNoCache, urlAssinada, type CacheDeps, type FotoRef } from "./galeriaCacheCore";
 
-export { chaveDaFoto, type FotoRef };
+export { chaveDaFoto, chaveMiniatura, type FotoRef };
+
+// Miniatura da visualização: lado maior em 1200 px (a foto no card do
+// catálogo é bem menor, mesmo com zoom), WebP (leve e aceita transparência).
+// rotate() aplica a orientação EXIF antes de descartá-la.
+const MINIATURA_LADO_MAX = 1200;
+const MINIATURA_QUALIDADE = 80;
+
+async function gerarMiniatura(bytes: Uint8Array): Promise<Uint8Array> {
+  const sharp = (await import("sharp")).default;
+  return sharp(bytes)
+    .rotate()
+    .resize({ width: MINIATURA_LADO_MAX, height: MINIATURA_LADO_MAX, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: MINIATURA_QUALIDADE })
+    .toBuffer();
+}
 
 // Fiação do cache de fotos (ver galeriaCacheCore.ts) com as credenciais
 // reais. Só liga quando R2_GALERIA_BUCKET_NAME está configurada — sem ela o
@@ -23,6 +38,7 @@ function deps(): CacheDeps {
   return {
     s3: createR2Client(),
     bucket,
+    miniatura: gerarMiniatura,
     baixar: async (fileId) => {
       const drive = createDriveClient();
       const res = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "arraybuffer" });
@@ -41,6 +57,11 @@ export async function chavesEmCache(): Promise<Set<string>> {
 
 export async function garantirFotoNoCache(ref: FotoRef): Promise<"copiada" | "ja_existia"> {
   return copiarParaCache(deps(), ref);
+}
+
+export async function existeNoCache(key: string): Promise<boolean> {
+  const d = deps();
+  return existe(d.s3, d.bucket, key);
 }
 
 export async function linkTemporarioDaFoto(key: string): Promise<string> {
