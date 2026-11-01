@@ -60,13 +60,18 @@ export async function listPlanilhas(): Promise<{ planilhas?: Planilha[]; error?:
   return { planilhas };
 }
 
-// "R$ 1.234,56" -> 1234.56. Vírgula é sempre o separador decimal (padrão
-// BR); pontos antes dela são separador de milhar e são descartados.
+// "R$ 1.234,56" -> 1234.56 e "R$ 1,234.56" -> 1234.56. Só vírgula = decimal
+// (padrão BR); só ponto = decimal; os dois = vale o que vier por último.
 function parsePreco(raw: string): number | null {
   if (!raw) return null;
   const cleaned = raw.replace(/[^\d.,]/g, "");
   if (!cleaned) return null;
-  const normalized = cleaned.includes(",") ? cleaned.replace(/\./g, "").replace(",", ".") : cleaned;
+  // Com os dois separadores, o ÚLTIMO é o decimal: "1.234,50" (pt-BR) e
+  // "1,234.50" (en-US, como o Excel exporta com formato de moeda).
+  const ultimaVirgula = cleaned.lastIndexOf(",");
+  const ultimoPonto = cleaned.lastIndexOf(".");
+  const normalized =
+    ultimaVirgula > ultimoPonto ? cleaned.replace(/\./g, "").replace(",", ".") : ultimoPonto > ultimaVirgula && ultimaVirgula >= 0 ? cleaned.replace(/,/g, "") : cleaned;
   const n = Number(normalized);
   return Number.isNaN(n) ? null : n;
 }
