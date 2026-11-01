@@ -543,6 +543,11 @@ export default function CardEditorCanvas({
 }: CardEditorCanvasProps) {
   // Escala congelada enquanto uma borda do card é arrastada (ver BoundaryRect).
   const [escalaFixa, setEscalaFixa] = useState<number | null>(null);
+  // Deslocamento do card no palco (px de tela) depois de arrastar a borda de
+  // cima/esquerda PRA DENTRO: o card fica onde foi solto (a borda oposta e os
+  // campos não se mexem na tela). Para fora, o palco só "abre espaço" (origem
+  // volta a 0) — não dá pra desenhar em coordenada negativa.
+  const [origem, setOrigem] = useState({ x: 0, y: 0 });
   const base = computeScale(largura, alturaMinima);
   const scale = escalaFixa ?? base.scale;
   const canvasW = escalaFixa !== null ? Math.round(largura * scale) : base.canvasW;
@@ -672,8 +677,8 @@ export default function CardEditorCanvas({
       : isFreeResize
         ? (["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "middle-left", "middle-right"] as const)
         : (["middle-left", "middle-right"] as const);
-  const stageW = gutterMode ? ghostDefaultX + canvasW + ORIGIN : canvasW + ORIGIN * 2;
-  const stageH = canvasH + ORIGIN * 2;
+  const stageW = (gutterMode ? ghostDefaultX + canvasW + ORIGIN : canvasW + ORIGIN * 2) + origem.x;
+  const stageH = canvasH + ORIGIN * 2 + origem.y;
 
   return (
     <Stage
@@ -691,6 +696,7 @@ export default function CardEditorCanvas({
       }}
     >
       <Layer>
+        <Group x={origem.x} y={origem.y}>
         <BoundaryRect
           canvasW={canvasW}
           canvasH={canvasH}
@@ -698,7 +704,10 @@ export default function CardEditorCanvas({
           onResize={onResizeBoundary}
           onStart={() => setEscalaFixa(scale)}
           onCommit={({ dx, dy }) => {
-            if (dx !== 0 || dy !== 0) onShiftContent(dx, dy);
+            if (dx !== 0 || dy !== 0) {
+              onShiftContent(dx, dy);
+              setOrigem((o) => ({ x: Math.max(0, o.x + dx * scale), y: Math.max(0, o.y + dy * scale) }));
+            }
             setEscalaFixa(null);
           }}
           transformerRef={boundaryTransformerRef}
@@ -777,6 +786,7 @@ export default function CardEditorCanvas({
             }
           />
         )}
+        </Group>
       </Layer>
     </Stage>
   );
