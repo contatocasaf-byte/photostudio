@@ -257,7 +257,7 @@ export default function PropertiesPanel({
       </Secao>
 
       <Secao titulo="Margens">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
           <NumberField
             label={`Topo (${unit})`}
             value={toDisplay(margens.top)}
