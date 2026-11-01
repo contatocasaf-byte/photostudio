@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   DEFAULT_FONT_FAMILY,
   PAGE_FIELD_DEFS,
@@ -19,6 +19,7 @@ import {
   type PageShapeType,
   type PageTextElementConfig,
 } from "../../../core/pageConfig";
+import { ColorField, NumberField, OpacityField, PanelCard, Secao, UnitToggle, type Unidade } from "../../../core/PainelUi";
 import { getPageAssetUploadUrl } from "../../../paginas/actions";
 import { getPublicUrl } from "@/lib/storage/public-url";
 import type { TextAlign } from "@/lib/canvasText";
@@ -26,6 +27,10 @@ import FilePickerZone from "@/components/FilePickerZone";
 import FontPicker from "@/components/fonts/FontPicker";
 
 type Props = {
+  // Canvas do editor — este componente monta o layout da tela inteira (canvas +
+  // painel de propriedades ao lado + lista de elementos embaixo), então recebe
+  // o canvas pronto.
+  canvas: ReactNode;
   layout: PageLayout;
   elementosHabilitados: PageFieldKey[];
   onToggleElemento: (key: PageFieldKey, habilitado: boolean) => void;
@@ -65,25 +70,13 @@ const ALIGN_OPTIONS: { value: TextAlign; label: string }[] = [
   { value: "justify", label: "Justificado" },
 ];
 
-function NumberField({ label, value, onCommit }: { label: string; value: number; onCommit: (v: number) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <label className="text-xs text-slate-500">{label}</label>
-      <input
-        type="number"
-        defaultValue={Math.round(value)}
-        key={value}
-        onBlur={(e) => {
-          const n = Number(e.target.value);
-          if (!Number.isNaN(n)) onCommit(n);
-        }}
-        className="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
-      />
-    </div>
-  );
-}
-
+// Layout dos editores de modelo de página (mesma organização do card-molde):
+// canvas em cima à esquerda; UM painel de propriedades ao lado do canvas
+// (acompanha a rolagem) que mostra a "Estrutura da página" quando nada está
+// selecionado e as propriedades do elemento/ilustração/forma selecionado nos
+// demais casos; e, embaixo do canvas, o cartão "Página" com as listas.
 export default function PropertiesPanel({
+  canvas,
   layout,
   elementosHabilitados,
   onToggleElemento,
@@ -114,17 +107,22 @@ export default function PropertiesPanel({
   const selectedDef = selectedKey ? PAGE_FIELD_DEFS.find((d) => d.key === selectedKey) : null;
   const selectedIllustration = selectedIllustrationId ? illustracoes.find((i) => i.id === selectedIllustrationId) : null;
   const selectedShape = selectedShapeId ? formas.find((s) => s.id === selectedShapeId) : null;
+  const nadaSelecionado = !selectedDef && !selectedIllustration && !selectedShape;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [unit, setUnit] = useState<"px" | "mm">("px");
-  const [fundoExpanded, setFundoExpanded] = useState(true);
-  const [campoExpanded, setCampoExpanded] = useState(true);
+  const [unit, setUnit] = useState<Unidade>("px");
 
   function toDisplay(px: number) {
     return unit === "mm" ? pxToMm(px) : Math.round(px);
   }
   function fromDisplay(v: number) {
     return unit === "mm" ? mmToPx(v) : Math.round(v);
+  }
+
+  function limparSelecao() {
+    onSelectKey(null);
+    onSelectIllustration(null);
+    onSelectShape(null);
   }
 
   async function uploadAsset(file: File): Promise<{ key: string; url: string }> {
@@ -212,101 +210,79 @@ export default function PropertiesPanel({
     }
   }
 
-  return (
-    <div className="w-72 shrink-0">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tamanho da página</p>
-      <p className="mt-1 text-[11px] text-slate-400">Vale pra todos os modelos deste catálogo.</p>
-      <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
-        <select
-          value={
-            PAGE_SIZE_PRESETS.find((p) => {
-              const px = presetToPx(p);
-              return px.largura === Math.round(largura) && px.altura === Math.round(altura);
-            })?.key ?? ""
-          }
-          onChange={(e) => {
-            const preset = PAGE_SIZE_PRESETS.find((p) => p.key === e.target.value);
-            if (preset) onResizeBoundary(presetToPx(preset));
-          }}
-          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
-        >
-          <option value="">Personalizado</option>
-          {(["Papel", "Redes sociais"] as const).map((group) => (
-            <optgroup key={group} label={group}>
-              {PAGE_SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+  const botaoLista = (ativo: boolean) =>
+    "rounded-md px-2 py-1.5 text-left text-xs font-medium " + (ativo ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700");
 
-        <div className="flex items-center justify-between">
-          <label className="text-xs text-slate-500">Unidade</label>
-          <div className="flex gap-1">
-            {(["px", "mm"] as const).map((u) => (
-              <button
-                key={u}
-                onClick={() => setUnit(u)}
-                className={
-                  "rounded-md px-2 py-1 text-xs font-medium " +
-                  (unit === u ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-                }
-              >
-                {u}
-              </button>
+  // ---------- Estrutura da página (nada selecionado) ----------
+  const estrutura = (
+    <PanelCard titulo="Estrutura da página" acao={<UnitToggle unit={unit} onChange={setUnit} />}>
+      <Secao titulo="Tamanho">
+        <p className="mb-2 text-[11px] text-slate-400">Vale pra todos os modelos deste catálogo.</p>
+        <div className="flex flex-col gap-2">
+          <select
+            value={
+              PAGE_SIZE_PRESETS.find((p) => {
+                const px = presetToPx(p);
+                return px.largura === Math.round(largura) && px.altura === Math.round(altura);
+              })?.key ?? ""
+            }
+            onChange={(e) => {
+              const preset = PAGE_SIZE_PRESETS.find((p) => p.key === e.target.value);
+              if (preset) onResizeBoundary(presetToPx(preset));
+            }}
+            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+          >
+            <option value="">Personalizado</option>
+            {(["Papel", "Redes sociais"] as const).map((group) => (
+              <optgroup key={group} label={group}>
+                {PAGE_SIZE_PRESETS.filter((p) => p.group === group).map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
-          </div>
+          </select>
+          <NumberField
+            label={`Largura (${unit})`}
+            value={toDisplay(largura)}
+            onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 200), altura })}
+          />
+          <NumberField
+            label={`Altura (${unit})`}
+            value={toDisplay(altura)}
+            onCommit={(v) => onResizeBoundary({ largura, altura: Math.max(fromDisplay(v), 200) })}
+          />
         </div>
+      </Secao>
 
-        <NumberField
-          label={`Largura (${unit})`}
-          value={toDisplay(largura)}
-          onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 200), altura })}
-        />
-        <NumberField
-          label={`Altura (${unit})`}
-          value={toDisplay(altura)}
-          onCommit={(v) => onResizeBoundary({ largura, altura: Math.max(fromDisplay(v), 200) })}
-        />
-      </div>
+      <Secao titulo="Margens">
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField
+            label={`Topo (${unit})`}
+            value={toDisplay(margens.top)}
+            onCommit={(v) => onChangeMargens({ top: Math.max(0, fromDisplay(v)) })}
+          />
+          <NumberField
+            label={`Base (${unit})`}
+            value={toDisplay(margens.bottom)}
+            onCommit={(v) => onChangeMargens({ bottom: Math.max(0, fromDisplay(v)) })}
+          />
+          <NumberField
+            label={`Esquerda (${unit})`}
+            value={toDisplay(margens.left)}
+            onCommit={(v) => onChangeMargens({ left: Math.max(0, fromDisplay(v)) })}
+          />
+          <NumberField
+            label={`Direita (${unit})`}
+            value={toDisplay(margens.right)}
+            onCommit={(v) => onChangeMargens({ right: Math.max(0, fromDisplay(v)) })}
+          />
+        </div>
+      </Secao>
 
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Margens</p>
-      <div className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-slate-200 p-2">
-        <NumberField
-          label={`Topo (${unit})`}
-          value={toDisplay(margens.top)}
-          onCommit={(v) => onChangeMargens({ top: Math.max(0, fromDisplay(v)) })}
-        />
-        <NumberField
-          label={`Base (${unit})`}
-          value={toDisplay(margens.bottom)}
-          onCommit={(v) => onChangeMargens({ bottom: Math.max(0, fromDisplay(v)) })}
-        />
-        <NumberField
-          label={`Esquerda (${unit})`}
-          value={toDisplay(margens.left)}
-          onCommit={(v) => onChangeMargens({ left: Math.max(0, fromDisplay(v)) })}
-        />
-        <NumberField
-          label={`Direita (${unit})`}
-          value={toDisplay(margens.right)}
-          onCommit={(v) => onChangeMargens({ right: Math.max(0, fromDisplay(v)) })}
-        />
-      </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Plano de fundo</p>
-        <button
-          onClick={() => setFundoExpanded((v) => !v)}
-          className="text-xs text-slate-400 hover:text-slate-700"
-        >
-          {fundoExpanded ? "Reduzir" : "Expandir"}
-        </button>
-      </div>
-      {fundoExpanded && (
-        <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 p-2">
+      <Secao titulo="Plano de fundo">
+        <div className="flex flex-col gap-2">
           {fundoUrl && (
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -334,58 +310,79 @@ export default function PropertiesPanel({
             buttonLabel={uploading ? "Enviando..." : fundoUrl ? "Trocar arquivo" : "Escolher arquivo"}
             onFiles={handleUploadFundo}
           />
-          {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+          {uploadError && nadaSelecionado && <p className="text-xs text-red-600">{uploadError}</p>}
         </div>
-      )}
+      </Secao>
+    </PanelCard>
+  );
 
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Elementos</p>
-      <div className="mt-2 flex flex-col gap-1">
-        {PAGE_FIELD_DEFS.map((def) => {
-          const habilitado = elementosHabilitados.includes(def.key);
-          return (
-            <div
-              key={def.key}
-              className={
-                "flex items-center gap-2 rounded-md px-2 py-1.5 " +
-                (selectedKey === def.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
-              }
-            >
-              <input
-                type="checkbox"
-                checked={habilitado}
-                onChange={(e) => onToggleElemento(def.key, e.target.checked)}
-                className="shrink-0"
-              />
-              <button
-                onClick={() => {
-                  if (!habilitado) return;
-                  onSelectIllustration(null);
-                  onSelectShape(null);
-                  onSelectKey(def.key);
-                }}
-                disabled={!habilitado}
-                className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
+  // ---------- Lista de elementos (embaixo do canvas) ----------
+  const lista = (
+    <PanelCard titulo="Página">
+      <Secao titulo="Estrutura">
+        <button
+          onClick={limparSelecao}
+          className={"flex w-full items-center gap-2 " + botaoLista(nadaSelecionado) + (nadaSelecionado ? "" : " hover:bg-slate-200")}
+        >
+          Estrutura da página
+          <span className={"ml-auto text-[10px] font-normal " + (nadaSelecionado ? "text-slate-300" : "text-slate-400")}>
+            tamanho, margens, fundo
+          </span>
+        </button>
+      </Secao>
+
+      <Secao titulo="Elementos">
+        <div className="flex flex-col gap-1">
+          {PAGE_FIELD_DEFS.map((def) => {
+            const habilitado = elementosHabilitados.includes(def.key);
+            return (
+              <div
+                key={def.key}
+                className={
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 " +
+                  (selectedKey === def.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                }
               >
-                {def.label}
-              </button>
-              <span className="shrink-0 text-[10px] uppercase text-slate-400">{def.zone === "header" ? "topo" : "rodapé"}</span>
-            </div>
-          );
-        })}
-      </div>
+                <input
+                  type="checkbox"
+                  checked={habilitado}
+                  onChange={(e) => onToggleElemento(def.key, e.target.checked)}
+                  className="shrink-0"
+                />
+                <button
+                  onClick={() => {
+                    if (!habilitado) return;
+                    onSelectIllustration(null);
+                    onSelectShape(null);
+                    onSelectKey(def.key);
+                  }}
+                  disabled={!habilitado}
+                  className={"flex-1 text-left text-xs font-medium " + (habilitado ? "" : "opacity-40")}
+                >
+                  {def.label}
+                </button>
+                <span className="shrink-0 text-[10px] uppercase text-slate-400">{def.zone === "header" ? "topo" : "rodapé"}</span>
+              </div>
+            );
+          })}
+        </div>
+      </Secao>
 
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ilustrações</p>
+      <Secao
+        titulo="Ilustrações"
+        acao={
           <button
             onClick={onAddIllustracao}
             className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
           >
             + Ilustração
           </button>
-        </div>
-        {illustracoes.length > 0 && (
-          <div className="mt-2 flex flex-col gap-1">
+        }
+      >
+        {illustracoes.length === 0 ? (
+          <p className="text-xs text-slate-400">Nenhuma ilustração.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
             {illustracoes.map((ill, i) => (
               <button
                 key={ill.id}
@@ -394,21 +391,17 @@ export default function PropertiesPanel({
                   onSelectShape(null);
                   onSelectIllustration(ill.id);
                 }}
-                className={
-                  "rounded-md px-2 py-1.5 text-left text-xs font-medium " +
-                  (selectedIllustrationId === ill.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
-                }
+                className={botaoLista(selectedIllustrationId === ill.id)}
               >
                 Ilustração {i + 1}
               </button>
             ))}
           </div>
         )}
-      </div>
+      </Secao>
 
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Formas</p>
-        <div className="mt-2 grid grid-cols-3 gap-1">
+      <Secao titulo="Formas">
+        <div className="grid grid-cols-3 gap-1">
           {PAGE_SHAPE_TYPES.map((t) => (
             <button
               key={t.value}
@@ -431,10 +424,7 @@ export default function PropertiesPanel({
                     onSelectIllustration(null);
                     onSelectShape(shape.id);
                   }}
-                  className={
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
-                    (selectedShapeId === shape.id ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
-                  }
+                  className={"flex items-center gap-2 " + botaoLista(selectedShapeId === shape.id)}
                 >
                   <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
                   {def?.label ?? shape.type} {i + 1}
@@ -443,91 +433,56 @@ export default function PropertiesPanel({
             })}
           </div>
         )}
+      </Secao>
+    </PanelCard>
+  );
+
+  // ---------- Elemento selecionado ----------
+  const botaoExcluir = (rotulo: string, onClick: () => void) => (
+    <button onClick={onClick} className="text-xs font-medium text-red-600 hover:text-red-800">
+      {rotulo}
+    </button>
+  );
+
+  const posicaoETamanho = (cfg: { x: number; y: number; w: number; h: number }, minimo: number, onUpdate: (patch: { x?: number; y?: number; w?: number; h?: number }) => void) => (
+    <Secao titulo="Posição e tamanho">
+      <div className="flex flex-col gap-2">
+        <NumberField label={`Posição X (${unit})`} value={toDisplay(cfg.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
+        <NumberField label={`Posição Y (${unit})`} value={toDisplay(cfg.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
+        <NumberField label={`Largura (${unit})`} value={toDisplay(cfg.w)} onCommit={(v) => onUpdate({ w: Math.max(minimo, fromDisplay(v)) })} />
+        <NumberField label={`Altura (${unit})`} value={toDisplay(cfg.h)} onCommit={(v) => onUpdate({ h: Math.max(minimo, fromDisplay(v)) })} />
       </div>
+    </Secao>
+  );
 
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        {!selectedDef && !selectedIllustration && !selectedShape && (
-          <p className="text-xs text-slate-400">Clique num elemento/ilustração/forma (na lista acima ou no canvas) pra editar.</p>
-        )}
+  const nomeSelecionado =
+    selectedDef?.label ?? (selectedIllustration ? "Ilustração" : (PAGE_SHAPE_TYPES.find((t) => t.value === selectedShape?.type)?.label ?? "Forma"));
 
-        {(selectedDef || selectedIllustration || selectedShape) && (
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-900">
-              {selectedDef?.label ?? (selectedIllustration ? "Ilustração" : (PAGE_SHAPE_TYPES.find((t) => t.value === selectedShape?.type)?.label ?? "Forma"))}
-            </p>
-            <button onClick={() => setCampoExpanded((v) => !v)} className="text-xs text-slate-400 hover:text-slate-700">
-              {campoExpanded ? "Reduzir" : "Expandir"}
-            </button>
-          </div>
-        )}
+  const selecionado = (
+    <PanelCard titulo="Elemento selecionado" destaque acao={<UnitToggle unit={unit} onChange={setUnit} />}>
+      <Secao>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-slate-900">{nomeSelecionado}</p>
+          {selectedShape && botaoExcluir("Excluir", () => onRemoveForma(selectedShape.id))}
+          {selectedIllustration && botaoExcluir("Excluir", () => onRemoveIllustracao(selectedIllustration.id))}
+        </div>
+      </Secao>
 
-        {selectedShape && campoExpanded && (
-          <div className="mt-2 flex flex-col gap-3">
-            <NumberField
-              label={`Posição X (${unit})`}
-              value={toDisplay(selectedShape.x)}
-              onCommit={(v) => onUpdateForma(selectedShape.id, { x: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Posição Y (${unit})`}
-              value={toDisplay(selectedShape.y)}
-              onCommit={(v) => onUpdateForma(selectedShape.id, { y: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Largura (${unit})`}
-              value={toDisplay(selectedShape.w)}
-              onCommit={(v) => onUpdateForma(selectedShape.id, { w: Math.max(4, fromDisplay(v)) })}
-            />
-            <NumberField
-              label={`Altura (${unit})`}
-              value={toDisplay(selectedShape.h)}
-              onCommit={(v) => onUpdateForma(selectedShape.id, { h: Math.max(4, fromDisplay(v)) })}
-            />
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-slate-500">Cor</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={selectedShape.color}
-                  onChange={(e) => onUpdateForma(selectedShape.id, { color: e.target.value })}
-                  className="h-7 w-10 cursor-pointer rounded border border-slate-300"
-                />
-                <input
-                  key={selectedShape.color}
-                  defaultValue={selectedShape.color}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onUpdateForma(selectedShape.id, { color: v });
-                  }}
-                  className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
-                />
-              </div>
+      {selectedShape && (
+        <>
+          {posicaoETamanho(selectedShape, 4, (patch) => onUpdateForma(selectedShape.id, patch))}
+          <Secao titulo="Aparência">
+            <div className="flex flex-col gap-3">
+              <ColorField label="Cor" value={selectedShape.color} onChange={(color) => onUpdateForma(selectedShape.id, { color })} />
+              <OpacityField value={selectedShape.opacity} onChange={(opacity) => onUpdateForma(selectedShape.id, { opacity })} />
             </div>
-            <div>
-              <label className="flex items-center justify-between text-xs text-slate-500">
-                <span>Transparência</span>
-                <span>{Math.round(selectedShape.opacity * 100)}%</span>
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(selectedShape.opacity * 100)}
-                onChange={(e) => onUpdateForma(selectedShape.id, { opacity: Number(e.target.value) / 100 })}
-                className="mt-1 w-full"
-              />
-            </div>
-            <button
-              onClick={() => onRemoveForma(selectedShape.id)}
-              className="mt-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-            >
-              Excluir forma
-            </button>
-          </div>
-        )}
+          </Secao>
+        </>
+      )}
 
-        {selectedIllustration && campoExpanded && (
-          <div className="mt-2 flex flex-col gap-2">
+      {selectedIllustration && (
+        <>
+          <Secao titulo="Imagem">
             <FilePickerZone
               disabled={uploading}
               title="Arraste uma imagem aqui ou clique para escolher"
@@ -535,38 +490,15 @@ export default function PropertiesPanel({
               buttonLabel={uploading ? "Enviando..." : "Escolher arquivo"}
               onFiles={handleUploadIllustracao}
             />
-            {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
-            <NumberField
-              label={`Posição X (${unit})`}
-              value={toDisplay(selectedIllustration.x)}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { x: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Posição Y (${unit})`}
-              value={toDisplay(selectedIllustration.y)}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { y: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Largura (${unit})`}
-              value={toDisplay(selectedIllustration.w)}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { w: Math.max(20, fromDisplay(v)) })}
-            />
-            <NumberField
-              label={`Altura (${unit})`}
-              value={toDisplay(selectedIllustration.h)}
-              onCommit={(v) => onUpdateIllustracao(selectedIllustration.id, { h: Math.max(20, fromDisplay(v)) })}
-            />
-            <button
-              onClick={() => onRemoveIllustracao(selectedIllustration.id)}
-              className="mt-1 rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
-            >
-              Excluir ilustração
-            </button>
-          </div>
-        )}
+            {uploadError && <p className="mt-2 text-xs text-red-600">{uploadError}</p>}
+          </Secao>
+          {posicaoETamanho(selectedIllustration, 20, (patch) => onUpdateIllustracao(selectedIllustration.id, patch))}
+        </>
+      )}
 
-        {selectedDef && campoExpanded && selectedDef.type === "image" && (
-          <div className="mt-2 flex flex-col gap-2">
+      {selectedDef && selectedDef.type === "image" && (
+        <>
+          <Secao titulo="Imagem">
             <FilePickerZone
               disabled={uploading}
               title="Arraste uma imagem aqui ou clique para escolher"
@@ -574,43 +506,34 @@ export default function PropertiesPanel({
               buttonLabel={uploading ? "Enviando..." : "Escolher arquivo"}
               onFiles={handleUploadImage}
             />
-            {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
-            <NumberField
-              label={`Posição X (${unit})`}
-              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).x)}
-              onCommit={(v) => onUpdateField(selectedDef.key, { x: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Posição Y (${unit})`}
-              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).y)}
-              onCommit={(v) => onUpdateField(selectedDef.key, { y: fromDisplay(v) })}
-            />
-            <NumberField
-              label={`Largura (${unit})`}
-              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).w)}
-              onCommit={(v) => onUpdateField(selectedDef.key, { w: Math.max(20, fromDisplay(v)) })}
-            />
-            <NumberField
-              label={`Altura (${unit})`}
-              value={toDisplay((layout[selectedDef.key] as PageImageElementConfig).h)}
-              onCommit={(v) => onUpdateField(selectedDef.key, { h: Math.max(20, fromDisplay(v)) })}
-            />
-          </div>
-        )}
+            {uploadError && <p className="mt-2 text-xs text-red-600">{uploadError}</p>}
+          </Secao>
+          {posicaoETamanho(layout[selectedDef.key] as PageImageElementConfig, 20, (patch) => onUpdateField(selectedDef.key, patch))}
+        </>
+      )}
 
-        {selectedDef && campoExpanded && selectedDef.type === "text" && (
-          <div className="mt-2">
-            <TextProperties
-              fieldKey={selectedDef.key}
-              cfg={layout[selectedDef.key] as PageTextElementConfig}
-              unit={unit}
-              toDisplay={toDisplay}
-              fromDisplay={fromDisplay}
-              onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
-            />
-          </div>
-        )}
+      {selectedDef && selectedDef.type === "text" && (
+        <TextProperties
+          fieldKey={selectedDef.key}
+          cfg={layout[selectedDef.key] as PageTextElementConfig}
+          unit={unit}
+          toDisplay={toDisplay}
+          fromDisplay={fromDisplay}
+          onUpdate={(patch) => onUpdateField(selectedDef.key, patch)}
+        />
+      )}
+    </PanelCard>
+  );
+
+  return (
+    <div className="mt-4 grid grid-cols-[minmax(0,1fr)_18rem] items-start gap-4">
+      <div className="col-start-1 row-start-1 min-w-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">{canvas}</div>
+
+      <div className="sticky top-4 col-start-2 row-span-2 row-start-1 max-h-[calc(100vh-2rem)] self-start overflow-y-auto">
+        {nadaSelecionado ? estrutura : selecionado}
       </div>
+
+      <div className="col-start-1 row-start-2 min-w-0">{lista}</div>
     </div>
   );
 }
@@ -625,16 +548,18 @@ function TextProperties({
 }: {
   fieldKey: PageFieldKey;
   cfg: PageTextElementConfig;
-  unit: "px" | "mm";
+  unit: Unidade;
   toDisplay: (px: number) => number;
   fromDisplay: (v: number) => number;
   onUpdate: (patch: Partial<PageTextElementConfig>) => void;
 }) {
   const placeholders = PAGE_PLACEHOLDERS[fieldKey];
+  const botao = (ativo: boolean) =>
+    "rounded-md px-2 py-1 text-xs font-medium " + (ativo ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200");
 
   return (
-    <div className="flex flex-col gap-3">
-      <div>
+    <>
+      <Secao titulo="Conteúdo">
         <label className="text-xs text-slate-500">Texto</label>
         <input
           key={cfg.text}
@@ -654,106 +579,65 @@ function TextProperties({
         ) : (
           <p className="mt-1 text-[11px] text-slate-400">Texto fixo — o mesmo em toda página.</p>
         )}
-      </div>
+      </Secao>
 
-      <div>
-        <label className="text-xs text-slate-500">Fonte</label>
-        <FontPicker
-          family={cfg.fontFamily ?? DEFAULT_FONT_FAMILY}
-          weight={cfg.fontWeight === "bold" ? 700 : 400}
-          onSelect={(fam, w) => onUpdate({ fontFamily: fam, fontWeight: w === 700 ? "bold" : "normal" })}
-        />
-      </div>
-
-      <NumberField label="Tamanho da fonte (px)" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
-      <NumberField
-        label={`Largura máxima (${unit})`}
-        value={toDisplay(cfg.maxW)}
-        onCommit={(v) => onUpdate({ maxW: Math.max(40, fromDisplay(v)) })}
-      />
-      <NumberField label={`Posição X (${unit})`} value={toDisplay(cfg.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
-      <NumberField label={`Posição Y (${unit})`} value={toDisplay(cfg.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
-
-      <div>
-        <label className="text-xs text-slate-500">Número de linhas</label>
-        <div className="mt-1 flex gap-1">
-          {[1, 2, 3].map((n) => (
-            <button
-              key={n}
-              onClick={() => onUpdate({ maxLines: n })}
-              className={
-                "flex-1 rounded-md px-2 py-1 text-xs font-medium " +
-                (cfg.maxLines === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-              }
-            >
-              {n}
-            </button>
-          ))}
+      <Secao titulo="Fonte">
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Fonte</label>
+            <FontPicker
+              family={cfg.fontFamily ?? DEFAULT_FONT_FAMILY}
+              weight={cfg.fontWeight === "bold" ? 700 : 400}
+              onSelect={(fam, w) => onUpdate({ fontFamily: fam, fontWeight: w === 700 ? "bold" : "normal" })}
+            />
+          </div>
+          <NumberField label="Tamanho da fonte (px)" value={cfg.fontSize} onCommit={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
+          <div>
+            <label className="text-xs text-slate-500">Peso da fonte</label>
+            <div className="mt-1 grid grid-cols-2 gap-1">
+              <button onClick={() => onUpdate({ fontWeight: "normal" })} className={botao(cfg.fontWeight === "normal")}>
+                Normal
+              </button>
+              <button onClick={() => onUpdate({ fontWeight: "bold" })} className={botao(cfg.fontWeight === "bold")}>
+                Negrito
+              </button>
+            </div>
+          </div>
+          <ColorField label="Cor" value={cfg.color} onChange={(color) => onUpdate({ color })} />
         </div>
-      </div>
+      </Secao>
 
-      <div>
-        <label className="text-xs text-slate-500">Alinhamento</label>
-        <div className="mt-1 grid grid-cols-2 gap-1">
-          {ALIGN_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => onUpdate({ align: opt.value })}
-              className={
-                "rounded-md px-2 py-1 text-xs font-medium " +
-                (cfg.align === opt.value ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-              }
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <label className="text-xs text-slate-500">Cor</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={cfg.color}
-            onChange={(e) => onUpdate({ color: e.target.value })}
-            className="h-7 w-10 cursor-pointer rounded border border-slate-300"
+      <Secao titulo="Posição e caixa">
+        <div className="flex flex-col gap-3">
+          <NumberField label={`Posição X (${unit})`} value={toDisplay(cfg.x)} onCommit={(v) => onUpdate({ x: fromDisplay(v) })} />
+          <NumberField label={`Posição Y (${unit})`} value={toDisplay(cfg.y)} onCommit={(v) => onUpdate({ y: fromDisplay(v) })} />
+          <NumberField
+            label={`Largura máxima (${unit})`}
+            value={toDisplay(cfg.maxW)}
+            onCommit={(v) => onUpdate({ maxW: Math.max(40, fromDisplay(v)) })}
           />
-          <input
-            key={cfg.color}
-            defaultValue={cfg.color}
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onUpdate({ color: v });
-            }}
-            className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
-          />
+          <div>
+            <label className="text-xs text-slate-500">Número de linhas</label>
+            <div className="mt-1 flex gap-1">
+              {[1, 2, 3].map((n) => (
+                <button key={n} onClick={() => onUpdate({ maxLines: n })} className={"flex-1 " + botao(cfg.maxLines === n)}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Alinhamento</label>
+            <div className="mt-1 grid grid-cols-2 gap-1">
+              {ALIGN_OPTIONS.map((opt) => (
+                <button key={opt.value} onClick={() => onUpdate({ align: opt.value })} className={botao(cfg.align === opt.value)}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div>
-        <label className="text-xs text-slate-500">Peso da fonte</label>
-        <div className="mt-1 grid grid-cols-2 gap-1">
-          <button
-            onClick={() => onUpdate({ fontWeight: "normal" })}
-            className={
-              "rounded-md px-2 py-1 text-xs font-medium " +
-              (cfg.fontWeight === "normal" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-            }
-          >
-            Normal
-          </button>
-          <button
-            onClick={() => onUpdate({ fontWeight: "bold" })}
-            className={
-              "rounded-md px-2 py-1 text-xs font-medium " +
-              (cfg.fontWeight === "bold" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
-            }
-          >
-            Negrito
-          </button>
-        </div>
-      </div>
-    </div>
+      </Secao>
+    </>
   );
 }

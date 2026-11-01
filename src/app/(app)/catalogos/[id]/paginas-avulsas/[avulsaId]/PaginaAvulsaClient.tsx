@@ -191,8 +191,8 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {status && <p className="mt-2 text-xs text-slate-500">{status}</p>}
 
-      <div className="mt-4 flex flex-wrap items-start gap-4">
-        <div className="overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <PropertiesPanel
+        canvas={
           <PageEditorCanvas
             layout={layout}
             onLayoutChange={setLayout}
@@ -213,8 +213,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
             selectedShapeId={selectedShapeId}
             onSelectShape={setSelectedShapeId}
           />
-        </div>
-        <PropertiesPanel
+        }
           layout={layout}
           elementosHabilitados={elementosHabilitados}
           onToggleElemento={handleToggleElemento}
@@ -241,8 +240,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
           onUpdateForma={handleUpdateForma}
           selectedShapeId={selectedShapeId}
           onSelectShape={setSelectedShapeId}
-        />
-      </div>
+      />
     </div>
   );
 }
