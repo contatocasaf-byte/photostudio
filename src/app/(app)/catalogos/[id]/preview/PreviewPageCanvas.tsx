@@ -17,6 +17,7 @@ import {
   type PageShape,
   type PageTextElementConfig,
 } from "../../core/pageConfig";
+import { raioEfetivoRetangulo, tracarTriangulo } from "../../core/formaArredondada";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
@@ -348,9 +349,10 @@ function PreviewCardShape({
   const width = shape.w * cardScale * scale + BLEED;
   const height = shape.h * cardScale * scale + BLEED;
   const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
+  const raioPx = (shape.raio ?? 0) * cardScale * scale;
 
   if (shape.type === "retangulo") {
-    return <Rect {...common} />;
+    return <Rect {...common} cornerRadius={raioEfetivoRetangulo(width, height, raioPx)} />;
   }
 
   const sceneFunc =
@@ -364,13 +366,8 @@ function PreviewCardShape({
           ctx.fillStrokeShape(node);
         }
       : (ctx: Konva.Context, node: Konva.Shape) => {
-          const w = node.width();
-          const h = node.height();
           ctx.beginPath();
-          ctx.moveTo(w / 2, 0);
-          ctx.lineTo(w, h);
-          ctx.lineTo(0, h);
-          ctx.closePath();
+          tracarTriangulo(ctx, node.width(), node.height(), raioPx);
           ctx.fillStrokeShape(node);
         };
 

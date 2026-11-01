@@ -15,6 +15,7 @@ import {
   type CardShape,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
+import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
 import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 
@@ -245,8 +246,10 @@ function ShapeNode({
     onTransform: handleTransform,
   };
 
+  const raioPx = (shape.raio ?? 0) * scale;
+
   if (shape.type === "retangulo") {
-    return <Rect ref={(node) => registerRef(shape.id, node)} {...common} />;
+    return <Rect ref={(node) => registerRef(shape.id, node)} {...common} cornerRadius={raioEfetivoRetangulo(width, height, raioPx)} />;
   }
 
   const sceneFunc =
@@ -260,13 +263,8 @@ function ShapeNode({
           ctx.fillStrokeShape(node);
         }
       : (ctx: Konva.Context, node: Konva.Shape) => {
-          const w = node.width();
-          const h = node.height();
           ctx.beginPath();
-          ctx.moveTo(w / 2, 0);
-          ctx.lineTo(w, h);
-          ctx.lineTo(0, h);
-          ctx.closePath();
+          tracarTriangulo(ctx, node.width(), node.height(), raioPx);
           ctx.fillStrokeShape(node);
         };
 

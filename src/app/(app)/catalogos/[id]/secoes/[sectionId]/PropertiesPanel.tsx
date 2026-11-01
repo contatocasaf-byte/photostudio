@@ -471,6 +471,16 @@ function ShapeProperties({
         value={toDisplay(shape.h)}
         onCommit={(v) => onUpdate({ h: Math.max(4, fromDisplay(v)) })}
       />
+      {/* Arredondar cantos: só faz sentido em retângulo e triângulo (a elipse
+          já é redonda). 0 = cantos retos; acima do que cabe na forma, é
+          limitado automaticamente (metade do menor lado no retângulo). */}
+      {shape.type !== "elipse" && (
+        <NumberField
+          label={`Arredondar cantos (${unit})`}
+          value={toDisplay(shape.raio ?? 0)}
+          onCommit={(v) => onUpdate({ raio: Math.max(0, fromDisplay(v)) })}
+        />
+      )}
 
       <div className="flex items-center justify-between">
         <label className="text-xs text-slate-500">Cor</label>

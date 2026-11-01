@@ -205,6 +205,10 @@ export type CardShape = {
   h: number;
   color: string;
   opacity: number; // 0-1
+  // Arredondamento dos cantos (retângulo e triângulo), no espaço de desenho
+  // do card; ausente/0 = cantos retos (formas salvas antes disto). Ver
+  // formaArredondada.ts.
+  raio?: number;
 };
 
 export function defaultCardShape(type: CardShapeType, id: string): CardShape {

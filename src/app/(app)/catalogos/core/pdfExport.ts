@@ -52,6 +52,9 @@ export type PdfShapeSpec = {
   h: number;
   color: string;
   opacity: number;
+  // Raio dos cantos arredondados (retângulo/triângulo), em px de página;
+  // ausente/0 = reto. Mesma geometria de formaArredondada.ts.
+  raio?: number;
 };
 
 export type PdfBorderSpec = {
@@ -251,6 +254,7 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
       h: shape.h * cardScale + SHAPE_BLEED,
       color: shape.color,
       opacity: shape.opacity,
+      raio: (shape.raio ?? 0) * cardScale,
     });
   }
 
@@ -265,7 +269,9 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
 
     const template = linha[0].cardTemplate;
     for (const shape of template.shapes) {
-      const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
+      // Retângulo com cantos arredondados NÃO funde em faixa única (a faixa
+      // arredondaria só as pontas): cada card desenha o seu, como na tela.
+      const encostaNaBorda = shape.type === "retangulo" && !(shape.raio && shape.raio > 0) && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
       if (touchingX && encostaNaBorda && linha.length > 1) {
         const primeiro = linha[0];
         const ultimo = linha[linha.length - 1];
