@@ -321,7 +321,7 @@ export async function listPlanilhaProdutos(planilhaId: string): Promise<{ produt
   };
 }
 
-export type SectionItem = { id: string; ordem: number; product: ProductRow };
+export type SectionItem = { id: string; ordem: number; destaque: boolean; product: ProductRow };
 
 export async function listSectionItems(sectionId: string): Promise<{ items?: SectionItem[]; error?: string }> {
   const { supabase, user } = await requireUser();
@@ -329,7 +329,7 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
 
   const { data: itemRows, error: itemsErr } = await supabase
     .from("catalog_items")
-    .select("id, ordem, product_id")
+    .select("id, ordem, product_id, destaque")
     .eq("section_id", sectionId)
     .order("ordem", { ascending: true });
   if (itemsErr) return { error: itemsErr.message };
@@ -350,6 +350,7 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
       return {
         id: row.id as string,
         ordem: row.ordem as number,
+        destaque: (row.destaque as boolean | null) === true,
         product: {
           id: p.id as string,
           codigo: p.codigo as string,
@@ -364,6 +365,64 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
     .filter((x): x is SectionItem => x !== null);
 
   return { items };
+}
+
+// Marca/desmarca um item como produto em DESTAQUE (linha própria, card de
+// destaque da seção). Troca também a versão de card-molde do item pra da
+// cadeia certa: a mais recente do card de destaque (ou 1) ao marcar, a atual
+// do card padrão (ou 1) ao desmarcar.
+export async function setItemDestaque(itemId: string, destaque: boolean): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+
+  const tipo = await getItemCatalogTipo(supabase, itemId);
+  const access = await getCurrentAccess();
+  if (!temPermissao(access, permissaoParaAcao(tipo, "produtos_secao"))) {
+    return { error: "Sem permissão pra editar produtos da seção." };
+  }
+
+  const { data: item, error: itemErr } = await supabase.from("catalog_items").select("section_id").eq("id", itemId).single();
+  if (itemErr) return { error: itemErr.message };
+  const sectionId = item.section_id as string;
+
+  let versao = 1;
+  if (destaque) {
+    const { data: ultima, error: ultimaErr } = await supabase
+      .from("card_templates_destaque")
+      .select("versao")
+      .eq("section_id", sectionId)
+      .order("versao", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (ultimaErr) return { error: ultimaErr.message };
+    versao = (ultima?.versao as number | undefined) ?? 1;
+  } else {
+    const { data: section, error: sectionErr } = await supabase.from("sections").select("card_template_id").eq("id", sectionId).single();
+    if (sectionErr) return { error: sectionErr.message };
+    if (section?.card_template_id) {
+      const { data: template, error: templateErr } = await supabase
+        .from("card_templates")
+        .select("versao")
+        .eq("id", section.card_template_id)
+        .single();
+      if (templateErr) return { error: templateErr.message };
+      versao = (template?.versao as number | undefined) ?? 1;
+    }
+  }
+
+  const { error } = await supabase.from("catalog_items").update({ destaque, card_template_versao: versao }).eq("id", itemId);
+  if (error) return { error: error.message };
+  return {};
+}
+
+// A seção já tem o card de destaque configurado? (a tela de Produtos avisa
+// quando há item em destaque mas ainda não existe o card dele)
+export async function sectionTemDestaqueTemplate(sectionId: string): Promise<{ tem?: boolean; error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Sessão inválida." };
+  const { data, error } = await supabase.from("card_templates_destaque").select("id").eq("section_id", sectionId).limit(1);
+  if (error) return { error: error.message };
+  return { tem: (data?.length ?? 0) > 0 };
 }
 
 // Grava a versão ATUAL do card-molde da seção no momento em que o
@@ -415,10 +474,19 @@ export async function addProductToSection(sectionId: string, productId: string):
 // (spec 3.5). Sem produto nenhum posicionado ainda, a pergunta não faz
 // sentido: salvar continua sendo update in-place, sem gerar versão
 // nova, enquanto o usuário ainda está iterando no design do card.
-export async function sectionHasItems(sectionId: string): Promise<{ hasItems?: boolean; error?: string }> {
+export async function sectionHasItems(
+  sectionId: string,
+  variante: "padrao" | "destaque" = "padrao"
+): Promise<{ hasItems?: boolean; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  const { data, error } = await supabase.from("catalog_items").select("id").eq("section_id", sectionId).limit(1);
+  // Conta só os itens da variante em edição (cadeias de versão separadas).
+  const { data, error } = await supabase
+    .from("catalog_items")
+    .select("id")
+    .eq("section_id", sectionId)
+    .eq("destaque", variante === "destaque")
+    .limit(1);
   if (error) return { error: error.message };
   return { hasItems: (data?.length ?? 0) > 0 };
 }

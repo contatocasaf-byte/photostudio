@@ -181,6 +181,8 @@ export type CardStructurePanelProps = {
   // Unidade (px/mm) compartilhada com o painel do elemento selecionado.
   unit: Unidade;
   onUnitChange: (u: Unidade) => void;
+  // Largura travada na da grade (card de destaque).
+  larguraTravada?: boolean;
 };
 
 export function CardStructurePanel({
@@ -196,6 +198,7 @@ export function CardStructurePanel({
   onUpdateBorda,
   unit,
   onUnitChange,
+  larguraTravada = false,
 }: CardStructurePanelProps) {
   function toDisplay(px: number) {
     return unit === "mm" ? pxToMm(px) : Math.round(px);
@@ -208,11 +211,21 @@ export function CardStructurePanel({
     <PanelCard titulo="Estrutura do card" acao={<UnitToggle unit={unit} onChange={onUnitChange} />}>
       <Secao titulo="Tamanho">
         <div className="flex flex-col gap-2">
-          <NumberField
-            label={`Largura (${unit})`}
-            value={toDisplay(largura)}
-            onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 60), alturaMinima })}
-          />
+          {larguraTravada ? (
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs text-slate-500">Largura ({unit})</label>
+              <span className="w-20 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-500" title="Igual à largura da grade da seção">
+                {toDisplay(largura)}
+              </span>
+            </div>
+          ) : (
+            <NumberField
+              label={`Largura (${unit})`}
+              value={toDisplay(largura)}
+              onCommit={(v) => onResizeBoundary({ largura: Math.max(fromDisplay(v), 60), alturaMinima })}
+            />
+          )}
+          {larguraTravada && <p className="text-[11px] text-slate-400">Travada na largura da grade da seção.</p>}
           <NumberField
             label={`Altura mínima (${unit})`}
             value={toDisplay(alturaMinima)}

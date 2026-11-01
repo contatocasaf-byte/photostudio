@@ -404,20 +404,34 @@ function BoundaryRect({
 // ficassem junto do retângulo do card (por baixo), um campo ou forma por cima
 // da alça roubava o clique e o arraste movia o campo em vez de redimensionar o
 // card.
-function BoundaryTransformer({ transformerRef, scale }: { transformerRef: RefObject<Konva.Transformer | null>; scale: number }) {
+function BoundaryTransformer({
+  transformerRef,
+  scale,
+  soAltura,
+}: {
+  transformerRef: RefObject<Konva.Transformer | null>;
+  scale: number;
+  soAltura: boolean;
+}) {
   return (
     <Transformer
       ref={transformerRef}
-      enabledAnchors={[
-        "top-left",
-        "top-right",
-        "bottom-left",
-        "bottom-right",
-        "top-center",
-        "bottom-center",
-        "middle-left",
-        "middle-right",
-      ]}
+      // Largura travada (card de destaque = largura da grade): só dá pra
+      // mexer na altura.
+      enabledAnchors={
+        soAltura
+          ? ["top-center", "bottom-center"]
+          : [
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right",
+              "top-center",
+              "bottom-center",
+              "middle-left",
+              "middle-right",
+            ]
+      }
       rotateEnabled={false}
       flipEnabled={false}
       ignoreStroke={true}
@@ -527,6 +541,8 @@ export type CardEditorCanvasProps = {
   onClearSelection: () => void;
   // Fundo e cantos arredondados do card (CardBorda).
   borda: CardBorda;
+  // Largura travada (card de destaque): só as alças de altura do card.
+  larguraTravada?: boolean;
   gutterMode: boolean;
   gutterX: number | null;
   gutterY: number | null;
@@ -549,6 +565,7 @@ export default function CardEditorCanvas({
   onSelectShape,
   onClearSelection,
   borda,
+  larguraTravada = false,
   gutterMode,
   gutterX,
   gutterY,
@@ -772,7 +789,7 @@ export default function CardEditorCanvas({
           )
         )}
 
-        <BoundaryTransformer transformerRef={boundaryTransformerRef} scale={scale} />
+        <BoundaryTransformer transformerRef={boundaryTransformerRef} scale={scale} soAltura={larguraTravada} />
 
         <Transformer
           ref={fieldTransformerRef}

@@ -196,7 +196,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   const sectionIds = (sectionRows ?? []).map((s) => s.id as string);
   // Paginados: o Supabase corta select() em 1000 linhas sem avisar —
   // catálogo com mais de 1000 itens perdia os últimos no preview/PDF.
-  const [cardTemplatesRes, itemsRes] = await Promise.all([
+  const [cardTemplatesRes, destaqueTemplatesRes, itemsRes] = await Promise.all([
     sectionIds.length > 0
       ? fetchAllPages<Record<string, unknown>>((from, to) =>
           supabase
@@ -209,11 +209,24 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
             .range(from, to)
         )
       : Promise.resolve({ data: [] as Record<string, unknown>[], error: undefined as string | undefined }),
+    // Card-molde de DESTAQUE de cada seção (tabela à parte, ver migração).
+    sectionIds.length > 0
+      ? fetchAllPages<Record<string, unknown>>((from, to) =>
+          supabase
+            .from("card_templates_destaque")
+            .select(
+              "id, section_id, versao, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
+            )
+            .in("section_id", sectionIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : Promise.resolve({ data: [] as Record<string, unknown>[], error: undefined as string | undefined }),
     sectionIds.length > 0
       ? fetchAllPages<Record<string, unknown>>((from, to) =>
           supabase
             .from("catalog_items")
-            .select("id, section_id, ordem, product_id, card_template_versao")
+            .select("id, section_id, ordem, product_id, card_template_versao, destaque")
             .in("section_id", sectionIds)
             .order("section_id", { ascending: true })
             .order("ordem", { ascending: true })
@@ -223,6 +236,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       : Promise.resolve({ data: [] as Record<string, unknown>[], error: undefined as string | undefined }),
   ]);
   if (cardTemplatesRes.error) return { error: cardTemplatesRes.error };
+  if (destaqueTemplatesRes.error) return { error: destaqueTemplatesRes.error };
   if (itemsRes.error) return { error: itemsRes.error };
   const cardTemplateRows = cardTemplatesRes.data;
   const itemRows = itemsRes.data;
@@ -233,6 +247,14 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     const list = templatesBySection.get(sectionId) ?? [];
     list.push({ id: row.id as string, versao: row.versao as number, template: cardTemplateFromRow(row) });
     templatesBySection.set(sectionId, list);
+  }
+
+  const destaqueBySection = new Map<string, { versao: number; template: CardTemplateInput }[]>();
+  for (const row of destaqueTemplatesRes.data ?? []) {
+    const sectionId = row.section_id as string;
+    const list = destaqueBySection.get(sectionId) ?? [];
+    list.push({ versao: row.versao as number, template: cardTemplateFromRow(row) });
+    destaqueBySection.set(sectionId, list);
   }
 
   const productIds = [...new Set((itemRows ?? []).map((r) => r.product_id as string))];
@@ -292,13 +314,17 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
   // Item sem card_template_versao gravado (não deveria acontecer via
   // addProductToSection, mas todo card_templates existente até a Parte
   // 8 é sempre versão 1 — fallback seguro pra dado legado).
-  const itemsBySection = new Map<string, { product: ProductRow; cardTemplateVersao: number }[]>();
+  const itemsBySection = new Map<string, { product: ProductRow; cardTemplateVersao: number; destaque: boolean }[]>();
   for (const row of itemRows ?? []) {
     const product = productById.get(row.product_id as string);
     if (!product) continue;
     const sectionId = row.section_id as string;
     const list = itemsBySection.get(sectionId) ?? [];
-    list.push({ product, cardTemplateVersao: (row.card_template_versao as number | null) ?? 1 });
+    list.push({
+      product,
+      cardTemplateVersao: (row.card_template_versao as number | null) ?? 1,
+      destaque: (row.destaque as boolean | null) === true,
+    });
     itemsBySection.set(sectionId, list);
   }
 
@@ -310,12 +336,21 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     const aberturaTemplateId = s.abertura_template_id as string | null;
     const continuacaoTemplateId = s.continuacao_template_id as string | null;
 
+    // Card de destaque atual = a versão mais alta.
+    const versoesDestaque = destaqueBySection.get(s.id as string) ?? [];
+    const destaqueAtual = versoesDestaque.reduce<{ versao: number; template: CardTemplateInput } | null>(
+      (maior, v) => (maior === null || v.versao > maior.versao ? v : maior),
+      null
+    );
+
     return {
       id: s.id as string,
       titulo: s.titulo as string,
       colunas: s.colunas as number,
       cardTemplate: atual?.template ?? null,
       templateVersions: versions.map(({ versao, template }) => ({ versao, template })),
+      destaqueTemplate: destaqueAtual?.template ?? null,
+      destaqueTemplateVersions: versoesDestaque,
       items: itemsBySection.get(s.id as string) ?? [],
       aberturaTemplate: aberturaTemplateId ? (aberturaTemplatesById.get(aberturaTemplateId) ?? null) : null,
       continuacaoTemplate: continuacaoTemplateId ? (continuacaoTemplatesById.get(continuacaoTemplateId) ?? null) : null,

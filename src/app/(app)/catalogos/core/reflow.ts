@@ -58,7 +58,16 @@ export type SectionReflowInput = {
   // um produto posicionado antes de uma edição "aplicar só aos novos"
   // continuar desenhando com o molde antigo.
   templateVersions: { versao: number; template: CardTemplateInput }[];
-  items: { product: ProductRow; cardTemplateVersao: number }[]; // já ordenados (ver Parte 5)
+  // `destaque`: produto em destaque — ocupa uma LINHA PRÓPRIA, na largura da
+  // grade inteira, desenhado com o card-molde de destaque da seção (abaixo).
+  // Ausente/false = item normal. `cardTemplateVersao` de um item em destaque é
+  // versão da cadeia do card de destaque (não do padrão).
+  items: { product: ProductRow; cardTemplateVersao: number; destaque?: boolean }[]; // já ordenados (ver Parte 5)
+  // Card-molde de DESTAQUE da seção (mais recente + todas as versões). null/
+  // ausente = a seção não tem — nesse caso um item marcado como destaque é
+  // tratado como item normal (nunca some do catálogo).
+  destaqueTemplate?: CardTemplateInput | null;
+  destaqueTemplateVersions?: { versao: number; template: CardTemplateInput }[];
   // Variante de "Abertura de Seção" escolhida especificamente pra essa
   // seção (Fase 5, Parte 15) — null = sem escolha própria, cai pro
   // padrão do catálogo (pageTemplates.abertura_secao, resolvido em
@@ -134,6 +143,9 @@ export type PositionedCard = {
   // faixa de cor pensada pra ser contínua entre os cards.
   isFirstCol: boolean;
   isLastCol: boolean;
+  // Card em destaque (linha própria, largura da grade) — só informativo; o
+  // desenho usa `cardTemplate`/`width`/`height` como em qualquer card.
+  destaque?: boolean;
 };
 
 export type PreviewPage = {
@@ -247,6 +259,18 @@ function reflowSection(
     return templatesByVersao.get(versao) ?? cardTemplateAtual!;
   }
 
+  // Card de destaque: só vale se a seção tem um card-molde de destaque; sem ele
+  // o item marcado segue o fluxo normal.
+  const destaqueAtual = section.destaqueTemplate ?? null;
+  const destaqueByVersao = new Map((section.destaqueTemplateVersions ?? []).map((v) => [v.versao, v.template]));
+  function ehDestaque(it: SectionReflowInput["items"][number]): boolean {
+    return it.destaque === true && destaqueAtual !== null;
+  }
+  function templateDoItem(it: SectionReflowInput["items"][number]): CardTemplateInput {
+    if (ehDestaque(it)) return destaqueByVersao.get(it.cardTemplateVersao) ?? destaqueAtual!;
+    return resolveTemplate(it.cardTemplateVersao);
+  }
+
   const itens = section.items;
   const paginas: PreviewPage[] = [];
   let indice = 0;
@@ -289,13 +313,24 @@ function reflowSection(
     let progressoNestaPagina = false;
 
     while (indice < itens.length) {
-      const fimLinha = Math.min(indice + section.colunas, itens.length);
+      // Item em destaque ocupa uma linha SÓ DELE (na posição da ordem); linha
+      // normal junta até `colunas` itens, parando ANTES de um destaque — sem
+      // nenhum destaque marcado isso é exatamente o `slice(indice, indice +
+      // colunas)` de sempre.
+      let fimLinha: number;
+      if (ehDestaque(itens[indice])) {
+        fimLinha = indice + 1;
+      } else {
+        fimLinha = indice;
+        while (fimLinha < itens.length && fimLinha - indice < section.colunas && !ehDestaque(itens[fimLinha])) fimLinha++;
+      }
       const linha = itens.slice(indice, fimLinha);
+      const linhaEhDestaque = ehDestaque(itens[indice]);
       // Altura da linha usa a versão do molde de CADA item, não a
       // versão atual da seção — é isso que permite um produto
       // posicionado antes de uma edição "só novos" continuar com a
       // altura/layout do molde antigo (spec 3.5).
-      const alturaLinha = Math.max(...linha.map((it) => calcularAlturaCard(resolveTemplate(it.cardTemplateVersao), it.product)));
+      const alturaLinha = Math.max(...linha.map((it) => calcularAlturaCard(templateDoItem(it), it.product)));
 
       // Só recusa a linha se já colocou pelo menos uma nesta página —
       // garante progresso mesmo se uma linha sozinha já estourar a
@@ -303,15 +338,19 @@ function reflowSection(
       if (alturaLinha > areaRestante && progressoNestaPagina) break;
 
       linha.forEach((it, col) => {
+        const molde = templateDoItem(it);
         page.cards.push({
           x: col * cardTemplateAtual.gutterX * cardScale,
           y: cursorY,
-          width: cardTemplateAtual.largura * cardScale,
+          // Destaque: a largura é a do PRÓPRIO card de destaque (o editor trava
+          // ela na largura da grade), na mesma escala da página.
+          width: (linhaEhDestaque ? (molde.largura ?? cardTemplateAtual.largura) : cardTemplateAtual.largura) * cardScale,
           height: alturaLinha * cardScale,
           product: it.product,
-          cardTemplate: resolveTemplate(it.cardTemplateVersao),
+          cardTemplate: molde,
           isFirstCol: col === 0,
           isLastCol: col === linha.length - 1,
+          destaque: linhaEhDestaque,
         });
       });
 

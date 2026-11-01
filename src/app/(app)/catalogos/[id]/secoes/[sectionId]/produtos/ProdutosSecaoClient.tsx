@@ -19,6 +19,8 @@ import {
   addProductToSection,
   removeSectionItem,
   reorderSectionItems,
+  sectionTemDestaqueTemplate,
+  setItemDestaque,
   type ProductRow,
   type SectionItem,
 } from "../../../../produtos/actions";
@@ -30,16 +32,26 @@ function formatPreco(v: number | null): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function ItemRow({ item, onRemove }: { item: SectionItem; onRemove: () => void }) {
+function ItemRow({ item, onRemove, onToggleDestaque }: { item: SectionItem; onRemove: () => void; onToggleDestaque: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2"
+      className={
+        "flex items-center gap-2 rounded-md border px-3 py-2 " + (item.destaque ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white")
+      }
     >
       <button {...attributes} {...listeners} className="cursor-grab px-1 text-slate-300 hover:text-slate-600" title="Arrastar">
         ⠿
+      </button>
+      <button
+        onClick={onToggleDestaque}
+        title={item.destaque ? "Em destaque (linha própria, card de destaque) — clique para tirar" : "Marcar como produto em destaque"}
+        aria-label={item.destaque ? "Remover destaque" : "Marcar como destaque"}
+        className={"shrink-0 px-0.5 text-base leading-none " + (item.destaque ? "text-amber-500" : "text-slate-300 hover:text-amber-500")}
+      >
+        {item.destaque ? "★" : "☆"}
       </button>
       <span className="w-20 shrink-0 text-xs font-semibold text-slate-500">{item.product.codigo}</span>
       <span className="w-28 shrink-0 truncate text-xs text-slate-500">{item.product.ref || "—"}</span>
@@ -100,6 +112,9 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tipo, setTipo] = useState<CatalogTipo>("catalogo");
+  // A seção já tem o card de destaque configurado? (sem ele, um item em
+  // destaque é desenhado como item normal — o aviso abaixo explica.)
+  const [temCardDestaque, setTemCardDestaque] = useState(true);
   // Ordenação por coluna (só Jornal de Ofertas). `ordemAnterior` guarda a ordem
   // de antes da última ordenação pra "Desfazer"; some ao arrastar/adicionar/remover.
   const [ordenacao, setOrdenacao] = useState<{ coluna: ColunaOrdenacao; direcao: DirecaoOrdenacao } | null>(null);
@@ -120,9 +135,10 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getSection(sectionId), getCatalog(catalogId), listSectionItems(sectionId)]).then(
-      ([sectionRes, catalogRes, itemsRes]) => {
+    Promise.all([getSection(sectionId), getCatalog(catalogId), listSectionItems(sectionId), sectionTemDestaqueTemplate(sectionId)]).then(
+      ([sectionRes, catalogRes, itemsRes, destaqueRes]) => {
         if (cancelled) return;
+        if (!destaqueRes.error) setTemCardDestaque(destaqueRes.tem ?? false);
         if (sectionRes.error) setError(sectionRes.error);
         else setSectionTitulo(sectionRes.section?.titulo ?? null);
 
@@ -172,6 +188,17 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
     }
     limparOrdenacao();
     await refreshItems();
+  }
+
+  async function handleToggleDestaque(item: SectionItem) {
+    setError(null);
+    const novo = !item.destaque;
+    const res = await setItemDestaque(item.id, novo);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, destaque: novo } : i)));
   }
 
   async function handleRemove(itemId: string) {
@@ -309,13 +336,36 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
               </p>
             )}
             {ehJornal && items.length > 1 && <CabecalhoOrdenacao ordenacao={ordenacao} onOrdenar={handleOrdenar} />}
+            {items.length > 0 && (
+              <p className="mt-1 text-xs text-slate-400">
+                ☆ Clique na estrela para marcar um produto como <b>destaque</b>: ele ocupa uma linha própria, na largura da grade, com o{" "}
+                <Link href={`/catalogos/${catalogId}/secoes/${sectionId}/destaque`} className="underline hover:text-slate-600">
+                  card de destaque
+                </Link>{" "}
+                da seção.
+              </p>
+            )}
+            {!temCardDestaque && items.some((i) => i.destaque) && (
+              <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                ⚠ Há produto(s) em destaque, mas esta seção ainda não tem o <b>card de destaque</b> — por enquanto eles aparecem como cards
+                normais.{" "}
+                <Link href={`/catalogos/${catalogId}/secoes/${sectionId}/destaque`} className="underline">
+                  Criar o card de destaque
+                </Link>
+              </p>
+            )}
             {items.length === 0 && <p className="mt-2 text-sm text-slate-400">Nenhum produto adicionado ainda.</p>}
             {items.length > 0 && (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
                   <div className="mt-2 flex flex-col gap-2">
                     {items.map((item) => (
-                      <ItemRow key={item.id} item={item} onRemove={() => handleRemove(item.id)} />
+                      <ItemRow
+                        key={item.id}
+                        item={item}
+                        onRemove={() => handleRemove(item.id)}
+                        onToggleDestaque={() => handleToggleDestaque(item)}
+                      />
                     ))}
                   </div>
                 </SortableContext>

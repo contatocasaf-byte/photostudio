@@ -9,6 +9,7 @@ import {
   listSections,
   saveCardTemplate,
   type CardTemplateVersion,
+  type CardVariante,
   type SaveCardTemplateMode,
   type Section,
 } from "../../../actions";
@@ -51,8 +52,15 @@ function snapshotCard(input: {
   return JSON.stringify(input);
 }
 
-export default function CardEditorPage({ params }: { params: Promise<{ id: string; sectionId: string }> }) {
+export default function CardEditorPage({
+  params,
+  variante = "padrao",
+}: {
+  params: Promise<{ id: string; sectionId: string }>;
+  variante?: CardVariante;
+}) {
   const { id: catalogId, sectionId } = use(params);
+  const ehDestaque = variante === "destaque";
 
   const [section, setSection] = useState<Section | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +79,11 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   const [gutterY, setGutterY] = useState<number | null>(null);
   const [shapes, setShapes] = useState<CardShape[]>([]);
   const [borda, setBorda] = useState<CardBorda>(() => defaultCardBorda());
+  // Card de destaque: a largura é a da GRADE da seção ((colunas-1) x espaçamento
+  // + largura do card padrão) e fica travada — null = sem card padrão ainda (aí
+  // a largura é livre) ou editando o próprio card padrão.
+  const [larguraGrade, setLarguraGrade] = useState<number | null>(null);
+  const larguraTravada = ehDestaque && larguraGrade !== null;
 
   // Seleção múltipla (Ctrl+clique adiciona, Alt+clique retira, clique
   // simples substitui — ver SelectMode em CardEditorCanvas.tsx) — um
@@ -123,17 +136,33 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     let cancelled = false;
     Promise.all([
       getSection(sectionId),
-      getCardTemplate(sectionId),
+      getCardTemplate(sectionId, variante),
       listSections(catalogId),
-      sectionHasItems(sectionId),
-      listCardTemplateVersions(sectionId),
-    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes, versionsRes]) => {
+      sectionHasItems(sectionId, variante),
+      listCardTemplateVersions(sectionId, variante),
+      // Só o card de destaque precisa do padrão (pra saber a largura da grade).
+      ehDestaque ? getCardTemplate(sectionId, "padrao") : Promise.resolve(null),
+    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes, versionsRes, padraoRes]) => {
       if (cancelled) return;
       if (sectionRes.error) setError(sectionRes.error);
       else setSection(sectionRes.section ?? null);
-      if (!sectionRes.error) setFollowSourceId(sectionRes.section?.segue_secao_id ?? null);
+      // O card de destaque não participa do "seguir outra seção".
+      if (!sectionRes.error && !ehDestaque) setFollowSourceId(sectionRes.section?.segue_secao_id ?? null);
+
+      let grade: number | null = null;
+      if (ehDestaque && padraoRes?.template && sectionRes.section) {
+        const p = padraoRes.template;
+        grade = (sectionRes.section.colunas - 1) * (p.gutterX ?? p.largura + 20) + p.largura;
+        setLarguraGrade(grade);
+      }
+
       if (templateRes.error) setError(templateRes.error);
-      else if (templateRes.template) {
+      else if (!templateRes.template && grade !== null) {
+        // Card de destaque novo: começa já na largura da grade.
+        setLargura(grade);
+        setAlturaMinima(260);
+        setLayout(defaultCardLayout(grade, 260));
+      } else if (templateRes.template) {
         const t = templateRes.template;
         // Mescla por cima dos padrões (mesmo padrão já usado no editor
         // de página) — sem isso, um card-molde salvo com uma versão
@@ -146,7 +175,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         const bordaVal = t.borda ?? defaultCardBorda();
         setLayout(merged);
         setCamposHabilitados(campos);
-        setLargura(t.largura);
+        setLargura(grade ?? t.largura);
         setAlturaMinima(t.alturaMinima);
         setAlturaCresceCom(t.alturaCresceCom);
         setGutterX(t.gutterX);
@@ -179,14 +208,14 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     return () => {
       cancelled = true;
     };
-  }, [sectionId, catalogId]);
+  }, [sectionId, catalogId, variante, ehDestaque]);
 
   async function handleCopyFrom() {
     if (!copySourceId) return;
     setCopying(true);
     setStatus(null);
     try {
-      const res = await getCardTemplate(copySourceId);
+      const res = await getCardTemplate(copySourceId, variante);
       if (res.error) {
         setStatus(`⚠ ${res.error}`);
         return;
@@ -201,7 +230,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       const bordaVal = t.borda ?? defaultCardBorda();
       setLayout(merged);
       setCamposHabilitados(campos);
-      setLargura(t.largura);
+      setLargura(larguraTravada ? (larguraGrade as number) : t.largura);
       setAlturaMinima(t.alturaMinima);
       setAlturaCresceCom(t.alturaCresceCom);
       setGutterX(t.gutterX);
@@ -213,7 +242,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       // verdade se o Salvar acontecer sem nenhuma edição no meio (ver
       // isFollowDirty); editar qualquer coisa depois de copiar já
       // desfaz essa intenção automaticamente.
-      setFollowSourceId(copySourceId);
+      if (!ehDestaque) setFollowSourceId(copySourceId);
       setCopiedSnapshot(
         snapshotCard({
           layout: merged,
@@ -243,7 +272,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     const t = v.template;
     setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
     setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
-    setLargura(t.largura);
+    setLargura(larguraTravada ? (larguraGrade as number) : t.largura);
     setAlturaMinima(t.alturaMinima);
     setAlturaCresceCom(t.alturaCresceCom);
     setGutterX(t.gutterX);
@@ -345,7 +374,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
   }, [selectedKeys, selectedShapeIds]);
 
   function handleResizeBoundary(patch: { largura: number; alturaMinima: number }) {
-    setLargura(patch.largura);
+    // Card de destaque: largura travada na da grade.
+    setLargura(larguraTravada ? (larguraGrade as number) : patch.largura);
     setAlturaMinima(patch.alturaMinima);
   }
 
@@ -372,7 +402,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
   // Seções que seguem ESTA (ver segue_secao_id) — ao salvar aqui, o
   // usuário pode escolher replicar a mudança pra elas também.
-  const followers = otherSections.filter((s) => s.segue_secao_id === sectionId);
+  const followers = ehDestaque ? [] : otherSections.filter((s) => s.segue_secao_id === sectionId);
 
   // Estado atual comparado ao que foi copiado/carregado por último
   // (ver copiedSnapshot) — qualquer edição depois disso já invalida o
@@ -418,15 +448,18 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
         },
         modo,
         segueSecaoId,
-        followers.length > 0 && replicarSeguidoras
+        followers.length > 0 && replicarSeguidoras,
+        variante
       );
-      setStatus(res.error ? `⚠ ${res.error}` : "✔ Card-molde salvo.");
+      setStatus(res.error ? `⚠ ${res.error}` : ehDestaque ? "✔ Card de destaque salvo." : "✔ Card-molde salvo.");
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) return <p className="text-sm text-slate-400">Carregando card-molde...</p>;
+
+  const rotuloCard = ehDestaque ? "Card de destaque" : "Card-molde";
 
   return (
     <div>
@@ -435,7 +468,9 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       </Link>
 
       <div className="mt-2 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900">Card-molde — {section?.titulo}</h1>
+        <h1 className="text-lg font-semibold text-slate-900">
+          {rotuloCard} — {section?.titulo}
+        </h1>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -447,6 +482,29 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
       <p className="mt-1 text-sm text-slate-500">
         Desenhado com dados de exemplo — a foto e os textos reais entram quando os produtos forem vinculados.
       </p>
+      {ehDestaque && (
+        <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p>
+            ★ Este card é usado nos produtos marcados como <b>destaque</b> na tela de Produtos da seção: cada um ocupa uma linha própria, na
+            largura da grade.{" "}
+            {larguraTravada
+              ? `A largura (${Math.round(larguraGrade as number)} px) é a da grade e não pode ser alterada aqui — só a altura.`
+              : "Esta seção ainda não tem o card padrão; a largura fica livre até ele existir (depois a largura passa a ser a da grade)."}
+          </p>
+          <p className="mt-1">
+            <Link href={`/catalogos/${catalogId}/secoes/${sectionId}`} className="underline hover:text-amber-700">
+              Ir para o card padrão
+            </Link>
+          </p>
+        </div>
+      )}
+      {!ehDestaque && (
+        <p className="mt-1 text-xs text-slate-400">
+          <Link href={`/catalogos/${catalogId}/secoes/${sectionId}/destaque`} className="underline hover:text-slate-600">
+            Editar o card de destaque desta seção
+          </Link>
+        </p>
+      )}
       <FontManager />
 
       {otherSections.length > 0 && (
@@ -601,6 +659,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             onSelectShape={handleSelectShape}
             onClearSelection={handleClearSelection}
             borda={borda}
+            larguraTravada={larguraTravada}
           />
         </div>
 
@@ -623,6 +682,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
               onUpdateBorda={handleUpdateBorda}
               unit={unit}
               onUnitChange={setUnit}
+              larguraTravada={larguraTravada}
             />
           ) : (
             <SelectedElementPanel

@@ -367,6 +367,16 @@ export async function reorderSections(orderedIds: string[]): Promise<{ error?: s
 // ver `SaveCardTemplateMode` e `saveCardTemplate`.
 export type SaveCardTemplateMode = "aplicar_todos" | "aplicar_novos";
 
+// Card-molde PADRÃO (tabela card_templates) ou de DESTAQUE (tabela
+// card_templates_destaque — separada de propósito, ver
+// supabase/migration_2026-11-01_card_destaque.sql). As duas têm as mesmas
+// colunas e a mesma cadeia de versões por seção.
+export type CardVariante = "padrao" | "destaque";
+
+function tabelaDoCard(variante: CardVariante): "card_templates" | "card_templates_destaque" {
+  return variante === "destaque" ? "card_templates_destaque" : "card_templates";
+}
+
 export type CardTemplateData = {
   layout: CardLayout;
   largura: number;
@@ -379,12 +389,15 @@ export type CardTemplateData = {
   borda: CardBorda;
 };
 
-export async function getCardTemplate(sectionId: string): Promise<{ template?: CardTemplateData | null; error?: string }> {
+export async function getCardTemplate(
+  sectionId: string,
+  variante: CardVariante = "padrao"
+): Promise<{ template?: CardTemplateData | null; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const { data, error } = await supabase
-    .from("card_templates")
+    .from(tabelaDoCard(variante))
     .select(
       "layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
     )
@@ -420,10 +433,13 @@ async function applyCardTemplateRow(
   supabase: SupabaseServerClient,
   targetSectionId: string,
   row: Record<string, unknown>,
-  modo: SaveCardTemplateMode
+  modo: SaveCardTemplateMode,
+  variante: CardVariante = "padrao"
 ): Promise<{ error?: string }> {
+  const tabela = tabelaDoCard(variante);
+  const ehDestaque = variante === "destaque";
   const { data: existing, error: existingErr } = await supabase
-    .from("card_templates")
+    .from(tabela)
     .select("id, versao")
     .eq("section_id", targetSectionId)
     .order("versao", { ascending: false })
@@ -433,43 +449,59 @@ async function applyCardTemplateRow(
 
   if (!existing) {
     const { data: inserted, error: insertErr } = await supabase
-      .from("card_templates")
+      .from(tabela)
       .insert({ section_id: targetSectionId, ...row })
       .select("id")
       .single();
     if (insertErr) return { error: insertErr.message };
 
-    const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
-    if (linkErr) return { error: linkErr.message };
+    // O card de destaque não tem ponteiro em `sections`: o atual é sempre a
+    // versão mais alta.
+    if (!ehDestaque) {
+      const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
+      if (linkErr) return { error: linkErr.message };
+    }
     return {};
   }
 
-  const { data: itemRows, error: itemsErr } = await supabase.from("catalog_items").select("id").eq("section_id", targetSectionId).limit(1);
+  // "Tem produto posicionado" = há item DESTA variante (os de destaque usam a
+  // cadeia do card de destaque; os normais, a do padrão).
+  const { data: itemRows, error: itemsErr } = await supabase
+    .from("catalog_items")
+    .select("id")
+    .eq("section_id", targetSectionId)
+    .eq("destaque", ehDestaque)
+    .limit(1);
   if (itemsErr) return { error: itemsErr.message };
   const hasItems = (itemRows?.length ?? 0) > 0;
 
   if (!hasItems) {
-    const { error } = await supabase.from("card_templates").update(row).eq("id", existing.id);
+    const { error } = await supabase.from(tabela).update(row).eq("id", existing.id);
     if (error) return { error: error.message };
     return {};
   }
 
   const proximaVersao = (existing.versao as number) + 1;
   const { data: inserted, error: insertErr } = await supabase
-    .from("card_templates")
+    .from(tabela)
     .insert({ section_id: targetSectionId, versao: proximaVersao, ...row })
     .select("id")
     .single();
   if (insertErr) return { error: insertErr.message };
 
-  const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
-  if (linkErr) return { error: linkErr.message };
+  if (!ehDestaque) {
+    const { error: linkErr } = await supabase.from("sections").update({ card_template_id: inserted.id }).eq("id", targetSectionId);
+    if (linkErr) return { error: linkErr.message };
+  }
 
   if (modo === "aplicar_todos") {
+    // Só os itens da MESMA variante: uma nova versão do padrão não pode mexer
+    // na versão dos itens em destaque (e vice-versa).
     const { error: migrateErr } = await supabase
       .from("catalog_items")
       .update({ card_template_versao: proximaVersao })
-      .eq("section_id", targetSectionId);
+      .eq("section_id", targetSectionId)
+      .eq("destaque", ehDestaque);
     if (migrateErr) return { error: migrateErr.message };
   }
 
@@ -492,7 +524,8 @@ export async function saveCardTemplate(
   // (nunca a mesma linha compartilhada). Sempre em modo "aplicar_todos"
   // pra cada seguidora — seguir significa ficar visualmente idêntica,
   // não faz sentido a seguidora ganhar produtos "no molde antigo".
-  replicarParaSeguidoras: boolean = false
+  replicarParaSeguidoras: boolean = false,
+  variante: CardVariante = "padrao"
 ): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -512,8 +545,11 @@ export async function saveCardTemplate(
     borda_json: data.borda,
   };
 
-  const applyErr = await applyCardTemplateRow(supabase, sectionId, row, modo);
+  const applyErr = await applyCardTemplateRow(supabase, sectionId, row, modo, variante);
   if (applyErr.error) return applyErr;
+
+  // O card de destaque não participa do "seguir outra seção".
+  if (variante === "destaque") return {};
 
   const { error: followErr } = await supabase.from("sections").update({ segue_secao_id: segueSecaoId }).eq("id", sectionId);
   if (followErr) return { error: followErr.message };
@@ -543,12 +579,15 @@ export type CardTemplateVersion = {
 // versão antiga no estado local do editor (mesma mecânica de
 // "Reaproveitar de outra seção") e deixar o Salvar de sempre criar a
 // versão nova a partir daí. Essa função só lista o que existe.
-export async function listCardTemplateVersions(sectionId: string): Promise<{ versions?: CardTemplateVersion[]; error?: string }> {
+export async function listCardTemplateVersions(
+  sectionId: string,
+  variante: CardVariante = "padrao"
+): Promise<{ versions?: CardTemplateVersion[]; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
 
   const { data, error } = await supabase
-    .from("card_templates")
+    .from(tabelaDoCard(variante))
     .select(
       "id, versao, criado_em, layout_json, largura, altura_minima, altura_cresce_com, campos_habilitados, gutter_x, gutter_y, shapes_json, borda_json"
     )
