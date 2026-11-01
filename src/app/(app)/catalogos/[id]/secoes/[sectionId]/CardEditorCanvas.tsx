@@ -487,6 +487,8 @@ export default function CardEditorCanvas({
   const { scale, canvasW, canvasH } = computeScale(largura, alturaMinima);
 
   const nodeRefs = useRef<Partial<Record<string, Konva.Node>>>({});
+  // Onde o botão do mouse (ou o dedo) foi pressionado por último, no palco.
+  const pressionadoEm = useRef<{ x: number; y: number } | null>(null);
   const fieldTransformerRef = useRef<Konva.Transformer>(null);
   const boundaryTransformerRef = useRef<Konva.Transformer>(null);
   const [fontsTick, setFontsTick] = useState(0);
@@ -529,8 +531,10 @@ export default function CardEditorCanvas({
   // dentro do grande continua alcançável; o grande, pelo resto da sua área).
   // Só entram a foto e as formas (com elipse/triângulo medidos de verdade); um
   // campo de texto acertado em cima das letras continua valendo como sempre.
-  function alvoSobPonteiro(stage: Konva.Stage | null, chaveNativa: string): string {
-    const pos = stage?.getPointerPosition();
+  function alvoSobPonteiro(stage: Konva.Stage | null, chaveNativa: string, noArraste = false): string {
+    // No arraste vale onde o botão foi PRESSIONADO: quando o arraste começa o
+    // ponteiro pode já ter saído de cima do elemento (movimento rápido).
+    const pos = (noArraste ? pressionadoEm.current : null) ?? stage?.getPointerPosition();
     if (!pos) return chaveNativa;
     if (CARD_FIELD_DEFS.some((d) => d.key === chaveNativa && d.type === "text")) return chaveNativa;
 
@@ -572,7 +576,7 @@ export default function CardEditorCanvas({
   // Começou a arrastar um elemento, mas há outro menor sob o ponteiro: cancela
   // este arraste, seleciona o menor e passa o arraste pra ele.
   function redirecionarArraste(chave: string, e: Konva.KonvaEventObject<DragEvent>) {
-    const alvo = alvoSobPonteiro(e.target.getStage(), chave);
+    const alvo = alvoSobPonteiro(e.target.getStage(), chave, true);
     if (alvo === chave) return;
     const outro = nodeRefs.current[alvo];
     if (!outro) return;
@@ -614,7 +618,11 @@ export default function CardEditorCanvas({
       width={stageW}
       height={stageH}
       onMouseDown={(e) => {
+        pressionadoEm.current = e.target.getStage()?.getPointerPosition() ?? null;
         if (e.target === e.target.getStage()) onClearSelection();
+      }}
+      onTouchStart={(e) => {
+        pressionadoEm.current = e.target.getStage()?.getPointerPosition() ?? null;
       }}
       onTap={(e) => {
         if (e.target === e.target.getStage()) onClearSelection();
