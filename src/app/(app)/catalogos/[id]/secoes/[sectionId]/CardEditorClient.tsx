@@ -349,6 +349,18 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
     setAlturaMinima(patch.alturaMinima);
   }
 
+  // Borda de cima/esquerda do card arrastada: os campos e formas andam -dx/-dy
+  // (as coordenadas deles são relativas ao canto superior-esquerdo do card)
+  // pra ficarem no mesmo lugar da tela.
+  function handleShiftContent(dx: number, dy: number) {
+    setLayout((prev) => {
+      const next = { ...prev } as Record<string, { x: number; y: number }>;
+      for (const key of Object.keys(next)) next[key] = { ...next[key], x: next[key].x - dx, y: next[key].y - dy };
+      return next as unknown as CardLayout;
+    });
+    setShapes((prev) => prev.map((s) => ({ ...s, x: s.x - dx, y: s.y - dy })));
+  }
+
   function handleGutterChange(patch: { gutterX: number; gutterY: number }) {
     setGutterX(patch.gutterX);
     setGutterY(patch.gutterY);
@@ -576,6 +588,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             largura={largura}
             alturaMinima={alturaMinima}
             onResizeBoundary={handleResizeBoundary}
+            onShiftContent={handleShiftContent}
             selectedKeys={selectedKeys}
             onSelectField={handleSelectField}
             gutterMode={gutterMode}

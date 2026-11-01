@@ -25,7 +25,7 @@ const PREVIEW_MAX = 420;
 const MIN_BOUNDARY = 60;
 const MIN_FIELD_SIZE = 20;
 const GHOST_GAP = 24;
-const ORIGIN = 24;
+const ORIGIN = 40;
 
 function computeScale(largura: number, alturaMinima: number) {
   const maior = Math.max(largura, alturaMinima);
@@ -282,55 +282,71 @@ function ShapeNode({
   return <KonvaShape ref={(node) => registerRef(shape.id, node)} {...common} sceneFunc={sceneFunc} />;
 }
 
-// Boundary = largura/altura mínima do card (spec seção 3.1). Fica
-// sempre na origem (0,0) do "espaço do card" — posição absoluta na
-// página só importa na Parte 3 (editor de página) — e só é
-// redimensionável (Transformer próprio, 4 cantos + 4 pontos médios),
-// nunca arrastável. Redimensionar NÃO re-escala os campos dentro dele
-// (mesma decisão já usada no product_box do Editor de Layout do
-// Ofertas). `keepRatio` (default do Konva, true) só afeta os cantos —
-// mantêm largura×altura proporcionais; os pontos médios já
-// redimensionam um eixo só por conta própria, com ou sem keepRatio.
-// NUNCA desligar via `keepRatio={false}`: isso também destrava os
-// CANTOS, que devem continuar proporcionais (bug já cometido aqui,
-// corrigido — ver mesmo comentário em paginas/[tipo]/PageEditorCanvas.tsx).
+// Boundary = largura/altura mínima do card (spec seção 3.1). Só é
+// redimensionável (Transformer próprio, 4 cantos + 4 pontos médios), nunca
+// arrastável, e as alças só aparecem quando o CARD está selecionado (nenhum
+// campo/forma selecionado) — antes ficavam sempre visíveis e davam a
+// impressão de que o card estava selecionado junto com o campo.
+//
+// Redimensionar NÃO re-escala os campos dentro dele (mesma decisão do
+// product_box do Editor de Layout do Ofertas) e NÃO os move na tela: arrastar
+// a borda de CIMA ou da ESQUERDA move aquela borda (a oposta fica parada) e os
+// campos ficam onde estão. Como as coordenadas dos campos são relativas ao
+// canto superior-esquerdo do card, ao soltar o deslocamento da borda vira um
+// ajuste de -dx/-dy em todos os campos e formas (onCommit) e o card volta à
+// origem do canvas. Durante o arraste a escala fica congelada (onStart/onCommit),
+// senão ela mudaria a cada tick em cards grandes.
+//
+// `keepRatio` (default do Konva, true) só afeta os cantos — mantêm
+// largura×altura proporcionais; os pontos médios já redimensionam um eixo só
+// por conta própria. NUNCA desligar via `keepRatio={false}`: isso também
+// destrava os CANTOS, que devem continuar proporcionais.
 function BoundaryRect({
   canvasW,
   canvasH,
   scale,
   onResize,
+  onStart,
+  onCommit,
   transformerRef,
   borda,
+  ativo,
   onClear,
 }: {
   canvasW: number;
   canvasH: number;
   scale: number;
   onResize: (patch: { largura: number; alturaMinima: number }) => void;
+  onStart: () => void;
+  onCommit: (deslocamento: { dx: number; dy: number }) => void;
   transformerRef: RefObject<Konva.Transformer | null>;
   borda: CardBorda;
+  ativo: boolean;
   onClear: () => void;
 }) {
   // Cantos arredondados e fundo do CARD (ver CardBorda): o fundo vai numa
-  // camada própria sob o retângulo arrastável, que fica só com o contorno
+  // camada própria sob o retângulo clicável, que fica só com o contorno
   // tracejado — clicar nele limpa a seleção (mostra a "Estrutura do card").
   const raio = raioEfetivoRetangulo(canvasW, canvasH, (borda.raio ?? 0) * scale);
   const rectRef = useRef<Konva.Rect>(null);
+  // Posição do card durante o arraste de uma borda de cima/esquerda (a base e o
+  // fundo acompanham o retângulo arrastado).
+  const [pos, setPos] = useState({ x: ORIGIN, y: ORIGIN });
 
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr || !rectRef.current) return;
-    tr.nodes([rectRef.current]);
+    tr.nodes(ativo ? [rectRef.current] : []);
     tr.getLayer()?.batchDraw();
-  }, [transformerRef]);
+  }, [transformerRef, ativo]);
 
   return (
     <>
-      <Rect x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} fill="#ffffff" cornerRadius={raio} listening={false} />
+      <Rect x={pos.x} y={pos.y} width={canvasW} height={canvasH} fill="#ffffff" cornerRadius={raio} listening={false} />
       {borda.fundo?.ativo && (
         <Rect
-          x={ORIGIN}
-          y={ORIGIN}
+          x={pos.x}
+          y={pos.y}
           width={canvasW}
           height={canvasH}
           fill={corComOpacidade(borda.fundo.cor, borda.fundo.opacidade)}
@@ -340,34 +356,40 @@ function BoundaryRect({
       )}
       <Rect
         ref={rectRef}
-        x={ORIGIN}
-        y={ORIGIN}
+        x={pos.x}
+        y={pos.y}
         width={canvasW}
         height={canvasH}
         fill="transparent"
         cornerRadius={raio}
-        stroke="#94a3b8"
-        strokeWidth={1.5}
+        stroke={ativo ? "#94a3b8" : "#cbd5e1"}
+        strokeWidth={ativo ? 1.5 : 1}
         dash={[4, 4]}
         onMouseDown={onClear}
         onTap={onClear}
+        onTransformStart={onStart}
         onTransform={(e) => {
           const node = e.target;
           const newLargura = Math.max(MIN_BOUNDARY, Math.round((node.width() * node.scaleX()) / scale));
           const newAltura = Math.max(MIN_BOUNDARY, Math.round((node.height() * node.scaleY()) / scale));
           node.scaleX(1);
           node.scaleY(1);
-          // O boundary fica sempre fixo em (ORIGIN, ORIGIN) — arrastar
-          // pelo canto/ponto médio superior-esquerdo faz o Konva mover
-          // x/y pra manter o lado oposto fixo (comportamento padrão de
-          // resize). Sem essa correção a cada tick do arraste, esse
-          // deslocamento se acumula e degringola pra valores absurdos
-          // (largura/altura na casa das dezenas de milhares de px).
-          node.x(ORIGIN);
-          node.y(ORIGIN);
           node.width(newLargura * scale);
           node.height(newAltura * scale);
+          // x/y NÃO são forçados de volta: o Konva já os ajusta pra manter a
+          // borda oposta parada (forçar a origem a cada tick era o que fazia a
+          // borda errada se mover e o card se distorcer).
+          setPos({ x: node.x(), y: node.y() });
           onResize({ largura: newLargura, alturaMinima: newAltura });
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          const dx = Math.round((node.x() - ORIGIN) / scale);
+          const dy = Math.round((node.y() - ORIGIN) / scale);
+          node.x(ORIGIN);
+          node.y(ORIGIN);
+          setPos({ x: ORIGIN, y: ORIGIN });
+          onCommit({ dx, dy });
         }}
       />
       <Transformer
@@ -383,6 +405,8 @@ function BoundaryRect({
           "middle-right",
         ]}
         rotateEnabled={false}
+        flipEnabled={false}
+        ignoreStroke={true}
         keepRatio={true}
         boundBoxFunc={(oldBox, newBox) => {
           if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
@@ -477,6 +501,9 @@ export type CardEditorCanvasProps = {
   largura: number;
   alturaMinima: number;
   onResizeBoundary: (patch: { largura: number; alturaMinima: number }) => void;
+  // Soltou uma borda de cima/esquerda do card: o conteúdo (campos e formas)
+  // deve andar -dx/-dy pra continuar no mesmo lugar da tela.
+  onShiftContent: (dx: number, dy: number) => void;
   // Seleção múltipla: array em vez de valor único — Ctrl+clique
   // adiciona um campo/forma à seleção, Alt+clique retira, clique
   // simples substitui tudo por só o item clicado (ver `SelectMode`).
@@ -502,6 +529,7 @@ export default function CardEditorCanvas({
   largura,
   alturaMinima,
   onResizeBoundary,
+  onShiftContent,
   selectedKeys,
   onSelectField,
   selectedShapeIds,
@@ -513,7 +541,12 @@ export default function CardEditorCanvas({
   gutterY,
   onGutterChange,
 }: CardEditorCanvasProps) {
-  const { scale, canvasW, canvasH } = computeScale(largura, alturaMinima);
+  // Escala congelada enquanto uma borda do card é arrastada (ver BoundaryRect).
+  const [escalaFixa, setEscalaFixa] = useState<number | null>(null);
+  const base = computeScale(largura, alturaMinima);
+  const scale = escalaFixa ?? base.scale;
+  const canvasW = escalaFixa !== null ? Math.round(largura * scale) : base.canvasW;
+  const canvasH = escalaFixa !== null ? Math.round(alturaMinima * scale) : base.canvasH;
 
   const nodeRefs = useRef<Partial<Record<string, Konva.Node>>>({});
   // Onde o botão do mouse (ou o dedo) foi pressionado por último, no palco.
@@ -663,8 +696,14 @@ export default function CardEditorCanvas({
           canvasH={canvasH}
           scale={scale}
           onResize={onResizeBoundary}
+          onStart={() => setEscalaFixa(scale)}
+          onCommit={({ dx, dy }) => {
+            if (dx !== 0 || dy !== 0) onShiftContent(dx, dy);
+            setEscalaFixa(null);
+          }}
           transformerRef={boundaryTransformerRef}
           borda={borda}
+          ativo={selectionCount === 0}
           onClear={onClearSelection}
         />
 
