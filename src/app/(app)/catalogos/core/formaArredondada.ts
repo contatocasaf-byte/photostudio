@@ -53,6 +53,31 @@ export function caminhoTriangulo(w: number, h: number, raio: number | undefined)
   return cmds;
 }
 
+// Caminho de um retângulo com cantos arredondados (arcos circulares) — pra
+// recortar a foto do card (clipFunc do Konva). Mesmo raio efetivo do restante.
+export function tracarRetanguloArredondado(
+  ctx: {
+    beginPath(): void;
+    moveTo(x: number, y: number): void;
+    arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void;
+    closePath(): void;
+  },
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  raio: number | undefined
+): void {
+  const r = raioEfetivoRetangulo(w, h, raio);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 type ContextoDeCaminho = {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;

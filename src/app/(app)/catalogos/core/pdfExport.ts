@@ -10,6 +10,7 @@
 import type { TextAlign } from "@/lib/canvasText";
 import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
+import { contornosArredondados, fundosDosCards } from "./fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
 export type PdfImageSpec = {
@@ -20,6 +21,11 @@ export type PdfImageSpec = {
   w: number;
   h: number;
   fit: "contain" | "stretch";
+  // Foto do Produto do card: cantos arredondados (a foto é recortada) e fundo
+  // atrás dela. Ausente = como antes.
+  raio?: number;
+  fundoCor?: string;
+  fundoOpacidade?: number;
 };
 
 export type PdfTextSpec = {
@@ -80,11 +86,25 @@ export type PdfPdfBackgroundSpec = {
 
 export type PdfBackgroundSpec = PdfImageSpec | PdfPdfBackgroundSpec;
 
+// Contorno de card com cantos arredondados (só traço).
+export type PdfOutlineSpec = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  raio: number;
+  color: string;
+  opacity: number;
+  width: number;
+};
+
 export type PdfPageSpec = {
   background: PdfBackgroundSpec | null;
   pageShapes: PdfShapeSpec[];
   pageFields: PdfFieldSpec[];
+  cardBackgrounds: PdfShapeSpec[];
   cardBorders: PdfBorderSpec[];
+  cardOutlines: PdfOutlineSpec[];
   cardShapes: PdfShapeSpec[];
   cardFields: PdfFieldSpec[];
 };
@@ -193,7 +213,8 @@ function buildCardBorders(page: PreviewPage): PdfBorderSpec[] {
   const borders: PdfBorderSpec[] = [];
   for (const card of page.cards) {
     const borda = card.cardTemplate.borda;
-    if (!borda.ativa) continue;
+    // Card com cantos arredondados usa o contorno arredondado (cardOutlines).
+    if (!borda.ativa || (borda.raio ?? 0) > 0) continue;
 
     const x0 = margens.left + card.x;
     const y0 = margens.top + card.y;
@@ -367,7 +388,27 @@ function buildPageSpec(
     background: buildBackground(page, paginaLargura, paginaAltura),
     pageShapes: buildPageShapes(page),
     pageFields: buildPageFields(page, numeroPagina, validadeTexto),
+    cardBackgrounds: fundosDosCards(page).map((f) => ({
+      shapeType: "retangulo" as const,
+      x: f.x,
+      y: f.y,
+      w: f.w,
+      h: f.h,
+      color: f.cor,
+      opacity: f.opacidade,
+      raio: f.raio,
+    })),
     cardBorders: buildCardBorders(page),
+    cardOutlines: contornosArredondados(page).map((o) => ({
+      x: o.x,
+      y: o.y,
+      w: o.w,
+      h: o.h,
+      raio: o.raio,
+      color: o.cor,
+      opacity: o.opacidade,
+      width: o.espessura,
+    })),
     cardShapes: buildCardShapes(page),
     cardFields: buildCardFields(page, fotoKeyByUrl),
   };

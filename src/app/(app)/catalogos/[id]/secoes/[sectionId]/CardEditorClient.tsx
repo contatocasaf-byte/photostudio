@@ -568,7 +568,7 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           elementos (embaixo do canvas) + propriedades do item
           selecionado (ao lado dessa lista) na linha de baixo. */}
       <div className="mt-4 grid grid-cols-[auto_18rem] items-start gap-4">
-        <div className="overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+        <div className="col-start-1 row-start-1 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
           <CardEditorCanvas
             layout={layout}
             onLayoutChange={setLayout}
@@ -587,48 +587,61 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
             selectedShapeIds={selectedShapeIds}
             onSelectShape={handleSelectShape}
             onClearSelection={handleClearSelection}
+            borda={borda}
           />
         </div>
 
-        <CardStructurePanel
-          largura={largura}
-          alturaMinima={alturaMinima}
-          onResizeBoundary={handleResizeBoundary}
-          gutterMode={gutterMode}
-          onToggleGutterMode={setGutterMode}
-          gutterX={gutterX}
-          gutterY={gutterY}
-          onGutterChange={handleGutterChange}
-          borda={borda}
-          onUpdateBorda={handleUpdateBorda}
-          unit={unit}
-          onUnitChange={setUnit}
-        />
+        {/* Painel de propriedades ÚNICO, ao lado do canvas: mostra a
+            "Estrutura do card" quando nada está selecionado (ou ela foi
+            escolhida na lista) e as propriedades do campo/forma
+            selecionado nos demais casos. Acompanha a rolagem (sticky). */}
+        <div className="col-start-2 row-span-2 row-start-1 self-start sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+          {selectedKeys.length + selectedShapeIds.length === 0 ? (
+            <CardStructurePanel
+              largura={largura}
+              alturaMinima={alturaMinima}
+              onResizeBoundary={handleResizeBoundary}
+              gutterMode={gutterMode}
+              onToggleGutterMode={setGutterMode}
+              gutterX={gutterX}
+              gutterY={gutterY}
+              onGutterChange={handleGutterChange}
+              borda={borda}
+              onUpdateBorda={handleUpdateBorda}
+              unit={unit}
+              onUnitChange={setUnit}
+            />
+          ) : (
+            <SelectedElementPanel
+              layout={layout}
+              selectedKeys={selectedKeys}
+              onUpdateField={handleUpdateField}
+              shapes={shapes}
+              selectedShapeIds={selectedShapeIds}
+              onUpdateShape={handleUpdateShape}
+              onRemoveShape={handleRemoveShape}
+              unit={unit}
+              onUnitChange={setUnit}
+            />
+          )}
+        </div>
 
-        <ElementsPanel
-          camposHabilitados={camposHabilitados}
-          onToggleCampo={handleToggleCampo}
-          selectedKeys={selectedKeys}
-          onSelectField={handleSelectField}
-          alturaCresceCom={alturaCresceCom}
-          onChangeAlturaCresceCom={setAlturaCresceCom}
-          shapes={shapes}
-          selectedShapeIds={selectedShapeIds}
-          onSelectShape={handleSelectShape}
-          onAddShape={handleAddShape}
-        />
-
-        <SelectedElementPanel
-          layout={layout}
-          selectedKeys={selectedKeys}
-          onUpdateField={handleUpdateField}
-          shapes={shapes}
-          selectedShapeIds={selectedShapeIds}
-          onUpdateShape={handleUpdateShape}
-          onRemoveShape={handleRemoveShape}
-          unit={unit}
-          onUnitChange={setUnit}
-        />
+        <div className="col-start-1 row-start-2">
+          <ElementsPanel
+            camposHabilitados={camposHabilitados}
+            onToggleCampo={handleToggleCampo}
+            selectedKeys={selectedKeys}
+            onSelectField={handleSelectField}
+            alturaCresceCom={alturaCresceCom}
+            onChangeAlturaCresceCom={setAlturaCresceCom}
+            shapes={shapes}
+            selectedShapeIds={selectedShapeIds}
+            onSelectShape={handleSelectShape}
+            onAddShape={handleAddShape}
+            estruturaSelecionada={selectedKeys.length + selectedShapeIds.length === 0}
+            onSelectEstrutura={handleClearSelection}
+          />
+        </div>
       </div>
     </div>
   );

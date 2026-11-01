@@ -4,8 +4,10 @@ import {
   CARD_FIELD_DEFS,
   CARD_SHAPE_TYPES,
   DEFAULT_FONT_FAMILY,
+  defaultCardFundo,
   type CardBorda,
   type CardFieldKey,
+  type CardFundo,
   type CardImageElementConfig,
   type CardLayout,
   type CardShape,
@@ -93,6 +95,26 @@ function OpacityField({ value, onChange }: { value: number; onChange: (opacidade
         onChange={(e) => onChange(Number(e.target.value) / 100)}
         className="mt-1 w-full"
       />
+    </div>
+  );
+}
+
+// Fundo de cor (liga/desliga + cor + transparência) — usado no card inteiro e
+// na Foto do Produto.
+function FundoFields({ fundo, rotulo, onChange }: { fundo?: CardFundo; rotulo: string; onChange: (f: CardFundo) => void }) {
+  const f = fundo ?? defaultCardFundo();
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" checked={f.ativo} onChange={(e) => onChange({ ...f, ativo: e.target.checked })} />
+        {rotulo}
+      </label>
+      {f.ativo && (
+        <>
+          <ColorField label="Cor" value={f.cor} onChange={(cor) => onChange({ ...f, cor })} />
+          <OpacityField value={f.opacidade} onChange={(opacidade) => onChange({ ...f, opacidade })} />
+        </>
+      )}
     </div>
   );
 }
@@ -199,6 +221,23 @@ export function CardStructurePanel({
         </div>
       </Secao>
 
+      <Secao titulo="Fundo">
+        <FundoFields
+          fundo={borda.fundo}
+          rotulo="Cor de fundo do card"
+          onChange={(fundo) => onUpdateBorda({ fundo })}
+        />
+      </Secao>
+
+      <Secao titulo="Cantos">
+        <NumberField
+          label={`Arredondar cantos (${unit})`}
+          value={toDisplay(borda.raio ?? 0)}
+          onCommit={(v) => onUpdateBorda({ raio: Math.max(0, fromDisplay(v)) })}
+        />
+        <p className="mt-1 text-[11px] text-slate-400">O fundo e o contorno do card acompanham o arredondamento.</p>
+      </Secao>
+
       <Secao titulo="Espaçamento entre cards">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={gutterMode} onChange={(e) => onToggleGutterMode(e.target.checked)} />
@@ -255,6 +294,10 @@ export type ElementsPanelProps = {
   selectedShapeIds: string[];
   onSelectShape: (id: string, mode: SelectMode) => void;
   onAddShape: (type: CardShapeType) => void;
+  // "Estrutura do card" é um item da lista, como os campos: selecionada
+  // quando não há campo/forma selecionado.
+  estruturaSelecionada: boolean;
+  onSelectEstrutura: () => void;
 };
 
 export function ElementsPanel({
@@ -268,11 +311,28 @@ export function ElementsPanel({
   selectedShapeIds,
   onSelectShape,
   onAddShape,
+  estruturaSelecionada,
+  onSelectEstrutura,
 }: ElementsPanelProps) {
   const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
 
   return (
-    <PanelCard titulo="Elementos do card">
+    <PanelCard titulo="Card">
+      <Secao titulo="Estrutura">
+        <button
+          onClick={onSelectEstrutura}
+          className={
+            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+            (estruturaSelecionada ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+          }
+        >
+          Estrutura do card
+          <span className={"ml-auto text-[10px] font-normal " + (estruturaSelecionada ? "text-slate-300" : "text-slate-400")}>
+            tamanho, fundo, cantos, contorno
+          </span>
+        </button>
+      </Secao>
+
       <Secao titulo="Campos">
         <div className="flex flex-col gap-1">
           {CARD_FIELD_DEFS.map((def) => {
@@ -446,6 +506,22 @@ export function SelectedElementPanel({
         <>
           <Secao>
             <p className="text-sm font-semibold text-slate-900">{selectedDef.label}</p>
+          </Secao>
+          <Secao titulo="Fundo da foto">
+            <FundoFields
+              fundo={(layout[selectedDef.key] as CardImageElementConfig).fundo}
+              rotulo="Cor de fundo atrás da foto"
+              onChange={(fundo) => onUpdateField(selectedDef.key, { fundo })}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Útil para fotos PNG sem fundo.</p>
+          </Secao>
+          <Secao titulo="Cantos">
+            <NumberField
+              label={`Arredondar cantos (${unit})`}
+              value={toDisplay((layout[selectedDef.key] as CardImageElementConfig).raio ?? 0)}
+              onCommit={(v) => onUpdateField(selectedDef.key, { raio: Math.max(0, fromDisplay(v)) })}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">Arredonda o fundo e recorta a própria foto.</p>
           </Secao>
           <Secao titulo="Posição e tamanho">
             <div className="flex flex-col gap-2">

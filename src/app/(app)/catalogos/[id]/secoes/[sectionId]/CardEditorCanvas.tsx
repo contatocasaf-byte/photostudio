@@ -10,11 +10,13 @@ import {
   substitutePlaceholders,
   type CardElementConfig,
   type CardFieldKey,
+  type CardBorda,
   type CardImageElementConfig,
   type CardLayout,
   type CardShape,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
+import { corComOpacidade } from "../../../core/cor";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
 import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
@@ -107,7 +109,8 @@ function ImageFieldNode({
       stroke="#4fc3f7"
       strokeWidth={selected ? 3 : 2}
       dash={[6, 4]}
-      fill="rgba(79,195,247,0.08)"
+      fill={cfg.fundo?.ativo ? corComOpacidade(cfg.fundo.cor, cfg.fundo.opacidade) : "rgba(79,195,247,0.08)"}
+      cornerRadius={raioEfetivoRetangulo(cfg.w * scale, cfg.h * scale, (cfg.raio ?? 0) * scale)}
       draggable
       onClick={onSelect}
       onTap={onSelect}
@@ -297,13 +300,21 @@ function BoundaryRect({
   scale,
   onResize,
   transformerRef,
+  borda,
+  onClear,
 }: {
   canvasW: number;
   canvasH: number;
   scale: number;
   onResize: (patch: { largura: number; alturaMinima: number }) => void;
   transformerRef: RefObject<Konva.Transformer | null>;
+  borda: CardBorda;
+  onClear: () => void;
 }) {
+  // Cantos arredondados e fundo do CARD (ver CardBorda): o fundo vai numa
+  // camada própria sob o retângulo arrastável, que fica só com o contorno
+  // tracejado — clicar nele limpa a seleção (mostra a "Estrutura do card").
+  const raio = raioEfetivoRetangulo(canvasW, canvasH, (borda.raio ?? 0) * scale);
   const rectRef = useRef<Konva.Rect>(null);
 
   useEffect(() => {
@@ -315,16 +326,31 @@ function BoundaryRect({
 
   return (
     <>
+      <Rect x={ORIGIN} y={ORIGIN} width={canvasW} height={canvasH} fill="#ffffff" cornerRadius={raio} listening={false} />
+      {borda.fundo?.ativo && (
+        <Rect
+          x={ORIGIN}
+          y={ORIGIN}
+          width={canvasW}
+          height={canvasH}
+          fill={corComOpacidade(borda.fundo.cor, borda.fundo.opacidade)}
+          cornerRadius={raio}
+          listening={false}
+        />
+      )}
       <Rect
         ref={rectRef}
         x={ORIGIN}
         y={ORIGIN}
         width={canvasW}
         height={canvasH}
-        fill="#ffffff"
+        fill="transparent"
+        cornerRadius={raio}
         stroke="#94a3b8"
         strokeWidth={1.5}
         dash={[4, 4]}
+        onMouseDown={onClear}
+        onTap={onClear}
         onTransform={(e) => {
           const node = e.target;
           const newLargura = Math.max(MIN_BOUNDARY, Math.round((node.width() * node.scaleX()) / scale));
@@ -459,6 +485,8 @@ export type CardEditorCanvasProps = {
   selectedShapeIds: string[];
   onSelectShape: (id: string, mode: SelectMode) => void;
   onClearSelection: () => void;
+  // Fundo e cantos arredondados do card (CardBorda).
+  borda: CardBorda;
   gutterMode: boolean;
   gutterX: number | null;
   gutterY: number | null;
@@ -479,6 +507,7 @@ export default function CardEditorCanvas({
   selectedShapeIds,
   onSelectShape,
   onClearSelection,
+  borda,
   gutterMode,
   gutterX,
   gutterY,
@@ -635,6 +664,8 @@ export default function CardEditorCanvas({
           scale={scale}
           onResize={onResizeBoundary}
           transformerRef={boundaryTransformerRef}
+          borda={borda}
+          onClear={onClearSelection}
         />
 
         {shapes.map((shape) => (

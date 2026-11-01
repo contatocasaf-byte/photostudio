@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Line, Rect, Shape as KonvaShape } from "react-konva";
+import { Stage, Layer, Group, Image as KonvaImage, Line, Rect, Shape as KonvaShape } from "react-konva";
 import type Konva from "konva";
 import {
   CARD_FIELD_DEFS,
@@ -17,7 +17,9 @@ import {
   type PageShape,
   type PageTextElementConfig,
 } from "../../core/pageConfig";
-import { raioEfetivoRetangulo, tracarTriangulo } from "../../core/formaArredondada";
+import { corComOpacidade } from "../../core/cor";
+import { raioEfetivoRetangulo, tracarRetanguloArredondado, tracarTriangulo } from "../../core/formaArredondada";
+import { contornosArredondados, fundosDosCards } from "../../core/fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
 import { loadImage } from "@/lib/loadImage";
@@ -218,7 +220,31 @@ function CardPhotoField({
     );
   }
 
-  return <KonvaImage image={img} x={x} y={y} width={width} height={height} listening={false} />;
+  // Fundo atrás da foto e cantos arredondados (a foto é recortada neles).
+  const raio = (imgCfg.raio ?? 0) * cardScale * scale;
+  const arredondado = raio > 0;
+  return (
+    <>
+      {imgCfg.fundo?.ativo && (
+        <Rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={corComOpacidade(imgCfg.fundo.cor, imgCfg.fundo.opacidade)}
+          cornerRadius={raioEfetivoRetangulo(width, height, raio)}
+          listening={false}
+        />
+      )}
+      {arredondado ? (
+        <Group clipFunc={(ctx) => tracarRetanguloArredondado(ctx, x, y, width, height, raio)} listening={false}>
+          <KonvaImage image={img} x={x} y={y} width={width} height={height} listening={false} />
+        </Group>
+      ) : (
+        <KonvaImage image={img} x={x} y={y} width={width} height={height} listening={false} />
+      )}
+    </>
+  );
 }
 
 function PageBackground({ url, canvasW, canvasH }: { url: string | null; canvasW: number; canvasH: number }) {
@@ -431,6 +457,21 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
         {page.pageTemplate?.illustracoes.map((ill) => <PageImageField key={ill.id} cfg={ill} scale={scale} />)}
 
         {page.cardTemplate &&
+          fundosDosCards(page).map((f, i) => (
+            <Rect
+              key={`fundo-${i}`}
+              x={ORIGIN + f.x * scale}
+              y={ORIGIN + f.y * scale}
+              width={f.w * scale}
+              height={f.h * scale}
+              fill={f.cor}
+              opacity={f.opacidade}
+              cornerRadius={raioEfetivoRetangulo(f.w * scale, f.h * scale, f.raio * scale)}
+              listening={false}
+            />
+          ))}
+
+        {page.cardTemplate &&
           page.cards.flatMap((card, i) => {
             // Estrutura da grade (touching/gutter) sempre vem da versão
             // ATUAL da seção; o ESTILO do contorno (cor/espessura/ativa)
@@ -439,7 +480,8 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             // atual tenha ligado, por exemplo.
             const cardTemplateAtual = page.cardTemplate!;
             const borda = card.cardTemplate.borda;
-            if (!borda.ativa) return [];
+            // Card com cantos arredondados usa o contorno arredondado (abaixo).
+            if (!borda.ativa || (borda.raio ?? 0) > 0) return [];
 
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
@@ -477,6 +519,22 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
               />
             ));
           })}
+
+        {page.cardTemplate &&
+          contornosArredondados(page).map((o, i) => (
+            <Rect
+              key={`contorno-${i}`}
+              x={ORIGIN + o.x * scale}
+              y={ORIGIN + o.y * scale}
+              width={o.w * scale}
+              height={o.h * scale}
+              stroke={o.cor}
+              strokeWidth={o.espessura * scale}
+              opacity={o.opacidade}
+              cornerRadius={raioEfetivoRetangulo(o.w * scale, o.h * scale, o.raio * scale)}
+              listening={false}
+            />
+          ))}
 
         {page.cardTemplate &&
           page.cards.length > 0 &&

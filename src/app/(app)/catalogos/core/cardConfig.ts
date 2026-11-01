@@ -59,7 +59,24 @@ export function substitutePlaceholders(template: string, valor: string): string 
 // direto.
 export const DEFAULT_FONT_FAMILY = "Arial";
 
-export type CardImageElementConfig = { x: number; y: number; w: number; h: number };
+// Fundo de cor (com transparência) — usado no card inteiro e atrás da foto.
+export type CardFundo = { ativo: boolean; cor: string; opacidade: number };
+
+export function defaultCardFundo(): CardFundo {
+  return { ativo: false, cor: "#ffffff", opacidade: 1 };
+}
+
+export type CardImageElementConfig = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  // Foto do Produto: fundo atrás dela (útil pra PNG sem fundo) e cantos
+  // arredondados (do fundo E da própria foto, que é recortada neles). Ausente =
+  // sem fundo / cantos retos (molde salvo antes disto).
+  fundo?: CardFundo;
+  raio?: number;
+};
 export type CardTextElementConfig = {
   x: number;
   y: number;
@@ -227,6 +244,12 @@ export type CardBorda = {
   cor: string;
   opacidade: number; // 0-1
   espessura: number; // px, no mesmo espaço de desenho do card (encolhe junto com o cardScale do reflow)
+  // Aparência do CARD inteiro, guardada junto do contorno (mesma coluna
+  // borda_json — evita migração de banco): fundo de cor e cantos
+  // arredondados (o fundo e o contorno seguem o arredondamento). Ausente =
+  // sem fundo / cantos retos.
+  fundo?: CardFundo;
+  raio?: number;
 };
 
 export function defaultCardBorda(): CardBorda {
