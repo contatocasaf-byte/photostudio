@@ -24,8 +24,12 @@ import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 const PREVIEW_MAX = 420;
 const MIN_BOUNDARY = 60;
 const MIN_FIELD_SIZE = 20;
+// Quanto o card pode ser empurrado pra fora (esquerda/cima) do ponto de origem do
+// palco sem sair da área visível — passou disso, o palco "abre espaço" e o conjunto desloca.
+const MIN_ORIGEM_FOLGA = 8;
 const GHOST_GAP = 24;
-const ORIGIN = 40;
+const ORIGIN = 56;
+const MIN_ORIGEM = -(ORIGIN - MIN_ORIGEM_FOLGA);
 
 function computeScale(largura: number, alturaMinima: number) {
   const maior = Math.max(largura, alturaMinima);
@@ -554,8 +558,9 @@ export default function CardEditorCanvas({
   const [escalaFixa, setEscalaFixa] = useState<number | null>(null);
   // Deslocamento do card no palco (px de tela) depois de arrastar a borda de
   // cima/esquerda PRA DENTRO: o card fica onde foi solto (a borda oposta e os
-  // campos não se mexem na tela). Para fora, o palco só "abre espaço" (origem
-  // volta a 0) — não dá pra desenhar em coordenada negativa.
+  // campos não se mexem na tela). Para fora também, até a folga da margem do
+  // palco (MIN_ORIGEM); passou disso, o conjunto desloca — não dá pra desenhar
+  // em coordenada negativa.
   const [origem, setOrigem] = useState({ x: 0, y: 0 });
   const base = computeScale(largura, alturaMinima);
   const scale = escalaFixa ?? base.scale;
@@ -715,7 +720,7 @@ export default function CardEditorCanvas({
           onCommit={({ dx, dy }) => {
             if (dx !== 0 || dy !== 0) {
               onShiftContent(dx, dy);
-              setOrigem((o) => ({ x: Math.max(0, o.x + dx * scale), y: Math.max(0, o.y + dy * scale) }));
+              setOrigem((o) => ({ x: Math.max(MIN_ORIGEM, o.x + dx * scale), y: Math.max(MIN_ORIGEM, o.y + dy * scale) }));
             }
             setEscalaFixa(null);
           }}
