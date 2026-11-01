@@ -22,6 +22,8 @@ import {
   type ProductRow,
   type SectionItem,
 } from "../../../../produtos/actions";
+import type { CatalogTipo } from "../../../../core/permissoes";
+import { ordenarItensSecao, type ColunaOrdenacao, type DirecaoOrdenacao } from "../../../../core/ordenarItensSecao";
 
 function formatPreco(v: number | null): string {
   if (v === null) return "—";
@@ -55,6 +57,38 @@ function ItemRow({ item, onRemove }: { item: SectionItem; onRemove: () => void }
   );
 }
 
+// Cabeçalho da lista (só no Jornal de Ofertas): clicar numa coluna ordena
+// os produtos por ela; clicar de novo inverte. Alinhado às colunas de ItemRow.
+function CabecalhoOrdenacao({
+  ordenacao,
+  onOrdenar,
+}: {
+  ordenacao: { coluna: ColunaOrdenacao; direcao: DirecaoOrdenacao } | null;
+  onOrdenar: (coluna: ColunaOrdenacao) => void;
+}) {
+  function rotulo(coluna: ColunaOrdenacao, texto: string, className: string) {
+    const ativa = ordenacao?.coluna === coluna;
+    return (
+      <button
+        onClick={() => onOrdenar(coluna)}
+        title={`Ordenar por ${texto.toLowerCase()} (clique de novo para inverter)`}
+        className={`${className} text-left text-xs font-semibold uppercase tracking-wide hover:text-slate-900 ${ativa ? "text-slate-900" : "text-slate-400"}`}
+      >
+        {texto}
+        {ativa ? (ordenacao.direcao === "asc" ? " ▲" : " ▼") : ""}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-2 flex items-center gap-2 px-3">
+      <span className="w-6 shrink-0" aria-hidden />
+      {rotulo("codigo", "Código", "w-20 shrink-0")}
+      {rotulo("ref", "Referência", "w-28 shrink-0")}
+      {rotulo("descricao", "Descrição", "min-w-0 flex-1")}
+    </div>
+  );
+}
+
 export default function SectionProdutosPage({ params }: { params: Promise<{ id: string; sectionId: string }> }) {
   const { id: catalogId, sectionId } = use(params);
 
@@ -65,8 +99,18 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [tipo, setTipo] = useState<CatalogTipo>("catalogo");
+  // Ordenação por coluna (só Jornal de Ofertas). `ordemAnterior` guarda a ordem
+  // de antes da última ordenação pra "Desfazer"; some ao arrastar/adicionar/remover.
+  const [ordenacao, setOrdenacao] = useState<{ coluna: ColunaOrdenacao; direcao: DirecaoOrdenacao } | null>(null);
+  const [ordemAnterior, setOrdemAnterior] = useState<string[] | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  function limparOrdenacao() {
+    setOrdenacao(null);
+    setOrdemAnterior(null);
+  }
 
   async function refreshItems() {
     const res = await listSectionItems(sectionId);
@@ -83,7 +127,10 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
         else setSectionTitulo(sectionRes.section?.titulo ?? null);
 
         if (catalogRes.error) setError(catalogRes.error);
-        else setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+        else {
+          setPlanilhaId(catalogRes.catalog?.planilhaId ?? null);
+          setTipo(catalogRes.catalog?.tipo ?? "catalogo");
+        }
 
         if (itemsRes.error) setError(itemsRes.error);
         else setItems(itemsRes.items ?? []);
@@ -123,6 +170,7 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
       setError(res.error);
       return;
     }
+    limparOrdenacao();
     await refreshItems();
   }
 
@@ -133,6 +181,7 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
       setError(res.error);
       return;
     }
+    limparOrdenacao();
     setItems((prev) => prev.filter((i) => i.id !== itemId));
   }
 
@@ -144,10 +193,51 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
     if (oldIndex === -1 || newIndex === -1) return;
 
     const reordered = arrayMove(items, oldIndex, newIndex);
+    limparOrdenacao();
     setItems(reordered);
     const res = await reorderSectionItems(reordered.map((i) => i.id));
     if (res.error) setError(res.error);
   }
+
+  // Aplica uma ordem (lista de itens já ordenada) e grava — a visualização e
+  // o PDF usam essa mesma ordem salva. Se a gravação falhar, volta ao que era.
+  async function aplicarOrdem(novos: SectionItem[]) {
+    const anteriores = items;
+    setItems(novos);
+    const res = await reorderSectionItems(novos.map((i) => i.id));
+    if (res.error) {
+      setItems(anteriores);
+      setError(res.error);
+      return false;
+    }
+    return true;
+  }
+
+  async function handleOrdenar(coluna: ColunaOrdenacao) {
+    setError(null);
+    const direcao: DirecaoOrdenacao = ordenacao?.coluna === coluna && ordenacao.direcao === "asc" ? "desc" : "asc";
+    const idsAntes = items.map((i) => i.id);
+    const ok = await aplicarOrdem(ordenarItensSecao(items, coluna, direcao));
+    if (!ok) return;
+    setOrdenacao({ coluna, direcao });
+    // Só guarda o "antes" da PRIMEIRA ordenação em sequência — assim, ordenar
+    // por Código e depois por Descrição ainda desfaz de volta à ordem original.
+    setOrdemAnterior((prev) => prev ?? idsAntes);
+  }
+
+  async function handleDesfazerOrdenacao() {
+    if (!ordemAnterior) return;
+    setError(null);
+    const porId = new Map(items.map((i) => [i.id, i]));
+    const restaurada = ordemAnterior.map((id) => porId.get(id)).filter((i): i is SectionItem => !!i);
+    if (restaurada.length !== items.length) {
+      limparOrdenacao();
+      return;
+    }
+    if (await aplicarOrdem(restaurada)) limparOrdenacao();
+  }
+
+  const ehJornal = tipo === "jornal_ofertas";
 
   if (loading) return <p className="text-sm text-slate-400">Carregando produtos...</p>;
 
@@ -203,9 +293,22 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
           </div>
 
           <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Produtos desta seção ({items.length})
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Produtos desta seção ({items.length})
+              </p>
+              {ehJornal && ordemAnterior && (
+                <button onClick={handleDesfazerOrdenacao} className="text-xs text-slate-500 underline hover:text-slate-800">
+                  Desfazer ordenação
+                </button>
+              )}
+            </div>
+            {ehJornal && items.length > 1 && (
+              <p className="mt-1 text-xs text-slate-400">
+                Clique no título de uma coluna para ordenar (de novo inverte). Depois dá para ajustar arrastando.
+              </p>
+            )}
+            {ehJornal && items.length > 1 && <CabecalhoOrdenacao ordenacao={ordenacao} onOrdenar={handleOrdenar} />}
             {items.length === 0 && <p className="mt-2 text-sm text-slate-400">Nenhum produto adicionado ainda.</p>}
             {items.length > 0 && (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
