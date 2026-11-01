@@ -471,6 +471,7 @@ export default function PageEditorPage({ params }: { params: Promise<{ id: strin
             altura={altura}
             onResizeBoundary={handleResizeBoundary}
             margens={margens}
+            onChangeMargens={handleChangeMargens}
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}

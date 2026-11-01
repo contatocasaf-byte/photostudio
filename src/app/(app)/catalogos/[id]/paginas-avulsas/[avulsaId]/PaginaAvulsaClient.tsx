@@ -201,6 +201,7 @@ export default function PaginaAvulsaEditorPage({ params }: { params: Promise<{ i
             altura={altura}
             onResizeBoundary={handleResizeBoundary}
             margens={margens}
+            onChangeMargens={handleChangeMargens}
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}

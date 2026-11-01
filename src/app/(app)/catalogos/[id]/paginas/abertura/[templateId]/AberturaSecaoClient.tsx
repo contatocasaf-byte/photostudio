@@ -459,6 +459,7 @@ export default function AberturaSecaoEditorPage({ params }: { params: Promise<{ 
             altura={altura}
             onResizeBoundary={handleResizeBoundary}
             margens={margens}
+            onChangeMargens={handleChangeMargens}
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}

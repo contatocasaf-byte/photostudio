@@ -553,6 +553,69 @@ function BoundaryTransformer({ transformerRef, scale }: { transformerRef: RefObj
   );
 }
 
+// Uma borda da margem arrastável no canvas (só com a página selecionada): faixa
+// fina sobre a linha tracejada + uma "pegada" no meio pra indicar que dá pra
+// arrastar. A faixa só se move no próprio eixo; quem converte a posição em
+// valor de margem (e limita) é o pai, em `onMove`.
+const ESPESSURA_ALCA_MARGEM = 10;
+
+function AlcaMargem({
+  x,
+  y,
+  width,
+  height,
+  eixo,
+  onMove,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  eixo: "x" | "y";
+  onMove: (node: Konva.Node) => void;
+}) {
+  const cursor = eixo === "x" ? "ew-resize" : "ns-resize";
+  const definirCursor = (e: Konva.KonvaEventObject<MouseEvent>, valor: string) => {
+    const container = e.target.getStage()?.container();
+    if (container) container.style.cursor = valor;
+  };
+  // "Pegada" centrada na faixa (só visual).
+  const gripW = eixo === "x" ? 6 : 28;
+  const gripH = eixo === "x" ? 28 : 6;
+  return (
+    <>
+      <Rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill="transparent"
+        draggable
+        onMouseEnter={(e) => definirCursor(e, cursor)}
+        onMouseLeave={(e) => definirCursor(e, "")}
+        onDragMove={(e) => {
+          const n = e.target;
+          if (eixo === "x") n.y(y);
+          else n.x(x);
+          onMove(n);
+        }}
+        onDragEnd={(e) => {
+          definirCursor(e as unknown as Konva.KonvaEventObject<MouseEvent>, "");
+        }}
+      />
+      <Rect
+        x={x + width / 2 - gripW / 2}
+        y={y + height / 2 - gripH / 2}
+        width={gripW}
+        height={gripH}
+        cornerRadius={3}
+        fill="#f59e0b"
+        listening={false}
+      />
+    </>
+  );
+}
+
 // Plano de fundo cobrindo a página inteira (textura, moldura
 // decorativa, arte de seção) — ao contrário dos campos de cabeçalho/
 // rodapé, não é posicionável/redimensionável: sempre preenche o
@@ -588,6 +651,8 @@ export type PageEditorCanvasProps = {
   altura: number;
   onResizeBoundary: (patch: { largura: number; altura: number }) => void;
   margens: Margens;
+  // Arrastar as bordas da margem no canvas (só com a página selecionada).
+  onChangeMargens: (patch: Partial<Margens>) => void;
   fundoUrl: string | null;
   selectedKey: PageFieldKey | null;
   onSelect: (key: PageFieldKey | null) => void;
@@ -609,6 +674,7 @@ export default function PageEditorCanvas({
   altura,
   onResizeBoundary,
   margens,
+  onChangeMargens,
   fundoUrl,
   selectedKey,
   onSelect,
@@ -775,6 +841,34 @@ export default function PageEditorCanvas({
   const stageW = canvasW + ORIGIN * 2 + origem.x;
   const stageH = canvasH + ORIGIN * 2 + origem.y;
 
+  // Converte a posição da faixa arrastada em valor de margem (inteiro, ≥ 0, e
+  // deixando ao menos 40 px de área útil) e devolve a faixa pro ponto válido.
+  const T = ESPESSURA_ALCA_MARGEM;
+  const AREA_MIN = 40;
+  function moverMargem(lado: "left" | "right" | "top" | "bottom", node: Konva.Node) {
+    if (lado === "left") {
+      const max = Math.max(0, largura - margens.right - AREA_MIN);
+      const v = Math.min(max, Math.max(0, Math.round((node.x() + T / 2 - posPagina.x) / scale)));
+      node.x(posPagina.x + v * scale - T / 2);
+      onChangeMargens({ left: v });
+    } else if (lado === "right") {
+      const max = Math.max(0, largura - margens.left - AREA_MIN);
+      const v = Math.min(max, Math.max(0, Math.round((posPagina.x + canvasW - (node.x() + T / 2)) / scale)));
+      node.x(posPagina.x + canvasW - v * scale - T / 2);
+      onChangeMargens({ right: v });
+    } else if (lado === "top") {
+      const max = Math.max(0, altura - margens.bottom - AREA_MIN);
+      const v = Math.min(max, Math.max(0, Math.round((node.y() + T / 2 - posPagina.y) / scale)));
+      node.y(posPagina.y + v * scale - T / 2);
+      onChangeMargens({ top: v });
+    } else {
+      const max = Math.max(0, altura - margens.top - AREA_MIN);
+      const v = Math.min(max, Math.max(0, Math.round((posPagina.y + canvasH - (node.y() + T / 2)) / scale)));
+      node.y(posPagina.y + canvasH - v * scale - T / 2);
+      onChangeMargens({ bottom: v });
+    }
+  }
+
   const marginRect = {
     x: posPagina.x + margens.left * scale,
     y: posPagina.y + margens.top * scale,
@@ -834,6 +928,46 @@ export default function PageEditorCanvas({
         <BackgroundImage url={fundoUrl} canvasW={canvasW} canvasH={canvasH} x={posPagina.x} y={posPagina.y} />
 
         <Rect {...marginRect} stroke="#f59e0b" strokeWidth={1} dash={[3, 3]} listening={false} />
+
+        {/* Bordas da margem arrastáveis — só com a página selecionada, e POR
+            BAIXO dos elementos (um elemento sobre a linha continua sendo
+            selecionável). */}
+        {nadaSelecionado && (
+          <>
+            <AlcaMargem
+              eixo="x"
+              x={marginRect.x - T / 2}
+              y={marginRect.y}
+              width={T}
+              height={marginRect.height}
+              onMove={(n) => moverMargem("left", n)}
+            />
+            <AlcaMargem
+              eixo="x"
+              x={marginRect.x + marginRect.width - T / 2}
+              y={marginRect.y}
+              width={T}
+              height={marginRect.height}
+              onMove={(n) => moverMargem("right", n)}
+            />
+            <AlcaMargem
+              eixo="y"
+              x={marginRect.x}
+              y={marginRect.y - T / 2}
+              width={marginRect.width}
+              height={T}
+              onMove={(n) => moverMargem("top", n)}
+            />
+            <AlcaMargem
+              eixo="y"
+              x={marginRect.x}
+              y={marginRect.y + marginRect.height - T / 2}
+              width={marginRect.width}
+              height={T}
+              onMove={(n) => moverMargem("bottom", n)}
+            />
+          </>
+        )}
 
         {formas.map((shape) => (
           <PageShapeNode

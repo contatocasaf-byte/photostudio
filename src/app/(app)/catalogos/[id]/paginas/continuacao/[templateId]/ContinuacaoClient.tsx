@@ -459,6 +459,7 @@ export default function ContinuacaoEditorPage({ params }: { params: Promise<{ id
             altura={altura}
             onResizeBoundary={handleResizeBoundary}
             margens={margens}
+            onChangeMargens={handleChangeMargens}
             fundoUrl={fundoUrl}
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
