@@ -78,6 +78,9 @@ type NodeProps = {
   selected: boolean;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   registerRef: (key: string, node: Konva.Node | null) => void;
+  // Chamado ao começar a arrastar — o canvas usa pra passar o arraste ao
+  // elemento MENOR sob o ponteiro quando há sobreposição (ver alvoSobPonteiro).
+  onDragStart?: (e: Konva.KonvaEventObject<DragEvent>) => void;
 };
 
 function ImageFieldNode({
@@ -88,6 +91,7 @@ function ImageFieldNode({
   onSelect,
   onUpdate,
   registerRef,
+  onDragStart,
 }: NodeProps & {
   fieldKey: CardFieldKey;
   cfg: CardImageElementConfig;
@@ -107,6 +111,7 @@ function ImageFieldNode({
       draggable
       onClick={onSelect}
       onTap={onSelect}
+      onDragStart={onDragStart}
       onDragMove={(e) =>
         onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) })
       }
@@ -201,6 +206,7 @@ function ShapeNode({
   onSelect,
   onUpdate,
   registerRef,
+  onDragStart,
 }: {
   shape: CardShape;
   scale: number;
@@ -208,6 +214,7 @@ function ShapeNode({
   onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onUpdate: (patch: Partial<CardShape>) => void;
   registerRef: (key: string, node: Konva.Node | null) => void;
+  onDragStart?: (e: Konva.KonvaEventObject<DragEvent>) => void;
 }) {
   const x = ORIGIN + shape.x * scale;
   const y = ORIGIN + shape.y * scale;
@@ -241,6 +248,7 @@ function ShapeNode({
     draggable: true,
     onClick: onSelect,
     onTap: onSelect,
+    onDragStart,
     onDragMove: handleDrag,
     onDragEnd: handleDrag,
     onTransform: handleTransform,
@@ -515,12 +523,62 @@ export default function CardEditorCanvas({
     onShapesChange((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
+  // Elementos sobrepostos: uma forma pequena em cima (ou atrás) da área da foto
+  // não dava pra selecionar — o clique/arraste caía na foto, que é maior. Regra:
+  // entre os elementos que cobrem o ponteiro, vale o de MENOR área (o pequeno
+  // dentro do grande continua alcançável; o grande, pelo resto da sua área).
+  // Só entram a foto e as formas (com elipse/triângulo medidos de verdade); um
+  // campo de texto acertado em cima das letras continua valendo como sempre.
+  function alvoSobPonteiro(stage: Konva.Stage | null, chaveNativa: string): string {
+    const pos = stage?.getPointerPosition();
+    if (!pos) return chaveNativa;
+    if (CARD_FIELD_DEFS.some((d) => d.key === chaveNativa && d.type === "text")) return chaveNativa;
+
+    const melhor = { key: chaveNativa, area: Number.POSITIVE_INFINITY };
+    const considerar = (key: string, tipo: CardShape["type"]) => {
+      const node = nodeRefs.current[key];
+      if (!node || !node.getStage()) return;
+      const r = node.getClientRect({ skipStroke: true, skipShadow: true });
+      if (r.width <= 0 || r.height <= 0) return;
+      if (pos.x < r.x || pos.x > r.x + r.width || pos.y < r.y || pos.y > r.y + r.height) return;
+      const px = (pos.x - r.x) / r.width;
+      const py = (pos.y - r.y) / r.height;
+      if (tipo === "elipse" && (px - 0.5) ** 2 + (py - 0.5) ** 2 > 0.25) return;
+      if (tipo === "triangulo" && Math.abs(px - 0.5) > py / 2) return;
+      const area = r.width * r.height;
+      if (area < melhor.area) {
+        melhor.key = key;
+        melhor.area = area;
+      }
+    };
+    for (const d of CARD_FIELD_DEFS) if (d.type === "image" && camposHabilitados.includes(d.key)) considerar(d.key, "retangulo");
+    for (const sh of shapes) considerar(sh.id, sh.type);
+    return melhor.key;
+  }
+
+  function selecionarEm(chave: string, modo: SelectMode) {
+    if (shapes.some((s) => s.id === chave)) onSelectShape(chave, modo);
+    else onSelectField(chave as CardFieldKey, modo);
+  }
+
   function selectField(key: CardFieldKey, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
-    onSelectField(key, getSelectMode(e));
+    selecionarEm(alvoSobPonteiro(e.target.getStage(), key), getSelectMode(e));
   }
 
   function selectShape(id: string, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
-    onSelectShape(id, getSelectMode(e));
+    selecionarEm(alvoSobPonteiro(e.target.getStage(), id), getSelectMode(e));
+  }
+
+  // Começou a arrastar um elemento, mas há outro menor sob o ponteiro: cancela
+  // este arraste, seleciona o menor e passa o arraste pra ele.
+  function redirecionarArraste(chave: string, e: Konva.KonvaEventObject<DragEvent>) {
+    const alvo = alvoSobPonteiro(e.target.getStage(), chave);
+    if (alvo === chave) return;
+    const outro = nodeRefs.current[alvo];
+    if (!outro) return;
+    e.target.stopDrag();
+    selecionarEm(alvo, "replace");
+    outro.startDrag();
   }
 
   // Posição da cópia fantasma é derivada direto de gutterX/gutterY (sem
@@ -580,6 +638,7 @@ export default function CardEditorCanvas({
             onSelect={(e) => selectShape(shape.id, e)}
             onUpdate={(patch) => updateShape(shape.id, patch)}
             registerRef={registerRef}
+            onDragStart={(e) => redirecionarArraste(shape.id, e)}
           />
         ))}
 
@@ -594,6 +653,7 @@ export default function CardEditorCanvas({
               onSelect={(e) => selectField(def.key, e)}
               onUpdate={(patch) => updateField(def.key, patch)}
               registerRef={registerRef}
+              onDragStart={(e) => redirecionarArraste(def.key, e)}
             />
           ) : (
             <TextFieldNode
