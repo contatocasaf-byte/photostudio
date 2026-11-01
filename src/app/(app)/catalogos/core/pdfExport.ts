@@ -42,6 +42,9 @@ export type PdfTextSpec = {
   fontFamily: string;
   maxLines: number;
   lineSpacing: number;
+  // Preço no estilo destacado (ver lib/precoDestacado.ts) — só campos de preço
+  // do card configurados assim; ausente = texto comum.
+  precoEstilo?: "destacado";
 };
 
 export type PdfFieldSpec = PdfImageSpec | PdfTextSpec;
@@ -369,6 +372,7 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
           fontFamily: textCfg.fontFamily ?? DEFAULT_FONT_FAMILY,
           maxLines: textCfg.maxLines,
           lineSpacing: 1.15,
+          ...(textCfg.precoEstilo === "destacado" ? { precoEstilo: "destacado" as const } : {}),
         });
       }
     }

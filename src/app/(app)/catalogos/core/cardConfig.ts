@@ -88,6 +88,10 @@ export type CardTextElementConfig = {
   fontWeight: "bold" | "normal";
   align: TextAlign;
   maxLines: number;
+  // Só nos campos de preço: "destacado" desenha o valor inteiro grande, com o
+  // "R$" e os centavos menores no alto (ver lib/precoDestacado.ts). Ausente ou
+  // "normal" = texto comum, como sempre.
+  precoEstilo?: "normal" | "destacado";
 };
 export type CardElementConfig = Partial<CardImageElementConfig & CardTextElementConfig>;
 export type CardLayout = Record<CardFieldKey, CardElementConfig>;

@@ -22,6 +22,7 @@ import { raioEfetivoRetangulo, tracarRetanguloArredondado, tracarTriangulo } fro
 import { contornosArredondados, fundosDosCards } from "../../core/fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "../../core/reflow";
 import { drawTextFit } from "@/lib/canvasText";
+import { desenharPrecoDestacado } from "@/lib/precoDestacado";
 import { loadImage } from "@/lib/loadImage";
 import { fitImageOnCanvas, loadImageToCanvas } from "@/lib/fitImageOnCanvas";
 
@@ -82,6 +83,15 @@ function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextEle
   canvas.width = Math.max(1, Math.round(maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
+  // Preço no estilo destacado (só campos de card de preço): R$ e centavos
+  // menores no alto. Sem "R$ x,xx" no texto, cai no desenho normal abaixo.
+  if (
+    "precoEstilo" in cfg &&
+    cfg.precoEstilo === "destacado" &&
+    desenharPrecoDestacado(ctx, text, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, 8 * STAGE_PIXEL_RATIO)
+  ) {
+    return canvas;
+  }
   // minSize padrão (8) é calibrado pro espaço de desenho normal — aqui
   // fontSize já veio inflado por STAGE_PIXEL_RATIO, então o piso
   // precisa acompanhar, senão o fallback de "não coube nem encolhendo"

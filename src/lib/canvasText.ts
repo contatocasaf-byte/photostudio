@@ -15,7 +15,7 @@ function fontStack(family: string): string {
   return `"${family}", Arial, sans-serif`;
 }
 
-function setFont(ctx: CanvasRenderingContext2D, weight: "bold" | "normal", size: number, family: string) {
+export function setFont(ctx: CanvasRenderingContext2D, weight: "bold" | "normal", size: number, family: string) {
   ctx.font = `${weight === "bold" ? "bold " : ""}${size}px ${fontStack(family)}`;
 }
 

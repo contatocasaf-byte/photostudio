@@ -19,6 +19,7 @@ import {
 import { corComOpacidade } from "../../../core/cor";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
+import { desenharPrecoDestacado } from "@/lib/precoDestacado";
 import { ensureFontsLoaded } from "@/lib/fonts/fontLoader";
 
 const PREVIEW_MAX = 420;
@@ -49,6 +50,12 @@ function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTML
   canvas.width = Math.max(1, Math.round(cfg.maxW));
   canvas.height = Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
   const ctx = canvas.getContext("2d")!;
+  if (
+    cfg.precoEstilo === "destacado" &&
+    desenharPrecoDestacado(ctx, sampleText, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, cfg.fontSize, cfg.maxW, 0, 0, cfg.color, cfg.align)
+  ) {
+    return canvas;
+  }
   drawTextFit(
     ctx,
     sampleText,
@@ -164,7 +171,7 @@ function TextFieldNode({
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "{valor}", sampleText)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, sampleText, fontsTick]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, cfg.precoEstilo, sampleText, fontsTick]
   );
 
   return (

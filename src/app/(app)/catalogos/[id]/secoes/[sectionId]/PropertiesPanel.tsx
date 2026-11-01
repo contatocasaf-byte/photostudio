@@ -566,6 +566,7 @@ export function SelectedElementPanel({
       {selectionCount === 1 && selectedDef && selectedDef.type === "text" && (
         <TextProperties
           label={selectedDef.label}
+          ehPreco={selectedDef.key === "preco_1" || selectedDef.key === "preco_2"}
           cfg={layout[selectedDef.key] as CardTextElementConfig}
           unit={unit}
           toDisplay={toDisplay}
@@ -644,6 +645,7 @@ function ShapeProperties({
 
 function TextProperties({
   label,
+  ehPreco,
   cfg,
   unit,
   toDisplay,
@@ -651,6 +653,7 @@ function TextProperties({
   onUpdate,
 }: {
   label: string;
+  ehPreco: boolean;
   cfg: CardTextElementConfig;
   unit: "px" | "mm";
   toDisplay: (px: number) => number;
@@ -704,6 +707,23 @@ function TextProperties({
           <ColorField label="Cor" value={cfg.color} onChange={(color) => onUpdate({ color })} />
         </div>
       </Secao>
+
+      {ehPreco && (
+        <Secao titulo="Estilo do preço">
+          <div className="grid grid-cols-2 gap-1">
+            <button onClick={() => onUpdate({ precoEstilo: "normal" })} className={botao(cfg.precoEstilo !== "destacado")}>
+              Normal
+            </button>
+            <button onClick={() => onUpdate({ precoEstilo: "destacado" })} className={botao(cfg.precoEstilo === "destacado")}>
+              Centavos pequenos
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            O valor inteiro fica grande (é o &quot;Tamanho da fonte&quot;) e o R$ e os centavos saem menores, alinhados pelo topo. Um rótulo no texto,
+            como &quot;Preço SP: {"{valor}"}&quot;, também sai pequeno.
+          </p>
+        </Secao>
+      )}
 
       <Secao titulo="Posição e caixa">
         <div className="flex flex-col gap-3">
