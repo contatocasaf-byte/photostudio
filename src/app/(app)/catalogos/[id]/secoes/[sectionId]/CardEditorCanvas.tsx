@@ -392,28 +392,37 @@ function BoundaryRect({
           onCommit({ dx, dy });
         }}
       />
-      <Transformer
-        ref={transformerRef}
-        enabledAnchors={[
-          "top-left",
-          "top-right",
-          "bottom-left",
-          "bottom-right",
-          "top-center",
-          "bottom-center",
-          "middle-left",
-          "middle-right",
-        ]}
-        rotateEnabled={false}
-        flipEnabled={false}
-        ignoreStroke={true}
-        keepRatio={true}
-        boundBoxFunc={(oldBox, newBox) => {
-          if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
-          return newBox;
-        }}
-      />
     </>
+  );
+}
+
+// Alças do card — desenhadas DEPOIS dos campos e formas (no topo da pilha). Se
+// ficassem junto do retângulo do card (por baixo), um campo ou forma por cima
+// da alça roubava o clique e o arraste movia o campo em vez de redimensionar o
+// card.
+function BoundaryTransformer({ transformerRef, scale }: { transformerRef: RefObject<Konva.Transformer | null>; scale: number }) {
+  return (
+    <Transformer
+      ref={transformerRef}
+      enabledAnchors={[
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right",
+        "top-center",
+        "bottom-center",
+        "middle-left",
+        "middle-right",
+      ]}
+      rotateEnabled={false}
+      flipEnabled={false}
+      ignoreStroke={true}
+      keepRatio={true}
+      boundBoxFunc={(oldBox, newBox) => {
+        if (Math.abs(newBox.width) < MIN_BOUNDARY * scale || Math.abs(newBox.height) < MIN_BOUNDARY * scale) return oldBox;
+        return newBox;
+      }}
+    />
   );
 }
 
@@ -757,6 +766,8 @@ export default function CardEditorCanvas({
             />
           )
         )}
+
+        <BoundaryTransformer transformerRef={boundaryTransformerRef} scale={scale} />
 
         <Transformer
           ref={fieldTransformerRef}
