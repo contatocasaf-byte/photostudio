@@ -56,6 +56,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
 
   const [section, setSection] = useState<Section | null>(null);
   const [loading, setLoading] = useState(true);
+  // Unidade de medida (px/mm) dos painéis da direita — uma só, compartilhada.
+  const [unit, setUnit] = useState<"px" | "mm">("px");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -599,6 +601,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           onGutterChange={handleGutterChange}
           borda={borda}
           onUpdateBorda={handleUpdateBorda}
+          unit={unit}
+          onUnitChange={setUnit}
         />
 
         <ElementsPanel
@@ -622,6 +626,8 @@ export default function CardEditorPage({ params }: { params: Promise<{ id: strin
           selectedShapeIds={selectedShapeIds}
           onUpdateShape={handleUpdateShape}
           onRemoveShape={handleRemoveShape}
+          unit={unit}
+          onUnitChange={setUnit}
         />
       </div>
     </div>
