@@ -368,9 +368,10 @@ export async function listSectionItems(sectionId: string): Promise<{ items?: Sec
 }
 
 // Marca/desmarca um item como produto em DESTAQUE (linha própria, card de
-// destaque da seção). Troca também a versão de card-molde do item pra da
-// cadeia certa: a mais recente do card de destaque (ou 1) ao marcar, a atual
-// do card padrão (ou 1) ao desmarcar.
+// destaque da seção). A versão do card de destaque fica numa coluna PRÓPRIA
+// (destaque_versao); card_template_versao — a versão do card padrão que o item
+// já tinha — nunca é alterada, então desmarcar devolve o item exatamente como
+// estava.
 export async function setItemDestaque(itemId: string, destaque: boolean): Promise<{ error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
@@ -385,7 +386,7 @@ export async function setItemDestaque(itemId: string, destaque: boolean): Promis
   if (itemErr) return { error: itemErr.message };
   const sectionId = item.section_id as string;
 
-  let versao = 1;
+  let destaqueVersao: number | null = null;
   if (destaque) {
     const { data: ultima, error: ultimaErr } = await supabase
       .from("card_templates_destaque")
@@ -395,22 +396,10 @@ export async function setItemDestaque(itemId: string, destaque: boolean): Promis
       .limit(1)
       .maybeSingle();
     if (ultimaErr) return { error: ultimaErr.message };
-    versao = (ultima?.versao as number | undefined) ?? 1;
-  } else {
-    const { data: section, error: sectionErr } = await supabase.from("sections").select("card_template_id").eq("id", sectionId).single();
-    if (sectionErr) return { error: sectionErr.message };
-    if (section?.card_template_id) {
-      const { data: template, error: templateErr } = await supabase
-        .from("card_templates")
-        .select("versao")
-        .eq("id", section.card_template_id)
-        .single();
-      if (templateErr) return { error: templateErr.message };
-      versao = (template?.versao as number | undefined) ?? 1;
-    }
+    destaqueVersao = (ultima?.versao as number | undefined) ?? 1;
   }
 
-  const { error } = await supabase.from("catalog_items").update({ destaque, card_template_versao: versao }).eq("id", itemId);
+  const { error } = await supabase.from("catalog_items").update({ destaque, destaque_versao: destaqueVersao }).eq("id", itemId);
   if (error) return { error: error.message };
   return {};
 }
@@ -480,13 +469,11 @@ export async function sectionHasItems(
 ): Promise<{ hasItems?: boolean; error?: string }> {
   const { supabase, user } = await requireUser();
   if (!user) return { error: "Sessão inválida." };
-  // Conta só os itens da variante em edição (cadeias de versão separadas).
-  const { data, error } = await supabase
-    .from("catalog_items")
-    .select("id")
-    .eq("section_id", sectionId)
-    .eq("destaque", variante === "destaque")
-    .limit(1);
+  // Card padrão: qualquer item da seção (como sempre foi); card de destaque: só
+  // os itens marcados como destaque.
+  let consulta = supabase.from("catalog_items").select("id").eq("section_id", sectionId);
+  if (variante === "destaque") consulta = consulta.eq("destaque", true);
+  const { data, error } = await consulta.limit(1);
   if (error) return { error: error.message };
   return { hasItems: (data?.length ?? 0) > 0 };
 }

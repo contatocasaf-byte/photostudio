@@ -464,14 +464,12 @@ async function applyCardTemplateRow(
     return {};
   }
 
-  // "Tem produto posicionado" = há item DESTA variante (os de destaque usam a
-  // cadeia do card de destaque; os normais, a do padrão).
-  const { data: itemRows, error: itemsErr } = await supabase
-    .from("catalog_items")
-    .select("id")
-    .eq("section_id", targetSectionId)
-    .eq("destaque", ehDestaque)
-    .limit(1);
+  // "Tem produto posicionado": no card padrão, qualquer item da seção (como
+  // sempre foi — um item em destaque também guarda a versão dele do padrão);
+  // no card de destaque, só os itens marcados como destaque.
+  let itensQuery = supabase.from("catalog_items").select("id").eq("section_id", targetSectionId);
+  if (ehDestaque) itensQuery = itensQuery.eq("destaque", true);
+  const { data: itemRows, error: itemsErr } = await itensQuery.limit(1);
   if (itemsErr) return { error: itemsErr.message };
   const hasItems = (itemRows?.length ?? 0) > 0;
 
@@ -495,13 +493,13 @@ async function applyCardTemplateRow(
   }
 
   if (modo === "aplicar_todos") {
-    // Só os itens da MESMA variante: uma nova versão do padrão não pode mexer
-    // na versão dos itens em destaque (e vice-versa).
-    const { error: migrateErr } = await supabase
-      .from("catalog_items")
-      .update({ card_template_versao: proximaVersao })
-      .eq("section_id", targetSectionId)
-      .eq("destaque", ehDestaque);
+    // Padrão: todos os itens da seção, exatamente como sempre (card_template_versao).
+    // Destaque: só os itens em destaque, na coluna PRÓPRIA (destaque_versao) —
+    // uma cadeia nunca mexe na versão da outra.
+    const base = supabase.from("catalog_items");
+    const { error: migrateErr } = ehDestaque
+      ? await base.update({ destaque_versao: proximaVersao }).eq("section_id", targetSectionId).eq("destaque", true)
+      : await base.update({ card_template_versao: proximaVersao }).eq("section_id", targetSectionId);
     if (migrateErr) return { error: migrateErr.message };
   }
 

@@ -226,7 +226,7 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
       ? fetchAllPages<Record<string, unknown>>((from, to) =>
           supabase
             .from("catalog_items")
-            .select("id, section_id, ordem, product_id, card_template_versao, destaque")
+            .select("id, section_id, ordem, product_id, card_template_versao, destaque, destaque_versao")
             .in("section_id", sectionIds)
             .order("section_id", { ascending: true })
             .order("ordem", { ascending: true })
@@ -320,10 +320,13 @@ export async function getCatalogPreviewData(catalogId: string): Promise<{ data?:
     if (!product) continue;
     const sectionId = row.section_id as string;
     const list = itemsBySection.get(sectionId) ?? [];
+    // Item em destaque usa a cadeia de versões do card de destaque (coluna
+    // própria); os demais, a do card padrão, como sempre.
+    const emDestaque = (row.destaque as boolean | null) === true;
     list.push({
       product,
-      cardTemplateVersao: (row.card_template_versao as number | null) ?? 1,
-      destaque: (row.destaque as boolean | null) === true,
+      cardTemplateVersao: emDestaque ? ((row.destaque_versao as number | null) ?? 1) : ((row.card_template_versao as number | null) ?? 1),
+      destaque: emDestaque,
     });
     itemsBySection.set(sectionId, list);
   }
