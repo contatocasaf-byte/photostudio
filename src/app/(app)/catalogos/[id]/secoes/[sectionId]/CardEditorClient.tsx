@@ -297,6 +297,13 @@ export default function CardEditorPage({
     if (!visivel) setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
   }
 
+  // Marcador de cada forma: desliga/liga a forma (some do editor, da
+  // visualização e do PDF, sem apagar).
+  function handleToggleForma(id: string, visivel: boolean) {
+    handleUpdateShape(id, { oculto: visivel ? undefined : true });
+    if (!visivel) setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
+  }
+
   function handleToggleCampo(key: CardFieldKey, habilitado: boolean) {
     setCamposHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
     if (!habilitado) setSelectedKeys((prev) => prev.filter((k) => k !== key));
@@ -841,6 +848,7 @@ export default function CardEditorPage({
             layout={layout}
             onAddTexto={handleAddTexto}
             onToggleTexto={handleToggleTexto}
+            onToggleForma={handleToggleForma}
             estruturaSelecionada={selectedKeys.length + selectedShapeIds.length === 0}
             onSelectEstrutura={handleClearSelection}
           />

@@ -9,6 +9,7 @@ import {
   type CardImageElementConfig,
   type CardShape,
   type CardTextElementConfig,
+  formasVisiveis,
 } from "../../core/cardConfig";
 import {
   PAGE_FIELD_DEFS,
@@ -584,7 +585,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
               const uniforme = linha.every((c) => c.cardTemplate === linha[0].cardTemplate);
               if (!uniforme) {
                 return linha.flatMap((card) =>
-                  card.cardTemplate.shapes.map((shape) => (
+                  formasVisiveis(card.cardTemplate.shapes).map((shape) => (
                     <PreviewCardShape
                       key={`${card.product.id}-${shape.id}`}
                       shape={shape}
@@ -598,7 +599,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
               }
 
               const template = linha[0].cardTemplate;
-              return template.shapes.flatMap((shape, si) => {
+              return formasVisiveis(template.shapes).flatMap((shape, si) => {
                 const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
                 if (touchingX && encostaNaBorda && linha.length > 1) {
                   const primeiro = linha[0];

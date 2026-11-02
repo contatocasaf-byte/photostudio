@@ -248,9 +248,18 @@ export type CardShape = {
   // do card; ausente/0 = cantos retos (formas salvas antes disto). Ver
   // formaArredondada.ts.
   raio?: number;
+  // Forma desligada (marcador da lista de Formas): não aparece no editor, na
+  // visualização nem no PDF, mas continua salva. Ausente = visível.
+  oculto?: boolean;
   // Id do grupo (ver cardElementos.ts).
   grupo?: string;
 };
+
+// Só as formas ligadas (sem `oculto`) — o que o editor desenha, a visualização
+// mostra e o PDF imprime.
+export function formasVisiveis(shapes: CardShape[]): CardShape[] {
+  return shapes.filter((s) => !s.oculto);
+}
 
 export function defaultCardShape(type: CardShapeType, id: string): CardShape {
   return { id, type, x: 20, y: 20, w: 80, h: 80, color: "#4fc3f7", opacity: 0.5 };

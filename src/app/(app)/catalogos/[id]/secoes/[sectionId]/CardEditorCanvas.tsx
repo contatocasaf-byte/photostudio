@@ -15,6 +15,7 @@ import {
   type CardLayout,
   type CardShape,
   type CardTextElementConfig,
+  formasVisiveis,
 } from "../../../core/cardConfig";
 import { corComOpacidade } from "../../../core/cor";
 import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, expandirPorGrupo, listarTextosVisiveis } from "../../../core/cardElementos";
@@ -750,7 +751,7 @@ export default function CardEditorCanvas({
       }
     };
     for (const d of CARD_FIELD_DEFS) if (d.type === "image" && camposHabilitados.includes(d.key)) considerar(d.key, "retangulo");
-    for (const sh of shapes) considerar(sh.id, sh.type);
+    for (const sh of formasVisiveis(shapes)) considerar(sh.id, sh.type);
     return melhor.key;
   }
 
@@ -862,7 +863,7 @@ export default function CardEditorCanvas({
           onClear={onClearSelection}
         />
 
-        {shapes.map((shape) => (
+        {formasVisiveis(shapes).map((shape) => (
           <ShapeNode
             key={shape.id}
             shape={shape}

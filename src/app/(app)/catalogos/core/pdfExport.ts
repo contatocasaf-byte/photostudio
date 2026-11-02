@@ -8,7 +8,7 @@
 // Python só resolve o que exige medição de pixel/fonte (encaixe de
 // foto, quebra de texto).
 import type { TextAlign } from "@/lib/canvasText";
-import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
+import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, formasVisiveis, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
 import { listarTextosVisiveis } from "./cardElementos";
 import { contornosArredondados, fundosDosCards } from "./fundosDoCard";
@@ -287,13 +287,13 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
     const uniforme = linha.every((c) => c.cardTemplate === linha[0].cardTemplate);
     if (!uniforme) {
       for (const card of linha) {
-        for (const shape of card.cardTemplate.shapes) pushIndividual(card, shape);
+        for (const shape of formasVisiveis(card.cardTemplate.shapes)) pushIndividual(card, shape);
       }
       continue;
     }
 
     const template = linha[0].cardTemplate;
-    for (const shape of template.shapes) {
+    for (const shape of formasVisiveis(template.shapes)) {
       // Retângulo com cantos arredondados NÃO funde em faixa única (a faixa
       // arredondaria só as pontas): cada card desenha o seu, como na tela.
       const encostaNaBorda = shape.type === "retangulo" && !(shape.raio && shape.raio > 0) && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;

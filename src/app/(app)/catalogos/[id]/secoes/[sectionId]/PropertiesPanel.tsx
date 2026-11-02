@@ -320,6 +320,7 @@ export type ElementsPanelProps = {
   // "Estrutura do card" é um item da lista, como os campos: selecionada
   // quando não há campo/forma selecionado.
   onToggleTexto: (id: string, visivel: boolean) => void;
+  onToggleForma: (id: string, visivel: boolean) => void;
   estruturaSelecionada: boolean;
   onSelectEstrutura: () => void;
 };
@@ -338,6 +339,7 @@ export function ElementsPanel({
   layout,
   onAddTexto,
   onToggleTexto,
+  onToggleForma,
   estruturaSelecionada,
   onSelectEstrutura,
 }: ElementsPanelProps) {
@@ -482,19 +484,32 @@ export function ElementsPanel({
           <div className="mt-2 flex flex-col gap-1">
             {shapes.map((shape, i) => {
               const def = CARD_SHAPE_TYPES.find((t) => t.value === shape.type);
+              const visivel = !shape.oculto;
               return (
-                <button
+                <div
                   key={shape.id}
-                  onClick={(e) => onSelectShape(shape.id, getClickMode(e))}
                   className={
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 " +
                     (selectedShapeIds.includes(shape.id) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
                   }
                 >
-                  <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
-                  {def?.label ?? shape.type} {i + 1}
-                  {marcaGrupo(!!shape.grupo)}
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={visivel}
+                    onChange={(e) => onToggleForma(shape.id, e.target.checked)}
+                    title="Mostrar / ocultar esta forma (no editor, na visualização e no PDF)"
+                    className="shrink-0"
+                  />
+                  <button
+                    onClick={(e) => visivel && onSelectShape(shape.id, getClickMode(e))}
+                    disabled={!visivel}
+                    className={"flex flex-1 items-center gap-2 text-left text-xs font-medium " + (visivel ? "" : "opacity-40")}
+                  >
+                    <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
+                    {def?.label ?? shape.type} {i + 1}
+                  </button>
+                  {marcaGrupo(visivel && !!shape.grupo)}
+                </div>
               );
             })}
           </div>
