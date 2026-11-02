@@ -516,6 +516,32 @@ export type AcoesSelecao = {
   onExcluir: () => void;
 };
 
+// Uma linha da tabela "Cada elemento": nome + X e Y editáveis (confirma ao sair
+// do campo, como os outros campos numéricos).
+function PosicaoDoElemento({ nome, x, y, onCommit }: { nome: string; x: number; y: number; onCommit: (x: number, y: number) => void }) {
+  const campo = (valor: number, ao: (v: number) => void) => (
+    <input
+      type="number"
+      defaultValue={Math.round(valor)}
+      key={valor}
+      onBlur={(e) => {
+        const n = Number(e.target.value);
+        if (!Number.isNaN(n)) ao(n);
+      }}
+      className="w-full rounded border border-slate-300 px-1.5 py-1 text-xs"
+    />
+  );
+  return (
+    <>
+      <span className="truncate text-xs text-slate-700" title={nome}>
+        {nome}
+      </span>
+      {campo(x, (v) => onCommit(v, y))}
+      {campo(y, (v) => onCommit(x, v))}
+    </>
+  );
+}
+
 function BarraDeAcoes({ acoes }: { acoes: AcoesSelecao }) {
   const botao = (rotulo: string, ativo: boolean, onClick: () => void, titulo: string, perigo = false) => (
     <button
@@ -590,11 +616,67 @@ export function SelectedElementPanel({
     return unit === "mm" ? mmToPx(v) : Math.round(v);
   }
 
+  // --- Seleção múltipla / grupo: posição de cada elemento e da seleção -------
+  // Cada item sabe o próprio nome, posição e como se mover — assim dá pra digitar
+  // X/Y de cada um (ex.: dois elementos na mesma altura), mover a seleção inteira
+  // pelo canto dela ou alinhar todos pelo topo / pela esquerda.
+  type ItemSelecionado = { id: string; nome: string; x: number; y: number; mover: (x: number, y: number) => void };
+  const itensSelecionados: ItemSelecionado[] =
+    selectionCount > 1
+      ? [
+          ...selectedKeys.map((key) => {
+            const cfg = layout[key] as { x?: number; y?: number } | undefined;
+            return {
+              id: key,
+              nome: CARD_FIELD_DEFS.find((d) => d.key === key)?.label ?? key,
+              x: cfg?.x ?? 0,
+              y: cfg?.y ?? 0,
+              mover: (x: number, y: number) => onUpdateField(key, { x, y }),
+            };
+          }),
+          ...selectedShapeIds.map((id) => {
+            const forma = shapes.find((f) => f.id === id);
+            if (forma) {
+              const rotulo = CARD_SHAPE_TYPES.find((t) => t.value === forma.type)?.label ?? forma.type;
+              return {
+                id,
+                nome: `${rotulo} ${shapes.indexOf(forma) + 1}`,
+                x: forma.x,
+                y: forma.y,
+                mover: (x: number, y: number) => onUpdateShape(id, { x, y }),
+              };
+            }
+            const cfg = layout[chaveTexto(id)] as { x?: number; y?: number } | undefined;
+            return {
+              id,
+              nome: `Texto ${listarTextos(layout).findIndex((t) => t.id === id) + 1}`,
+              x: cfg?.x ?? 0,
+              y: cfg?.y ?? 0,
+              mover: (x: number, y: number) => onUpdateTexto(id, { x, y }),
+            };
+          }),
+        ]
+      : [];
+  const caixaX = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.x)) : 0;
+  const caixaY = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.y)) : 0;
+  // Move todos juntos pro canto (x, y) da seleção, mantendo as distâncias entre eles.
+  function moverSelecao(novoX: number, novoY: number) {
+    const dx = novoX - caixaX;
+    const dy = novoY - caixaY;
+    for (const it of itensSelecionados) it.mover(it.x + dx, it.y + dy);
+  }
+  function alinharPeloTopo() {
+    for (const it of itensSelecionados) it.mover(it.x, caixaY);
+  }
+  function alinharPelaEsquerda() {
+    for (const it of itensSelecionados) it.mover(caixaX, it.y);
+  }
+
   return (
     <PanelCard
       titulo="Elemento selecionado"
-      destaque={selectionCount === 1}
-      acao={selectionCount === 1 ? <UnitToggle unit={unit} onChange={onUnitChange} /> : undefined}
+      destaque={selectionCount >= 1}
+      acao={selectionCount >= 1 ? <UnitToggle unit={unit} onChange={onUnitChange} /> : undefined}
     >
       {selectionCount === 0 && (
         <Secao>
@@ -611,6 +693,62 @@ export function SelectedElementPanel({
       )}
 
       {selectionCount >= 1 && <BarraDeAcoes acoes={acoes} />}
+
+      {selectionCount > 1 && (
+        <>
+          <Secao titulo="Posição da seleção">
+            <div className="flex flex-col gap-2">
+              <NumberField
+                label={`Posição X (${unit})`}
+                value={toDisplay(caixaX)}
+                onCommit={(v) => moverSelecao(fromDisplay(v), caixaY)}
+              />
+              <NumberField
+                label={`Posição Y (${unit})`}
+                value={toDisplay(caixaY)}
+                onCommit={(v) => moverSelecao(caixaX, fromDisplay(v))}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">Canto superior esquerdo da seleção — move todos juntos, mantendo a distância entre eles.</p>
+          </Secao>
+
+          <Secao titulo="Alinhar">
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                onClick={alinharPeloTopo}
+                title="Todos na mesma altura (Y igual ao do elemento mais alto)"
+                className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Pelo topo
+              </button>
+              <button
+                onClick={alinharPelaEsquerda}
+                title="Todos na mesma posição horizontal (X igual ao do elemento mais à esquerda)"
+                className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Pela esquerda
+              </button>
+            </div>
+          </Secao>
+
+          <Secao titulo="Cada elemento">
+            <div className="grid grid-cols-[1fr_4.2rem_4.2rem] items-center gap-x-2 gap-y-1.5">
+              <span className="text-[10px] font-semibold uppercase text-slate-400">Elemento</span>
+              <span className="text-[10px] font-semibold uppercase text-slate-400">X ({unit})</span>
+              <span className="text-[10px] font-semibold uppercase text-slate-400">Y ({unit})</span>
+              {itensSelecionados.map((it) => (
+                <PosicaoDoElemento
+                  key={it.id}
+                  nome={it.nome}
+                  x={toDisplay(it.x)}
+                  y={toDisplay(it.y)}
+                  onCommit={(nx, ny) => it.mover(fromDisplay(nx), fromDisplay(ny))}
+                />
+              ))}
+            </div>
+          </Secao>
+        </>
+      )}
 
       {selectionCount === 1 && selectedTextoId && (
         <TextProperties
