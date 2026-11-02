@@ -9,7 +9,7 @@ import type { CardLayout, CardShape } from "./cardConfig";
 import type { CardTemplateInput } from "./reflow";
 
 // Chaves numéricas, em px, que escalam junto com o card.
-const CHAVES_ESCALAVEIS = ["x", "y", "w", "h", "maxW", "fontSize", "raio"] as const;
+const CHAVES_ESCALAVEIS = ["x", "y", "w", "h", "maxW", "fontSize", "raio", "contornoEspessura"] as const;
 
 function escalarCfg<T extends object>(cfg: T, k: number): T {
   const copia = { ...cfg } as Record<string, unknown>;

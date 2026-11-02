@@ -11,6 +11,7 @@ import type { TextAlign } from "@/lib/canvasText";
 import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, formasVisiveis, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
 import { listarTextosVisiveis } from "./cardElementos";
+import { contornoAtivo, contornoParaPdf, type EstiloContorno } from "./contorno";
 import { contornosArredondados, fundosDosCards } from "./fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
@@ -43,6 +44,10 @@ export type PdfTextSpec = {
   fontFamily: string;
   maxLines: number;
   lineSpacing: number;
+  // Contorno das letras (px de página); ausente = sem contorno.
+  contornoCor?: string;
+  contornoOpacidade?: number;
+  contornoEspessura?: number;
   // Preço no estilo destacado (ver lib/precoDestacado.ts) — só campos de preço
   // do card configurados assim; ausente = texto comum.
   precoEstilo?: "destacado";
@@ -65,6 +70,11 @@ export type PdfShapeSpec = {
   // Raio dos cantos arredondados (retângulo/triângulo), em px de página;
   // ausente/0 = reto. Mesma geometria de formaArredondada.ts.
   raio?: number;
+  // Contorno (px de página); ausente = sem contorno.
+  contornoCor?: string;
+  contornoOpacidade?: number;
+  contornoEspessura?: number;
+  contornoEstilo?: EstiloContorno;
 };
 
 export type PdfBorderSpec = {
@@ -271,15 +281,18 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
   function pushIndividual(card: PreviewPage["cards"][number], shape: (typeof card.cardTemplate.shapes)[number]) {
     const originX = margens.left + card.x;
     const originY = margens.top + card.y;
+    // Com contorno a forma não leva sangria (o traço fica na borda exata).
+    const sangria = contornoAtivo(shape) ? 0 : SHAPE_BLEED;
     shapes.push({
       shapeType: shape.type,
-      x: originX + shape.x * cardScale - SHAPE_BLEED / 2,
-      y: originY + shape.y * cardScale - SHAPE_BLEED / 2,
-      w: shape.w * cardScale + SHAPE_BLEED,
-      h: shape.h * cardScale + SHAPE_BLEED,
+      x: originX + shape.x * cardScale - sangria / 2,
+      y: originY + shape.y * cardScale - sangria / 2,
+      w: shape.w * cardScale + sangria,
+      h: shape.h * cardScale + sangria,
       color: shape.color,
       opacity: shape.opacity,
       raio: (shape.raio ?? 0) * cardScale,
+      ...contornoParaPdf(shape, cardScale),
     });
   }
 
@@ -296,7 +309,7 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
     for (const shape of formasVisiveis(template.shapes)) {
       // Retângulo com cantos arredondados NÃO funde em faixa única (a faixa
       // arredondaria só as pontas): cada card desenha o seu, como na tela.
-      const encostaNaBorda = shape.type === "retangulo" && !(shape.raio && shape.raio > 0) && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
+      const encostaNaBorda = shape.type === "retangulo" && !(shape.raio && shape.raio > 0) && !contornoAtivo(shape) && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
       if (touchingX && encostaNaBorda && linha.length > 1) {
         const primeiro = linha[0];
         const ultimo = linha[linha.length - 1];
@@ -319,6 +332,12 @@ function buildCardShapes(page: PreviewPage): PdfShapeSpec[] {
   }
 
   return shapes;
+}
+
+// Contorno de texto no payload do PDF (sem o estilo da linha, que é só de forma).
+function contornoTextoParaPdf(cfg: Parameters<typeof contornoParaPdf>[0], k: number) {
+  const { contornoCor, contornoOpacidade, contornoEspessura } = contornoParaPdf(cfg, k);
+  return contornoEspessura ? { contornoCor, contornoOpacidade, contornoEspessura } : {};
 }
 
 function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): PdfFieldSpec[] {
@@ -374,6 +393,7 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
           maxLines: textCfg.maxLines,
           lineSpacing: 1.15,
           ...(textCfg.precoEstilo === "destacado" ? { precoEstilo: "destacado" as const } : {}),
+          ...contornoTextoParaPdf(textCfg, cardScale),
         });
       }
     }
@@ -396,6 +416,7 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
         fontFamily: t.fontFamily ?? DEFAULT_FONT_FAMILY,
         maxLines: t.maxLines,
         lineSpacing: 1.15,
+        ...contornoTextoParaPdf(t, cardScale),
       });
     }
   }

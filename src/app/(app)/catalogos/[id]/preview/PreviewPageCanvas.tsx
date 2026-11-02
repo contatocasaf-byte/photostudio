@@ -19,6 +19,7 @@ import {
   type PageTextElementConfig,
 } from "../../core/pageConfig";
 import { chaveTexto, listarTextosVisiveis } from "../../core/cardElementos";
+import { contornoAtivo, contornoResolvido, margemContornoTexto, tracoDoEstilo, type ContornoCampos } from "../../core/contorno";
 import { corComOpacidade } from "../../core/cor";
 import { raioEfetivoRetangulo, tracarRetanguloArredondado, tracarTriangulo } from "../../core/formaArredondada";
 import { contornosArredondados, fundosDosCards } from "../../core/fundosDoCard";
@@ -81,16 +82,21 @@ export function computeStageSize(paginaLargura: number, paginaAltura: number) {
 function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextElementConfig, contentScale = 1): HTMLCanvasElement {
   const maxW = cfg.maxW * contentScale * STAGE_PIXEL_RATIO;
   const fontSize = cfg.fontSize * contentScale * STAGE_PIXEL_RATIO;
+  // Contorno (só textos de card): folga `m` em volta do bitmap pro traço não ser
+  // cortado; o texto é desenhado em (m, m) e quem usa o canvas desloca -m.
+  const ct = contornoResolvido(cfg as ContornoCampos, contentScale * STAGE_PIXEL_RATIO);
+  const m = margemContornoTexto(cfg as ContornoCampos, contentScale * STAGE_PIXEL_RATIO);
+  const contorno = ct ? { cor: corComOpacidade(ct.cor, ct.opacidade), largura: ct.espessura } : undefined;
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(maxW));
-  canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6));
+  canvas.width = Math.max(1, Math.round(maxW)) + 2 * m;
+  canvas.height = Math.max(1, Math.ceil(cfg.maxLines * fontSize * 1.6)) + 2 * m;
   const ctx = canvas.getContext("2d")!;
   // Preço no estilo destacado (só campos de card de preço): R$ e centavos
   // menores no alto. Sem "R$ x,xx" no texto, cai no desenho normal abaixo.
   if (
     "precoEstilo" in cfg &&
     cfg.precoEstilo === "destacado" &&
-    desenharPrecoDestacado(ctx, text, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, fontSize, maxW, 0, 0, cfg.color, cfg.align, 8 * STAGE_PIXEL_RATIO)
+    desenharPrecoDestacado(ctx, text, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, fontSize, maxW, m, m, cfg.color, cfg.align, 8 * STAGE_PIXEL_RATIO, contorno)
   ) {
     return canvas;
   }
@@ -108,13 +114,14 @@ function renderTextCanvas(text: string, cfg: CardTextElementConfig | PageTextEle
     cfg.fontWeight,
     fontSize,
     maxW,
-    0,
-    0,
+    m,
+    m,
     cfg.color,
     cfg.align,
     cfg.maxLines,
     1.15,
-    8 * STAGE_PIXEL_RATIO
+    8 * STAGE_PIXEL_RATIO,
+    contorno
   );
   return canvas;
 }
@@ -342,14 +349,16 @@ function CardTextField({
   const canvas = useMemo(
     () => renderTextCanvas(text, cfg, cardScale),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, cardScale, fontsTick]
+    [text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, cfg.contornoCor, cfg.contornoOpacidade, cfg.contornoEspessura, cardScale, fontsTick]
   );
+  // Folga do contorno em volta do bitmap (ver renderTextCanvas), em px de card.
+  const folga = margemContornoTexto(cfg, cardScale * STAGE_PIXEL_RATIO) / STAGE_PIXEL_RATIO;
   return (
     <KonvaImage
       image={canvas}
-      x={ORIGIN + (originX + cfg.x * cardScale) * scale}
-      y={ORIGIN + (originY + cfg.y * cardScale) * scale}
-      width={cfg.maxW * cardScale * scale}
+      x={ORIGIN + (originX + cfg.x * cardScale - folga) * scale}
+      y={ORIGIN + (originY + cfg.y * cardScale - folga) * scale}
+      width={(cfg.maxW * cardScale + 2 * folga) * scale}
       height={(canvas.height / STAGE_PIXEL_RATIO) * scale}
       listening={false}
     />
@@ -381,12 +390,26 @@ function PreviewCardShape({
   // cada forma separadamente e sobra um fio de fundo branco entre elas.
   // Estender 1px pra cada lado garante sobreposição (imperceptível a
   // olho nu) em vez de depender de arredondamento coincidir.
-  const BLEED = 1;
+  const contorno = contornoResolvido(shape, cardScale * scale);
+  const BLEED = contorno ? 0 : 1; // com contorno a forma não precisa de sangria
   const x = ORIGIN + (originX + shape.x * cardScale) * scale - BLEED / 2;
   const y = ORIGIN + (originY + shape.y * cardScale) * scale - BLEED / 2;
   const width = shape.w * cardScale * scale + BLEED;
   const height = shape.h * cardScale * scale + BLEED;
-  const common = { x, y, width, height, fill: shape.color, opacity: shape.opacity, listening: false };
+  const common = {
+    x,
+    y,
+    width,
+    height,
+    fill: contorno ? corComOpacidade(shape.color, shape.opacity) : shape.color,
+    opacity: contorno ? 1 : shape.opacity,
+    stroke: contorno ? corComOpacidade(contorno.cor, contorno.opacidade) : undefined,
+    strokeWidth: contorno ? contorno.espessura : 0,
+    dash: contorno ? tracoDoEstilo(contorno.estilo, contorno.espessura) : undefined,
+    lineCap: contorno?.estilo === "pontilhado" ? ("round" as const) : ("butt" as const),
+    lineJoin: "round" as const,
+    listening: false,
+  };
   const raioPx = (shape.raio ?? 0) * cardScale * scale;
 
   if (shape.type === "retangulo") {
@@ -600,7 +623,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
 
               const template = linha[0].cardTemplate;
               return formasVisiveis(template.shapes).flatMap((shape, si) => {
-                const encostaNaBorda = shape.type === "retangulo" && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
+                const encostaNaBorda = shape.type === "retangulo" && !contornoAtivo(shape) && shape.x + shape.w >= cardTemplateAtual.gutterX - 0.5;
                 if (touchingX && encostaNaBorda && linha.length > 1) {
                   const primeiro = linha[0];
                   const ultimo = linha[linha.length - 1];

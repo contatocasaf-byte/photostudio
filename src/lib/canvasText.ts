@@ -8,6 +8,25 @@
 
 export type TextAlign = "left" | "center" | "right" | "justify";
 
+// Contorno das letras: `cor` já com a transparência (rgba) e `largura` = quanto
+// do traço aparece POR FORA da letra (o traço é desenhado atrás do preenchimento).
+export type ContornoTexto = { cor: string; largura: number };
+
+// Escreve um trecho de texto: primeiro o contorno (se houver), depois o
+// preenchimento por cima. Usa o `fillStyle`/fonte que já estiverem no contexto.
+export function escreverTexto(ctx: CanvasRenderingContext2D, texto: string, x: number, y: number, contorno?: ContornoTexto) {
+  if (contorno && contorno.largura > 0) {
+    ctx.save();
+    ctx.strokeStyle = contorno.cor;
+    ctx.lineWidth = contorno.largura * 2;
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    ctx.strokeText(texto, x, y);
+    ctx.restore();
+  }
+  ctx.fillText(texto, x, y);
+}
+
 // Fallback genérico ao final da pilha de fontes — se a família
 // configurada ainda não tiver terminado de carregar por algum motivo,
 // o Canvas cai numa fonte parecida em vez de travar/ficar em branco.
@@ -91,7 +110,8 @@ export function drawTextFit(
   // caía nesse piso de 8px absolutos dentro de um espaço 2x maior,
   // equivalente a ~4px de desenho real: fino demais, glifos como
   // I/J/T saem cortados/corrompidos.
-  minSize = 8
+  minSize = 8,
+  contorno?: ContornoTexto
 ) {
   // Piso de verdade não pode passar do próprio máximo pedido — se
   // fontSizeMax já chega menor que `minSize` (ex.: cardScale encolhendo
@@ -138,9 +158,9 @@ export function drawTextFit(
     const baselineY = y + i * lineH + ascent;
 
     if (align === "center") {
-      ctx.fillText(line, x + (maxW - lineW) / 2, baselineY);
+      escreverTexto(ctx, line, x + (maxW - lineW) / 2, baselineY, contorno);
     } else if (align === "right") {
-      ctx.fillText(line, x + (maxW - lineW), baselineY);
+      escreverTexto(ctx, line, x + (maxW - lineW), baselineY, contorno);
     } else if (align === "justify" && i < lines.length - 1 && line.trim().includes(" ")) {
       const words = line.split(" ");
       const wordsW = words.reduce((sum, w) => sum + ctx.measureText(w).width, 0);
@@ -149,11 +169,11 @@ export function drawTextFit(
       const extraSpace = Math.max(0, maxW - wordsW) / gapCount;
       let cursorX = x;
       for (const w of words) {
-        ctx.fillText(w, cursorX, baselineY);
+        escreverTexto(ctx, w, cursorX, baselineY, contorno);
         cursorX += ctx.measureText(w).width + spaceW + extraSpace;
       }
     } else {
-      ctx.fillText(line, x, baselineY);
+      escreverTexto(ctx, line, x, baselineY, contorno);
     }
   });
 }

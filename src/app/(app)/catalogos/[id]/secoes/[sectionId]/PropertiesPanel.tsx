@@ -15,6 +15,13 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, listarTextos, tamanhoDoElemento } from "../../../core/cardElementos";
+import {
+  CONTORNO_COR_PADRAO,
+  CONTORNO_ESPESSURA_PADRAO,
+  contornoAtivo,
+  type ContornoCampos,
+  type EstiloContorno,
+} from "../../../core/contorno";
 import { mmToPx, pxToMm } from "../../../core/pageConfig";
 import type { TextAlign } from "@/lib/canvasText";
 import FontPicker from "@/components/fonts/FontPicker";
@@ -957,6 +964,95 @@ export function SelectedElementPanel({
   );
 }
 
+const ESTILOS_CONTORNO: { value: EstiloContorno; label: string }[] = [
+  { value: "solido", label: "Sólido" },
+  { value: "tracejado", label: "Tracejado" },
+  { value: "pontilhado", label: "Pontilhado" },
+];
+
+// Seção "Contorno" de formas e textos: liga/desliga e edita cor, transparência,
+// espessura e (só forma) o estilo da linha. Desligar só zera a espessura — cor e
+// o resto ficam guardados pra quando ligar de novo.
+function ContornoSecao({
+  valor,
+  onUpdate,
+  unit,
+  toDisplay,
+  fromDisplay,
+  comEstilo = false,
+}: {
+  valor: ContornoCampos;
+  onUpdate: (patch: ContornoCampos) => void;
+  unit: "px" | "mm";
+  toDisplay: (px: number) => number;
+  fromDisplay: (v: number) => number;
+  comEstilo?: boolean;
+}) {
+  const ativo = contornoAtivo(valor);
+  const botao = (ligado: boolean) =>
+    "flex-1 rounded-md px-2 py-1 text-xs font-medium " + (ligado ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200");
+  return (
+    <Secao
+      titulo="Contorno"
+      acao={
+        <label className="flex items-center gap-1 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={ativo}
+            onChange={(e) =>
+              onUpdate(
+                e.target.checked
+                  ? { contornoEspessura: CONTORNO_ESPESSURA_PADRAO, contornoCor: valor.contornoCor ?? CONTORNO_COR_PADRAO }
+                  : { contornoEspessura: undefined }
+              )
+            }
+          />
+          Ativar
+        </label>
+      }
+    >
+      {ativo ? (
+        <div className="flex flex-col gap-3">
+          <NumberField
+            label={`Espessura (${unit})`}
+            value={toDisplay(valor.contornoEspessura ?? 0)}
+            onCommit={(v) => onUpdate({ contornoEspessura: Math.max(1, fromDisplay(v)) })}
+          />
+          <ColorField
+            label="Cor do contorno"
+            value={valor.contornoCor ?? CONTORNO_COR_PADRAO}
+            onChange={(contornoCor) => onUpdate({ contornoCor })}
+          />
+          <OpacityField value={valor.contornoOpacidade ?? 1} onChange={(contornoOpacidade) => onUpdate({ contornoOpacidade })} />
+          {comEstilo && (
+            <div>
+              <label className="text-xs text-slate-500">Estilo da linha</label>
+              <div className="mt-1 flex gap-1">
+                {ESTILOS_CONTORNO.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => onUpdate({ contornoEstilo: opt.value === "solido" ? undefined : opt.value })}
+                    className={botao((valor.contornoEstilo ?? "solido") === opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-[11px] text-slate-400">
+            {comEstilo
+              ? "O traço fica centrado na borda da forma (metade pra dentro, metade pra fora)."
+              : "O contorno aparece por fora das letras, atrás do preenchimento."}
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Sem contorno.</p>
+      )}
+    </Secao>
+  );
+}
+
 function ShapeProperties({
   shape,
   unit,
@@ -1018,6 +1114,8 @@ function ShapeProperties({
           <OpacityField value={shape.opacity} onChange={(opacity) => onUpdate({ opacity })} />
         </div>
       </Secao>
+
+      <ContornoSecao valor={shape} onUpdate={onUpdate} unit={unit} toDisplay={toDisplay} fromDisplay={fromDisplay} comEstilo />
     </>
   );
 }
@@ -1110,6 +1208,8 @@ function TextProperties({
           </p>
         </Secao>
       )}
+
+      <ContornoSecao valor={cfg} onUpdate={onUpdate} unit={unit} toDisplay={toDisplay} fromDisplay={fromDisplay} />
 
       <Secao titulo="Posição e caixa">
         <div className="flex flex-col gap-3">

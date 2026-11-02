@@ -17,6 +17,7 @@ import {
   type CardTextElementConfig,
   formasVisiveis,
 } from "../../../core/cardConfig";
+import { contornoResolvido, margemContornoTexto, tracoDoEstilo } from "../../../core/contorno";
 import { corComOpacidade } from "../../../core/cor";
 import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, expandirPorGrupo, listarTextosVisiveis } from "../../../core/cardElementos";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
@@ -49,14 +50,19 @@ function computeScale(largura: number, alturaMinima: number) {
 // antes dessa parte, que não tem `fontFamily` gravado.
 function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(cfg.maxW));
+  // Com contorno, o bitmap ganha uma folga `m` em volta (o traço passa da caixa);
+  // o texto é desenhado em (m, m) e o nó é deslocado -m (ver TextFieldNode).
+  const ct = contornoResolvido(cfg);
+  const m = margemContornoTexto(cfg);
+  const contorno = ct ? { cor: corComOpacidade(ct.cor, ct.opacidade), largura: ct.espessura } : undefined;
+  canvas.width = Math.max(1, Math.round(cfg.maxW)) + 2 * m;
   // Nunca menor que o espaço natural do texto; a caixa (cfg.h) só recorta a
   // parte mostrada no editor (ver `crop` em TextFieldNode).
-  canvas.height = Math.max(alturaAutomaticaTexto(cfg), alturaCaixaTexto(cfg));
+  canvas.height = Math.max(alturaAutomaticaTexto(cfg), alturaCaixaTexto(cfg)) + 2 * m;
   const ctx = canvas.getContext("2d")!;
   if (
     cfg.precoEstilo === "destacado" &&
-    desenharPrecoDestacado(ctx, sampleText, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, cfg.fontSize, cfg.maxW, 0, 0, cfg.color, cfg.align)
+    desenharPrecoDestacado(ctx, sampleText, cfg.fontFamily ?? DEFAULT_FONT_FAMILY, cfg.fontWeight, cfg.fontSize, cfg.maxW, m, m, cfg.color, cfg.align, 8, contorno)
   ) {
     return canvas;
   }
@@ -67,11 +73,14 @@ function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTML
     cfg.fontWeight,
     cfg.fontSize,
     cfg.maxW,
-    0,
-    0,
+    m,
+    m,
     cfg.color,
     cfg.align,
-    cfg.maxLines
+    cfg.maxLines,
+    1.15,
+    8,
+    contorno
   );
   return canvas;
 }
@@ -177,20 +186,22 @@ function TextFieldNode({
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "{valor}", sampleText)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.h, cfg.fontWeight, cfg.fontFamily, cfg.precoEstilo, sampleText, fontsTick]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.h, cfg.fontWeight, cfg.fontFamily, cfg.precoEstilo, cfg.contornoCor, cfg.contornoOpacidade, cfg.contornoEspessura, sampleText, fontsTick]
   );
   const alturaCaixa = alturaCaixaTexto(cfg);
+  // Folga do contorno (0 sem contorno): o nó fica `m` maior pra cada lado.
+  const m = margemContornoTexto(cfg);
 
   return (
     <KonvaImage
       ref={(node) => registerRef(fieldKey, node)}
       image={previewCanvas}
       // Só recorta quando a caixa foi ajustada à mão (`h`); sem isso, igual a antes.
-      crop={cfg.h ? { x: 0, y: 0, width: previewCanvas.width, height: alturaCaixa } : undefined}
-      x={ORIGIN + cfg.x * scale}
-      y={ORIGIN + cfg.y * scale}
-      width={cfg.maxW * scale}
-      height={alturaCaixa * scale}
+      crop={cfg.h || m ? { x: 0, y: 0, width: previewCanvas.width, height: alturaCaixa + 2 * m } : undefined}
+      x={ORIGIN + (cfg.x - m) * scale}
+      y={ORIGIN + (cfg.y - m) * scale}
+      width={(cfg.maxW + 2 * m) * scale}
+      height={(alturaCaixa + 2 * m) * scale}
       stroke={selected ? "#4fc3f7" : undefined}
       strokeWidth={selected ? 2 : 0}
       draggable
@@ -198,25 +209,25 @@ function TextFieldNode({
       onTap={onSelect}
       onDragStart={onDragStart}
       onDragMove={(e) =>
-        onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) })
+        onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale) + m, y: Math.round((e.target.y() - ORIGIN) / scale) + m })
       }
       onDragEnd={(e) =>
-        onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) })
+        onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale) + m, y: Math.round((e.target.y() - ORIGIN) / scale) + m })
       }
       onTransform={(e) => {
         const node = e.target;
-        const newMaxW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale));
+        const newMaxW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale) - 2 * m);
         // Só mexe na altura se a alça de cima/baixo foi usada (escala Y mudou);
         // arrastar só as laterais não "fixa" a altura automática.
         const mudouAltura = Math.abs(node.scaleY() - 1) > 0.001;
-        const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale));
+        const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale) - 2 * m);
         node.scaleX(1);
         node.scaleY(1);
-        if (mudouAltura) node.height(newH * scale);
+        if (mudouAltura) node.height((newH + 2 * m) * scale);
         onUpdate({
           maxW: newMaxW,
-          x: Math.round((node.x() - ORIGIN) / scale),
-          ...(mudouAltura ? { h: newH, y: Math.round((node.y() - ORIGIN) / scale) } : {}),
+          x: Math.round((node.x() - ORIGIN) / scale) + m,
+          ...(mudouAltura ? { h: newH, y: Math.round((node.y() - ORIGIN) / scale) + m } : {}),
         });
       }}
     />
@@ -269,15 +280,22 @@ function ShapeNode({
     onUpdate({ w: newW, h: newH, x: Math.round((node.x() - ORIGIN) / scale), y: Math.round((node.y() - ORIGIN) / scale) });
   }
 
+  // Com contorno próprio a transparência vai dentro das cores (preenchimento e
+  // traço independentes) e o destaque azul de "selecionado" sai — o Transformer
+  // já mostra a seleção.
+  const contorno = contornoResolvido(shape, scale);
   const common = {
     x,
     y,
     width,
     height,
-    fill: shape.color,
-    opacity: shape.opacity,
-    stroke: selected ? "#4fc3f7" : undefined,
-    strokeWidth: selected ? 2 : 0,
+    fill: contorno ? corComOpacidade(shape.color, shape.opacity) : shape.color,
+    opacity: contorno ? 1 : shape.opacity,
+    stroke: contorno ? corComOpacidade(contorno.cor, contorno.opacidade) : selected ? "#4fc3f7" : undefined,
+    strokeWidth: contorno ? contorno.espessura : selected ? 2 : 0,
+    dash: contorno ? tracoDoEstilo(contorno.estilo, contorno.espessura) : undefined,
+    lineCap: contorno?.estilo === "pontilhado" ? ("round" as const) : ("butt" as const),
+    lineJoin: "round" as const,
     draggable: true,
     onClick: onSelect,
     onTap: onSelect,

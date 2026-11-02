@@ -5,6 +5,7 @@
 // `products` populada é uma fase futura), cada campo de texto tem um
 // valor de exemplo (`sampleText`) usado no preview WYSIWYG do editor.
 import type { TextAlign } from "@/lib/canvasText";
+import type { EstiloContorno } from "./contorno";
 
 // Campos 1:1 com as colunas reais de `products` (Parte 4: codigo, ref,
 // descricao, preco_1, preco_2, foto_key) — sem inventar campo que não
@@ -98,6 +99,11 @@ export type CardTextElementConfig = {
   // Texto livre desligado (marcador da lista de Textos): não aparece no editor,
   // na visualização nem no PDF, mas continua salvo. Ausente = visível.
   oculto?: boolean;
+  // Contorno (ver contorno.ts): ausente/espessura 0 = sem contorno.
+  contornoCor?: string;
+  contornoOpacidade?: number;
+  contornoEspessura?: number;
+  contornoEstilo?: EstiloContorno;
   // Só nos campos de preço: "destacado" desenha o valor inteiro grande, com o
   // "R$" e os centavos menores no alto (ver lib/precoDestacado.ts). Ausente ou
   // "normal" = texto comum, como sempre.
@@ -251,6 +257,11 @@ export type CardShape = {
   // Forma desligada (marcador da lista de Formas): não aparece no editor, na
   // visualização nem no PDF, mas continua salva. Ausente = visível.
   oculto?: boolean;
+  // Contorno (ver contorno.ts): ausente/espessura 0 = sem contorno.
+  contornoCor?: string;
+  contornoOpacidade?: number;
+  contornoEspessura?: number;
+  contornoEstilo?: EstiloContorno;
   // Id do grupo (ver cardElementos.ts).
   grupo?: string;
 };

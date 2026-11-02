@@ -6,7 +6,7 @@
 // O cálculo de posição é uma conta pura (layoutPreco) — o backend do PDF tem o
 // espelho exato em pdf_logic.py (layout_preco_destacado). Se mudar aqui, mude
 // lá: editor, visualização e PDF precisam desenhar igual.
-import { setFont } from "./canvasText";
+import { escreverTexto, setFont, type ContornoTexto } from "./canvasText";
 
 // Tamanhos relativos ao do valor inteiro (que é o "Tamanho da fonte" do campo).
 export const ESC_SIMBOLO = 0.33;
@@ -86,7 +86,8 @@ export function desenharPrecoDestacado(
   y: number,
   fill: string,
   align: "left" | "center" | "right" | "justify",
-  piso = 8
+  piso = 8,
+  contorno?: ContornoTexto
 ): boolean {
   const partes = separarPreco(texto);
   if (!partes) return false;
@@ -106,7 +107,7 @@ export function desenharPrecoDestacado(
   ctx.textBaseline = "alphabetic";
   for (const op of ops) {
     setFont(ctx, fontWeight, op.tamanho, fontFamily);
-    ctx.fillText(op.texto, op.x, op.baselineY);
+    escreverTexto(ctx, op.texto, op.x, op.baselineY, contorno);
   }
   return true;
 }
