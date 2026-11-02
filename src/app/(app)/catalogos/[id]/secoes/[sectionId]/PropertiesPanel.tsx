@@ -654,7 +654,16 @@ export function SelectedElementPanel({
   // Cada item sabe o próprio nome, posição e como se mover — assim dá pra digitar
   // X/Y de cada um (ex.: dois elementos na mesma altura), mover a seleção inteira
   // pelo canto dela ou alinhar todos pelo topo / pela esquerda.
-  type ItemSelecionado = { id: string; nome: string; x: number; y: number; w: number; h: number; mover: (x: number, y: number) => void };
+  type ItemSelecionado = {
+    id: string;
+    nome: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    grupo?: string;
+    mover: (x: number, y: number) => void;
+  };
   const itensDaSelecao: ItemSelecionado[] =
     selectionCount > 1
       ? [
@@ -666,6 +675,7 @@ export function SelectedElementPanel({
               x: cfg?.x ?? 0,
               y: cfg?.y ?? 0,
               ...tamanhoDoElemento(layout[key] ?? {}),
+              grupo: (layout[key] as { grupo?: string } | undefined)?.grupo,
               mover: (x: number, y: number) => onUpdateField(key, { x, y }),
             };
           }),
@@ -680,6 +690,7 @@ export function SelectedElementPanel({
                 y: forma.y,
                 w: forma.w,
                 h: forma.h,
+                grupo: forma.grupo,
                 mover: (x: number, y: number) => onUpdateShape(id, { x, y }),
               };
             }
@@ -690,6 +701,7 @@ export function SelectedElementPanel({
               x: cfg?.x ?? 0,
               y: cfg?.y ?? 0,
               ...tamanhoDoElemento(layout[chaveTexto(id)] ?? {}),
+              grupo: (layout[chaveTexto(id)] as { grupo?: string } | undefined)?.grupo,
               mover: (x: number, y: number) => onUpdateTexto(id, { x, y }),
             };
           }),
@@ -697,7 +709,43 @@ export function SelectedElementPanel({
       : [];
   // Na ordem da seleção (o último = referência do "Centralizar").
   const itensSelecionados = [...itensDaSelecao].sort((a, b) => ordemSelecao.indexOf(a.id) - ordemSelecao.indexOf(b.id));
-  const referencia = itensSelecionados[itensSelecionados.length - 1];
+
+  // UNIDADES de alinhamento: cada grupo selecionado conta como UM objeto (a caixa
+  // que envolve os membros dele) e cada elemento solto também. Alinhar move a
+  // unidade inteira, mantendo a posição relativa dos membros do grupo. A ordem é
+  // a da seleção (o grupo vale pelo seu membro selecionado por último).
+  type UnidadeAlinhamento = { itens: ItemSelecionado[]; x: number; y: number; w: number; h: number; nome: string; ordem: number };
+  function criarUnidade(itens: ItemSelecionado[]): UnidadeAlinhamento {
+    const x = Math.min(...itens.map((i) => i.x));
+    const y = Math.min(...itens.map((i) => i.y));
+    return {
+      itens,
+      x,
+      y,
+      w: Math.max(...itens.map((i) => i.x + i.w)) - x,
+      h: Math.max(...itens.map((i) => i.y + i.h)) - y,
+      nome: itens.length > 1 ? `grupo de ${itens.length} elementos` : itens[0].nome,
+      ordem: Math.max(...itens.map((i) => itensSelecionados.indexOf(i))),
+    };
+  }
+  const porGrupo = new Map<string, ItemSelecionado[]>();
+  const unidadesBase: UnidadeAlinhamento[] = [];
+  const soltos: ItemSelecionado[] = [];
+  for (const it of itensSelecionados) {
+    if (it.grupo) porGrupo.set(it.grupo, [...(porGrupo.get(it.grupo) ?? []), it]);
+    else soltos.push(it);
+  }
+  for (const membros of porGrupo.values()) unidadesBase.push(criarUnidade(membros));
+  for (const it of soltos) unidadesBase.push(criarUnidade([it]));
+  // Seleção de um grupo só (tudo na mesma unidade): alinhar não teria efeito, então
+  // nesse caso alinha os próprios elementos entre si, como antes.
+  const unidades = (unidadesBase.length > 1 ? unidadesBase : itensSelecionados.map((i) => criarUnidade([i]))).sort(
+    (a, b) => a.ordem - b.ordem
+  );
+  const referencia = unidades[unidades.length - 1];
+  function moverUnidade(u: UnidadeAlinhamento, dx: number, dy: number) {
+    for (const it of u.itens) it.mover(it.x + dx, it.y + dy);
+  }
   const caixaX = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.x)) : 0;
   const caixaY = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.y)) : 0;
   // Move todos juntos pro canto (x, y) da seleção, mantendo as distâncias entre eles.
@@ -707,21 +755,23 @@ export function SelectedElementPanel({
     for (const it of itensSelecionados) it.mover(it.x + dx, it.y + dy);
   }
   function alinharPeloTopo() {
-    for (const it of itensSelecionados) it.mover(it.x, caixaY);
+    const topo = Math.min(...unidades.map((u) => u.y));
+    for (const u of unidades) moverUnidade(u, 0, topo - u.y);
   }
   function alinharPelaEsquerda() {
-    for (const it of itensSelecionados) it.mover(caixaX, it.y);
+    const esquerda = Math.min(...unidades.map((u) => u.x));
+    for (const u of unidades) moverUnidade(u, esquerda - u.x, 0);
   }
   // Centralizar: o CENTRO de cada elemento vai pro centro do último selecionado
   // (a referência). "Verticalmente" = mesma linha do meio (muda o Y);
   // "horizontalmente" = mesma coluna do meio (muda o X).
   function centralizarVerticalmente() {
     const centro = referencia.y + referencia.h / 2;
-    for (const it of itensSelecionados) it.mover(it.x, Math.round(centro - it.h / 2));
+    for (const u of unidades) moverUnidade(u, 0, Math.round(centro - u.h / 2) - u.y);
   }
   function centralizarHorizontalmente() {
     const centro = referencia.x + referencia.w / 2;
-    for (const it of itensSelecionados) it.mover(Math.round(centro - it.w / 2), it.y);
+    for (const u of unidades) moverUnidade(u, Math.round(centro - u.w / 2) - u.x, 0);
   }
 
   return (
@@ -796,7 +846,7 @@ export function SelectedElementPanel({
               </button>
             </div>
             <p className="mt-1 text-[11px] text-slate-400">
-              Centralizar usa o último elemento selecionado como referência
+              Cada grupo selecionado é alinhado como um objeto só (mantém a posição entre os seus elementos). Centralizar usa o último selecionado como referência
               {referencia ? <> (agora: <strong>{referencia.nome}</strong>)</> : null}.
             </p>
           </Secao>
