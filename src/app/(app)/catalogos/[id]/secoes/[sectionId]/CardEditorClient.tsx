@@ -33,11 +33,14 @@ import {
 import {
   agrupar,
   chaveTexto,
+  colarElementos,
+  copiarElementos,
   defaultCardTexto,
   desagrupar,
   duplicar,
   gruposDaSelecao,
   removerLivres,
+  type AreaTransferencia,
   type EstadoElementos,
 } from "../../../core/cardElementos";
 import CardEditorCanvas from "./CardEditorCanvas";
@@ -62,6 +65,29 @@ function snapshotCard(input: {
 }): string {
   return JSON.stringify(input);
 }
+
+// Área de transferência do editor de cards (Ctrl+C / Ctrl+V): fica no módulo,
+// então dá pra copiar de um card e colar no de outra seção sem recarregar.
+let areaTransferencia: AreaTransferencia | null = null;
+let colagensFeitas = 0;
+
+// Foto do que é desfazível: tudo que define o card (o mesmo conjunto do snapshot).
+type FotoCard = {
+  str: string;
+  layout: CardLayout;
+  camposHabilitados: CardFieldKey[];
+  largura: number;
+  alturaMinima: number;
+  alturaCresceCom: CardFieldKey | null;
+  gutterX: number | null;
+  gutterY: number | null;
+  shapes: CardShape[];
+  borda: CardBorda;
+};
+const MAX_HISTORICO = 100;
+// Edições seguidas dentro desse intervalo (arrastar, digitar um número...) viram
+// UM passo de desfazer.
+const JANELA_HISTORICO_MS = 600;
 
 export default function CardEditorPage({
   params,
@@ -102,6 +128,7 @@ export default function CardEditorPage({
   // lista só). O ÚLTIMO é a referência do "Centralizar" no painel.
   const ordemSelecaoRef = useRef<string[]>([]);
   const [gutterMode, setGutterMode] = useState(false);
+  const [temAreaCopiada, setTemAreaCopiada] = useState(() => areaTransferencia !== null);
 
   // Reaproveitar configuração de outra seção do mesmo catálogo — lista
   // as demais seções pra um seletor; "Copiar" só carrega os valores no
@@ -436,11 +463,55 @@ export default function CardEditorPage({
     setSelectedShapeIds([]);
   }
 
-  // Atalhos (Ctrl+D, Ctrl+G, Ctrl+Shift+G, Delete) usam sempre a versão mais
-  // recente dos handlers acima.
-  const atalhos = useRef({ duplicar: handleDuplicar, agrupar: handleAgrupar, desagrupar: handleDesagrupar, excluir: handleExcluirSelecao });
+  // Copiar / colar formas e textos (campos fixos existem uma vez só: não copiam).
+  // Cada colagem seguinte da mesma cópia sai um pouco mais deslocada.
+  function handleCopiar() {
+    const area = copiarElementos({ layout, shapes }, selecao);
+    if (!area) {
+      setStatus("⚠ Só formas e textos podem ser copiados — os campos fixos (foto, código, ref…) existem uma vez só no card.");
+      return;
+    }
+    areaTransferencia = area;
+    colagensFeitas = 0;
+    setTemAreaCopiada(true);
+    const n = area.formas.length + area.textos.length;
+    setStatus(`✔ ${n} elemento(s) copiado(s) — Ctrl+V cola (também dá pra colar no card de outra seção).`);
+  }
+
+  function handleColar() {
+    if (!areaTransferencia) return;
+    colagensFeitas += 1;
+    const r = colarElementos({ layout, shapes }, areaTransferencia, () => crypto.randomUUID(), 12 * colagensFeitas);
+    if (r.novos.length === 0) return;
+    aplicarElementos(r.estado);
+    setSelectedKeys([]);
+    setSelectedShapeIds(r.novos);
+    setStatus(`✔ ${r.novos.length} elemento(s) colado(s).`);
+  }
+
+  // Atalhos (Ctrl+Z/Y, Ctrl+C/V, Ctrl+D, Ctrl+G, Ctrl+Shift+G, Delete) usam sempre
+  // a versão mais recente dos handlers.
+  const atalhos = useRef({
+    duplicar: handleDuplicar,
+    agrupar: handleAgrupar,
+    desagrupar: handleDesagrupar,
+    excluir: handleExcluirSelecao,
+    desfazer: () => {},
+    refazer: () => {},
+    copiar: handleCopiar,
+    colar: handleColar,
+  });
   useEffect(() => {
-    atalhos.current = { duplicar: handleDuplicar, agrupar: handleAgrupar, desagrupar: handleDesagrupar, excluir: handleExcluirSelecao };
+    atalhos.current = {
+      duplicar: handleDuplicar,
+      agrupar: handleAgrupar,
+      desagrupar: handleDesagrupar,
+      excluir: handleExcluirSelecao,
+      desfazer,
+      refazer,
+      copiar: handleCopiar,
+      colar: handleColar,
+    };
   });
 
   // Move todo campo/forma selecionado com as setas do teclado (1px, ou
@@ -452,6 +523,24 @@ export default function CardEditorPage({
       const digitando = !!alvo && ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName);
       if (!digitando && (e.ctrlKey || e.metaKey)) {
         const k = e.key.toLowerCase();
+        if (k === "z" || k === "y") {
+          e.preventDefault();
+          if (k === "y" || e.shiftKey) atalhos.current.refazer();
+          else atalhos.current.desfazer();
+          return;
+        }
+        // Ctrl+C / Ctrl+V só tomam o atalho quando há o que copiar/colar (e não há
+        // texto selecionado na página): senão ficam com o comportamento normal.
+        if (k === "c" && selectedKeys.length + selectedShapeIds.length > 0 && !window.getSelection()?.toString()) {
+          e.preventDefault();
+          atalhos.current.copiar();
+          return;
+        }
+        if (k === "v" && areaTransferencia) {
+          e.preventDefault();
+          atalhos.current.colar();
+          return;
+        }
         if (k === "d") {
           e.preventDefault();
           atalhos.current.duplicar();
@@ -535,6 +624,121 @@ export default function CardEditorPage({
     () => snapshotCard({ layout, camposHabilitados, largura, alturaMinima, alturaCresceCom, gutterX, gutterY, shapes, borda }),
     [layout, camposHabilitados, largura, alturaMinima, alturaCresceCom, gutterX, gutterY, shapes, borda]
   );
+  // --- Desfazer / refazer ----------------------------------------------------
+  // Guarda "fotos" do card (layout, formas, borda, tamanho...). A cada mudança de
+  // estado a foto de ANTES entra na pilha de desfazer — mas mudanças seguidas
+  // (arrastar, digitar) dentro de JANELA_HISTORICO_MS contam como um passo só.
+  const fotoAtual: FotoCard = {
+    str: currentSnapshot,
+    layout,
+    camposHabilitados,
+    largura,
+    alturaMinima,
+    alturaCresceCom,
+    gutterX,
+    gutterY,
+    shapes,
+    borda,
+  };
+  const fotoAtualRef = useRef<FotoCard>(fotoAtual);
+  useEffect(() => {
+    fotoAtualRef.current = fotoAtual;
+  });
+  const passadoRef = useRef<FotoCard[]>([]);
+  const futuroRef = useRef<FotoCard[]>([]);
+  const baseRef = useRef<FotoCard | null>(null); // estado antes da edição em andamento
+  const ultimoStrRef = useRef<string | null>(null); // último estado já visto (null = ainda carregando)
+  const timerHistRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [histTam, setHistTam] = useState({ desfazer: 0, refazer: 0 });
+
+  useEffect(() => {
+    if (loading) {
+      ultimoStrRef.current = null;
+      return;
+    }
+    const atual = fotoAtualRef.current;
+    if (ultimoStrRef.current === null) {
+      // Primeiro estado depois de carregar: ponto de partida, sem histórico.
+      baseRef.current = atual;
+      ultimoStrRef.current = atual.str;
+      passadoRef.current = [];
+      futuroRef.current = [];
+      setHistTam({ desfazer: 0, refazer: 0 });
+      return;
+    }
+    if (atual.str === ultimoStrRef.current) return;
+    ultimoStrRef.current = atual.str;
+    if (timerHistRef.current === null) {
+      if (baseRef.current) passadoRef.current.push(baseRef.current);
+      if (passadoRef.current.length > MAX_HISTORICO) passadoRef.current.shift();
+      futuroRef.current = [];
+    } else {
+      clearTimeout(timerHistRef.current);
+    }
+    timerHistRef.current = setTimeout(() => {
+      baseRef.current = fotoAtualRef.current;
+      timerHistRef.current = null;
+    }, JANELA_HISTORICO_MS);
+    setHistTam({ desfazer: passadoRef.current.length, refazer: 0 });
+  }, [currentSnapshot, loading]);
+
+  useEffect(
+    () => () => {
+      if (timerHistRef.current) clearTimeout(timerHistRef.current);
+    },
+    []
+  );
+
+  function aplicarFoto(f: FotoCard) {
+    if (timerHistRef.current) {
+      clearTimeout(timerHistRef.current);
+      timerHistRef.current = null;
+    }
+    // Marca como "já visto" antes de aplicar: a mudança de estado abaixo não vira
+    // um passo novo de histórico.
+    ultimoStrRef.current = f.str;
+    baseRef.current = f;
+    setLayout(f.layout);
+    setCamposHabilitados(f.camposHabilitados);
+    setLargura(f.largura);
+    setAlturaMinima(f.alturaMinima);
+    setAlturaCresceCom(f.alturaCresceCom);
+    setGutterX(f.gutterX);
+    setGutterY(f.gutterY);
+    setShapes(f.shapes);
+    setBorda(f.borda);
+    // Mantém selecionado o que ainda existe depois de desfazer/refazer.
+    setSelectedKeys((prev) => prev.filter((k) => f.camposHabilitados.includes(k)));
+    setSelectedShapeIds((prev) => prev.filter((id) => f.shapes.some((s) => s.id === id) || chaveTexto(id) in f.layout));
+    setHistTam({ desfazer: passadoRef.current.length, refazer: futuroRef.current.length });
+  }
+
+  function desfazer() {
+    if (loading) return;
+    const atualStr = ultimoStrRef.current;
+    let alvo = passadoRef.current.pop();
+    while (alvo && alvo.str === atualStr) alvo = passadoRef.current.pop();
+    if (!alvo) {
+      setHistTam({ desfazer: 0, refazer: futuroRef.current.length });
+      return;
+    }
+    futuroRef.current.push(fotoAtualRef.current);
+    aplicarFoto(alvo);
+  }
+
+  function refazer() {
+    if (loading) return;
+    const atualStr = ultimoStrRef.current;
+    let alvo = futuroRef.current.pop();
+    while (alvo && alvo.str === atualStr) alvo = futuroRef.current.pop();
+    if (!alvo) {
+      setHistTam({ desfazer: passadoRef.current.length, refazer: 0 });
+      return;
+    }
+    passadoRef.current.push(fotoAtualRef.current);
+    aplicarFoto(alvo);
+  }
+
   const isFollowDirty = followSourceId !== null && copiedSnapshot !== null && currentSnapshot !== copiedSnapshot;
   const followSourceTitle = followSourceId ? (otherSections.find((s) => s.id === followSourceId)?.titulo ?? "outra seção") : null;
 
@@ -594,13 +798,33 @@ export default function CardEditorPage({
         <h1 className="text-lg font-semibold text-slate-900">
           {rotuloCard} — {section?.titulo}
         </h1>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {saving ? "Salvando..." : "Salvar"}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {[
+              { rotulo: "↶ Desfazer", titulo: "Desfazer (Ctrl+Z)", ativo: histTam.desfazer > 0, onClick: desfazer },
+              { rotulo: "↷ Refazer", titulo: "Refazer (Ctrl+Y)", ativo: histTam.refazer > 0, onClick: refazer },
+              { rotulo: "Copiar", titulo: "Copiar formas e textos selecionados (Ctrl+C)", ativo: totalSelecionado > 0, onClick: handleCopiar },
+              { rotulo: "Colar", titulo: "Colar o que foi copiado (Ctrl+V)", ativo: temAreaCopiada, onClick: handleColar },
+            ].map((b) => (
+              <button
+                key={b.rotulo}
+                onClick={b.onClick}
+                disabled={!b.ativo}
+                title={b.titulo}
+                className="rounded-md bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {b.rotulo}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
       </div>
       <p className="mt-1 text-sm text-slate-500">
         Desenhado com dados de exemplo — a foto e os textos reais entram quando os produtos forem vinculados.

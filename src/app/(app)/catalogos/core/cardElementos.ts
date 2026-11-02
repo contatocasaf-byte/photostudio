@@ -243,6 +243,64 @@ export function duplicar(
   return { estado: { layout: layout as CardLayout, shapes }, novos, ignorados: s.campos.length };
 }
 
+// COPIAR / COLAR. A "área de transferência" guarda cópias das formas e textos
+// livres selecionados (campos fixos — foto, código, ref... — existem uma vez só e
+// ficam de fora). Colar cria elementos NOVOS (ids novos) deslocados `delta` px;
+// vários elementos que eram do mesmo grupo viram um grupo novo na colagem.
+export type AreaTransferencia = { formas: CardShape[]; textos: (CardTextElementConfig & ComGrupo)[] };
+
+export function copiarElementos(e: EstadoElementos, s: Selecao): AreaTransferencia | null {
+  const ids = s.livres.filter((id) => ehLivre(e, id));
+  if (ids.length === 0) return null;
+  return {
+    formas: e.shapes.filter((f) => ids.includes(f.id)).map((f) => ({ ...f })),
+    textos: listarTextos(e.layout)
+      .filter((t) => ids.includes(t.id))
+      .map((t) => {
+        const { id, ...cfg } = t;
+        void id;
+        return { ...cfg } as CardTextElementConfig & ComGrupo;
+      }),
+  };
+}
+
+export function colarElementos(
+  e: EstadoElementos,
+  area: AreaTransferencia,
+  gerarId: () => string,
+  delta = 12
+): { estado: EstadoElementos; novos: string[] } {
+  const contagem = new Map<string, number>();
+  for (const g of [...area.formas.map((f) => f.grupo), ...area.textos.map((t) => t.grupo)]) {
+    if (g) contagem.set(g, (contagem.get(g) ?? 0) + 1);
+  }
+  const novoGrupo = new Map<string, string>();
+  for (const [g, n] of contagem) if (n >= 2) novoGrupo.set(g, gerarId());
+
+  const layout = { ...e.layout } as Record<string, unknown>;
+  const shapes = [...e.shapes];
+  const novos: string[] = [];
+  for (const forma of area.formas) {
+    const id = gerarId();
+    const copia: CardShape = { ...forma, id, x: forma.x + delta, y: forma.y + delta };
+    const g = forma.grupo ? novoGrupo.get(forma.grupo) : undefined;
+    if (g) copia.grupo = g;
+    else delete copia.grupo;
+    shapes.push(copia);
+    novos.push(id);
+  }
+  for (const texto of area.textos) {
+    const id = gerarId();
+    const copia = { ...texto, x: texto.x + delta, y: texto.y + delta } as CardTextElementConfig & ComGrupo;
+    const g = texto.grupo ? novoGrupo.get(texto.grupo) : undefined;
+    if (g) copia.grupo = g;
+    else delete copia.grupo;
+    layout[chaveTexto(id)] = copia;
+    novos.push(id);
+  }
+  return { estado: { layout: layout as CardLayout, shapes }, novos };
+}
+
 // Remove formas e textos livres (campos fixos não são removíveis: ficam
 // ligados/desligados pelo checkbox da lista).
 export function removerLivres(e: EstadoElementos, ids: string[]): EstadoElementos {
