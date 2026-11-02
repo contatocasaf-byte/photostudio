@@ -290,6 +290,13 @@ export default function CardEditorPage({
     setStatus(`✔ Versão ${v.versao} carregada — clique em Salvar pra restaurar.`);
   }
 
+  // Marcador de cada texto livre: desliga/liga o texto (some do editor, da
+  // visualização e do PDF, sem apagar).
+  function handleToggleTexto(id: string, visivel: boolean) {
+    handleUpdateTexto(id, { oculto: visivel ? undefined : true });
+    if (!visivel) setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
+  }
+
   function handleToggleCampo(key: CardFieldKey, habilitado: boolean) {
     setCamposHabilitados((prev) => (habilitado ? [...prev, key] : prev.filter((k) => k !== key)));
     if (!habilitado) setSelectedKeys((prev) => prev.filter((k) => k !== key));
@@ -833,6 +840,7 @@ export default function CardEditorPage({
             onAddShape={handleAddShape}
             layout={layout}
             onAddTexto={handleAddTexto}
+            onToggleTexto={handleToggleTexto}
             estruturaSelecionada={selectedKeys.length + selectedShapeIds.length === 0}
             onSelectEstrutura={handleClearSelection}
           />

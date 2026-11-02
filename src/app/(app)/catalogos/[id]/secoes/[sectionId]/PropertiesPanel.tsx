@@ -319,6 +319,7 @@ export type ElementsPanelProps = {
   onAddTexto: () => void;
   // "Estrutura do card" é um item da lista, como os campos: selecionada
   // quando não há campo/forma selecionado.
+  onToggleTexto: (id: string, visivel: boolean) => void;
   estruturaSelecionada: boolean;
   onSelectEstrutura: () => void;
 };
@@ -336,6 +337,7 @@ export function ElementsPanel({
   onAddShape,
   layout,
   onAddTexto,
+  onToggleTexto,
   estruturaSelecionada,
   onSelectEstrutura,
 }: ElementsPanelProps) {
@@ -429,24 +431,37 @@ export function ElementsPanel({
           <p className="text-xs text-slate-400">Nenhum texto. Use &quot;+ Texto&quot; para um rótulo fixo (ex.: Oferta destaque).</p>
         ) : (
           <div className="flex flex-col gap-1">
-            {textosLivres.map((t, i) => (
-              <button
-                key={t.id}
-                onClick={(e) => onSelectShape(t.id, getClickMode(e))}
-                className={
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
-                  (selectedShapeIds.includes(t.id) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
-                }
-              >
-                <span className="truncate">
-                  Texto {i + 1}
-                  <span className={"ml-1 font-normal " + (selectedShapeIds.includes(t.id) ? "text-slate-300" : "text-slate-400")}>
-                    {t.text ? `“${t.text.length > 18 ? t.text.slice(0, 18) + "…" : t.text}”` : ""}
-                  </span>
-                </span>
-                {marcaGrupo(emGrupoCampo(chaveTexto(t.id)))}
-              </button>
-            ))}
+            {textosLivres.map((t, i) => {
+              const visivel = !t.oculto;
+              return (
+                <div
+                  key={t.id}
+                  className={
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 " +
+                    (selectedShapeIds.includes(t.id) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={visivel}
+                    onChange={(e) => onToggleTexto(t.id, e.target.checked)}
+                    title="Mostrar / ocultar este texto (no editor, na visualização e no PDF)"
+                    className="shrink-0"
+                  />
+                  <button
+                    onClick={(e) => visivel && onSelectShape(t.id, getClickMode(e))}
+                    disabled={!visivel}
+                    className={"flex-1 truncate text-left text-xs font-medium " + (visivel ? "" : "opacity-40")}
+                  >
+                    Texto {i + 1}
+                    <span className={"ml-1 font-normal " + (selectedShapeIds.includes(t.id) ? "text-slate-300" : "text-slate-400")}>
+                      {t.text ? `“${t.text.length > 18 ? t.text.slice(0, 18) + "…" : t.text}”` : ""}
+                    </span>
+                  </button>
+                  {marcaGrupo(visivel && emGrupoCampo(chaveTexto(t.id)))}
+                </div>
+              );
+            })}
           </div>
         )}
       </Secao>

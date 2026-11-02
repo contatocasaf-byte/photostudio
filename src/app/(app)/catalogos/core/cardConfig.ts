@@ -95,6 +95,9 @@ export type CardTextElementConfig = {
   // seleção e a referência pra alinhar/centralizar — o texto continua sendo
   // desenhado a partir do topo da caixa, igual na visualização e no PDF.
   h?: number;
+  // Texto livre desligado (marcador da lista de Textos): não aparece no editor,
+  // na visualização nem no PDF, mas continua salvo. Ausente = visível.
+  oculto?: boolean;
   // Só nos campos de preço: "destacado" desenha o valor inteiro grande, com o
   // "R$" e os centavos menores no alto (ver lib/precoDestacado.ts). Ausente ou
   // "normal" = texto comum, como sempre.

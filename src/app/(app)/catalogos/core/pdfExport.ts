@@ -10,7 +10,7 @@
 import type { TextAlign } from "@/lib/canvasText";
 import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
-import { listarTextos } from "./cardElementos";
+import { listarTextosVisiveis } from "./cardElementos";
 import { contornosArredondados, fundosDosCards } from "./fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
@@ -380,7 +380,7 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
 
     // Textos livres (adicionados à mão no card-molde): texto fixo, por cima dos
     // campos fixos, no mesmo espaço do card.
-    for (const t of listarTextos(cardTemplate.layout)) {
+    for (const t of listarTextosVisiveis(cardTemplate.layout)) {
       if (!t.text) continue;
       ops.push({
         kind: "text",

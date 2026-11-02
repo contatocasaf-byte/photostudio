@@ -17,7 +17,7 @@ import {
   type PageShape,
   type PageTextElementConfig,
 } from "../../core/pageConfig";
-import { chaveTexto, listarTextos } from "../../core/cardElementos";
+import { chaveTexto, listarTextosVisiveis } from "../../core/cardElementos";
 import { corComOpacidade } from "../../core/cor";
 import { raioEfetivoRetangulo, tracarRetanguloArredondado, tracarTriangulo } from "../../core/formaArredondada";
 import { contornosArredondados, fundosDosCards } from "../../core/fundosDoCard";
@@ -694,7 +694,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
 
             // Textos livres (adicionados à mão no card-molde) — texto fixo, por
             // cima dos campos.
-            const textos = listarTextos(cardTemplate.layout)
+            const textos = listarTextosVisiveis(cardTemplate.layout)
               .filter((t) => t.text)
               .map((t) => (
                 <CardTextField

@@ -45,6 +45,12 @@ export function tamanhoDoElemento(cfg: Partial<CardTextElementConfig & { w: numb
   return { w: cfg.w ?? 0, h: cfg.h ?? 0 };
 }
 
+// Só os textos ligados (sem `oculto`) — o que o editor desenha, a visualização
+// mostra e o PDF imprime.
+export function listarTextosVisiveis(layout: CardLayout): CardTexto[] {
+  return listarTextos(layout).filter((t) => !t.oculto);
+}
+
 export function defaultCardTexto(): CardTextElementConfig {
   return {
     x: 20,

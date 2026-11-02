@@ -17,7 +17,7 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { corComOpacidade } from "../../../core/cor";
-import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, expandirPorGrupo, listarTextos } from "../../../core/cardElementos";
+import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, expandirPorGrupo, listarTextosVisiveis } from "../../../core/cardElementos";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
 import { desenharPrecoDestacado } from "@/lib/precoDestacado";
@@ -906,7 +906,7 @@ export default function CardEditorCanvas({
         )}
 
         {/* Textos livres (adicionados à mão) — por cima dos campos fixos. */}
-        {listarTextos(layout).map((t) => (
+        {listarTextosVisiveis(layout).map((t) => (
           <TextFieldNode
             key={t.id}
             fieldKey={t.id}
