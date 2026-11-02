@@ -373,6 +373,10 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
           w: imgCfg.w * cardScale,
           h: imgCfg.h * cardScale,
           fit: "contain",
+          // Cantos arredondados (a foto é recortada) e fundo atrás dela — o backend
+          // já desenhava, mas o payload não os enviava.
+          ...((imgCfg.raio ?? 0) > 0 ? { raio: (imgCfg.raio as number) * cardScale } : {}),
+          ...(imgCfg.fundo?.ativo ? { fundoCor: imgCfg.fundo.cor, fundoOpacidade: imgCfg.fundo.opacidade } : {}),
         });
       } else {
         const textCfg = cfg as CardTextElementConfig;
