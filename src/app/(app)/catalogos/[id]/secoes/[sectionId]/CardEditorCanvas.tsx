@@ -17,7 +17,7 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { corComOpacidade } from "../../../core/cor";
-import { chaveTexto, expandirPorGrupo, listarTextos } from "../../../core/cardElementos";
+import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, expandirPorGrupo, listarTextos } from "../../../core/cardElementos";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
 import { desenharPrecoDestacado } from "@/lib/precoDestacado";
@@ -49,7 +49,9 @@ function computeScale(largura: number, alturaMinima: number) {
 function renderTextPreview(cfg: CardTextElementConfig, sampleText: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(cfg.maxW));
-  canvas.height = Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
+  // Nunca menor que o espaço natural do texto; a caixa (cfg.h) só recorta a
+  // parte mostrada no editor (ver `crop` em TextFieldNode).
+  canvas.height = Math.max(alturaAutomaticaTexto(cfg), alturaCaixaTexto(cfg));
   const ctx = canvas.getContext("2d")!;
   if (
     cfg.precoEstilo === "destacado" &&
@@ -174,17 +176,20 @@ function TextFieldNode({
   const previewCanvas = useMemo(
     () => renderTextPreview(cfg, substitutePlaceholders(cfg.text ?? "{valor}", sampleText)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.fontWeight, cfg.fontFamily, cfg.precoEstilo, sampleText, fontsTick]
+    [cfg.text, cfg.fontSize, cfg.maxW, cfg.color, cfg.align, cfg.maxLines, cfg.h, cfg.fontWeight, cfg.fontFamily, cfg.precoEstilo, sampleText, fontsTick]
   );
+  const alturaCaixa = alturaCaixaTexto(cfg);
 
   return (
     <KonvaImage
       ref={(node) => registerRef(fieldKey, node)}
       image={previewCanvas}
+      // Só recorta quando a caixa foi ajustada à mão (`h`); sem isso, igual a antes.
+      crop={cfg.h ? { x: 0, y: 0, width: previewCanvas.width, height: alturaCaixa } : undefined}
       x={ORIGIN + cfg.x * scale}
       y={ORIGIN + cfg.y * scale}
       width={cfg.maxW * scale}
-      height={previewCanvas.height * scale}
+      height={alturaCaixa * scale}
       stroke={selected ? "#4fc3f7" : undefined}
       strokeWidth={selected ? 2 : 0}
       draggable
@@ -200,9 +205,18 @@ function TextFieldNode({
       onTransform={(e) => {
         const node = e.target;
         const newMaxW = Math.max(MIN_FIELD_SIZE, Math.round((node.width() * node.scaleX()) / scale));
+        // Só mexe na altura se a alça de cima/baixo foi usada (escala Y mudou);
+        // arrastar só as laterais não "fixa" a altura automática.
+        const mudouAltura = Math.abs(node.scaleY() - 1) > 0.001;
+        const newH = Math.max(MIN_FIELD_SIZE, Math.round((node.height() * node.scaleY()) / scale));
         node.scaleX(1);
         node.scaleY(1);
-        onUpdate({ maxW: newMaxW, x: Math.round((node.x() - ORIGIN) / scale) });
+        if (mudouAltura) node.height(newH * scale);
+        onUpdate({
+          maxW: newMaxW,
+          x: Math.round((node.x() - ORIGIN) / scale),
+          ...(mudouAltura ? { h: newH, y: Math.round((node.y() - ORIGIN) / scale) } : {}),
+        });
       }}
     />
   );
@@ -753,9 +767,10 @@ export default function CardEditorCanvas({
       ehCampoFixo(chave) ? { campos: [chave], livres: [] } : { campos: [], livres: [chave] },
       camposHabilitados
     );
-    chamarSelecao(chave, modo);
-    const outroModo: SelectMode = modo === "remove" ? "remove" : "add";
-    for (const k of [...exp.campos, ...exp.livres]) if (k !== chave) chamarSelecao(k, outroModo);
+    // O elemento clicado entra por ÚLTIMO (a ordem da seleção define a referência
+    // do "Centralizar"); os demais do grupo entram antes dele.
+    const ordem = [...[...exp.campos, ...exp.livres].filter((k) => k !== chave), chave];
+    ordem.forEach((k, i) => chamarSelecao(k, i === 0 ? modo : modo === "remove" ? "remove" : "add"));
   }
 
   function selectField(key: CardFieldKey, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
@@ -807,7 +822,7 @@ export default function CardEditorCanvas({
       ? []
       : isFreeResize
         ? (["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center", "middle-left", "middle-right"] as const)
-        : (["middle-left", "middle-right"] as const);
+        : (["middle-left", "middle-right", "top-center", "bottom-center"] as const);
   const stageW = (gutterMode ? ghostDefaultX + canvasW + ORIGIN : canvasW + ORIGIN * 2) + origem.x;
   const stageH = canvasH + ORIGIN * 2 + origem.y;
 

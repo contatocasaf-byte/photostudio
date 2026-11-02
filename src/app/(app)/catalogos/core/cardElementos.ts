@@ -25,6 +25,26 @@ export function listarTextos(layout: CardLayout): CardTexto[] {
     .map(([k, cfg]) => ({ ...(cfg as CardTextElementConfig), id: k.slice(PREFIXO_TEXTO.length) }));
 }
 
+// Altura "automática" da caixa de um texto: todas as linhas permitidas x 1,6 x
+// o tamanho da fonte. É a de sempre (cards salvos sem `h` continuam iguais).
+export function alturaAutomaticaTexto(cfg: Pick<CardTextElementConfig, "maxLines" | "fontSize">): number {
+  return Math.max(1, Math.ceil(cfg.maxLines * cfg.fontSize * 1.6));
+}
+
+// Altura da caixa de um texto no editor: a escolhida (`h`) ou a automática.
+export function alturaCaixaTexto(cfg: Pick<CardTextElementConfig, "maxLines" | "fontSize" | "h">): number {
+  return typeof cfg.h === "number" && cfg.h > 0 ? Math.max(1, Math.round(cfg.h)) : alturaAutomaticaTexto(cfg);
+}
+
+// Largura e altura (px do card) de qualquer elemento do card — foto/forma
+// (w x h) ou texto (largura máxima x altura da caixa). Usado pra centralizar.
+export function tamanhoDoElemento(cfg: Partial<CardTextElementConfig & { w: number }>): { w: number; h: number } {
+  if (typeof cfg.maxW === "number" && typeof cfg.fontSize === "number") {
+    return { w: cfg.maxW, h: alturaCaixaTexto({ maxLines: cfg.maxLines ?? 1, fontSize: cfg.fontSize, h: cfg.h }) };
+  }
+  return { w: cfg.w ?? 0, h: cfg.h ?? 0 };
+}
+
 export function defaultCardTexto(): CardTextElementConfig {
   return {
     x: 20,

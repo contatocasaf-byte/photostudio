@@ -90,6 +90,11 @@ export type CardTextElementConfig = {
   fontWeight: "bold" | "normal";
   align: TextAlign;
   maxLines: number;
+  // Altura da CAIXA do texto no editor (px do card). Ausente = automática
+  // (linhas x tamanho da fonte x 1,6, como sempre foi). Só define a área de
+  // seleção e a referência pra alinhar/centralizar — o texto continua sendo
+  // desenhado a partir do topo da caixa, igual na visualização e no PDF.
+  h?: number;
   // Só nos campos de preço: "destacado" desenha o valor inteiro grande, com o
   // "R$" e os centavos menores no alto (ver lib/precoDestacado.ts). Ausente ou
   // "normal" = texto comum, como sempre.

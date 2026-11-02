@@ -98,6 +98,9 @@ export default function CardEditorPage({
   // campo/forma pode estar selecionado junto com outros de qualquer tipo.
   const [selectedKeys, setSelectedKeys] = useState<CardFieldKey[]>([]);
   const [selectedShapeIds, setSelectedShapeIds] = useState<string[]>([]);
+  // Ordem em que os elementos foram selecionados (campos e formas/textos numa
+  // lista só). O ÚLTIMO é a referência do "Centralizar" no painel.
+  const ordemSelecaoRef = useRef<string[]>([]);
   const [gutterMode, setGutterMode] = useState(false);
 
   // Reaproveitar configuração de outra seção do mesmo catálogo — lista
@@ -302,7 +305,15 @@ export default function CardEditorPage({
   // comportamento de antes da multi-seleção. "add"/"remove" (Ctrl/Alt)
   // só mexem no próprio array, permitindo misturar campos e formas na
   // mesma seleção.
+  function registrarOrdem(id: string, mode: "replace" | "add" | "remove") {
+    const sem = ordemSelecaoRef.current.filter((k) => k !== id);
+    if (mode === "replace") ordemSelecaoRef.current = [id];
+    else if (mode === "add") ordemSelecaoRef.current = ordemSelecaoRef.current.includes(id) ? ordemSelecaoRef.current : [...sem, id];
+    else ordemSelecaoRef.current = sem;
+  }
+
   function handleSelectField(key: CardFieldKey, mode: "replace" | "add" | "remove") {
+    registrarOrdem(key, mode);
     if (mode === "replace") {
       setSelectedShapeIds([]);
       setSelectedKeys([key]);
@@ -314,6 +325,7 @@ export default function CardEditorPage({
   }
 
   function handleSelectShape(id: string, mode: "replace" | "add" | "remove") {
+    registrarOrdem(id, mode);
     if (mode === "replace") {
       setSelectedKeys([]);
       setSelectedShapeIds([id]);
@@ -364,6 +376,13 @@ export default function CardEditorPage({
 
   const selecao = { campos: selectedKeys as string[], livres: selectedShapeIds };
   const totalSelecionado = selectedKeys.length + selectedShapeIds.length;
+  // Ordem de seleção: a registrada, só dos que seguem selecionados, e depois os
+  // que entraram na seleção por outro caminho (duplicar, desagrupar...).
+  const idsSelecionados: string[] = [...selectedKeys, ...selectedShapeIds];
+  const ordemSelecao = [
+    ...ordemSelecaoRef.current.filter((id) => idsSelecionados.includes(id)),
+    ...idsSelecionados.filter((id) => !ordemSelecaoRef.current.includes(id)),
+  ];
   const selecaoTemGrupo = gruposDaSelecao({ layout, shapes }, selecao).size > 0;
 
   function handleDuplicar() {
@@ -783,6 +802,7 @@ export default function CardEditorPage({
               onUpdateShape={handleUpdateShape}
               onRemoveShape={handleRemoveShape}
               onUpdateTexto={handleUpdateTexto}
+              ordemSelecao={ordemSelecao}
               acoes={{
                 podeDuplicar: selectedShapeIds.length > 0,
                 podeAgrupar: totalSelecionado >= 2,

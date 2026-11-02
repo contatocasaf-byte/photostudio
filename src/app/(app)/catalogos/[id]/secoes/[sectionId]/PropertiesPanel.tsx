@@ -14,7 +14,7 @@ import {
   type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
-import { chaveTexto, listarTextos } from "../../../core/cardElementos";
+import { alturaAutomaticaTexto, alturaCaixaTexto, chaveTexto, listarTextos, tamanhoDoElemento } from "../../../core/cardElementos";
 import { mmToPx, pxToMm } from "../../../core/pageConfig";
 import type { TextAlign } from "@/lib/canvasText";
 import FontPicker from "@/components/fonts/FontPicker";
@@ -498,6 +498,9 @@ export type SelectedElementPanelProps = {
   onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
   onRemoveShape: (id: string) => void;
   onUpdateTexto: (id: string, patch: Partial<CardTextElementConfig>) => void;
+  // Ids dos elementos selecionados na ORDEM em que foram selecionados: o último
+  // é a referência do "Centralizar".
+  ordemSelecao: string[];
   // Ações sobre a seleção (duplicar / agrupar / desagrupar / excluir).
   acoes: AcoesSelecao;
   // Unidade (px/mm) compartilhada com o painel de estrutura.
@@ -596,6 +599,7 @@ export function SelectedElementPanel({
   onUpdateShape,
   onRemoveShape,
   onUpdateTexto,
+  ordemSelecao,
   acoes,
   unit,
   onUnitChange,
@@ -620,8 +624,8 @@ export function SelectedElementPanel({
   // Cada item sabe o próprio nome, posição e como se mover — assim dá pra digitar
   // X/Y de cada um (ex.: dois elementos na mesma altura), mover a seleção inteira
   // pelo canto dela ou alinhar todos pelo topo / pela esquerda.
-  type ItemSelecionado = { id: string; nome: string; x: number; y: number; mover: (x: number, y: number) => void };
-  const itensSelecionados: ItemSelecionado[] =
+  type ItemSelecionado = { id: string; nome: string; x: number; y: number; w: number; h: number; mover: (x: number, y: number) => void };
+  const itensDaSelecao: ItemSelecionado[] =
     selectionCount > 1
       ? [
           ...selectedKeys.map((key) => {
@@ -631,6 +635,7 @@ export function SelectedElementPanel({
               nome: CARD_FIELD_DEFS.find((d) => d.key === key)?.label ?? key,
               x: cfg?.x ?? 0,
               y: cfg?.y ?? 0,
+              ...tamanhoDoElemento(layout[key] ?? {}),
               mover: (x: number, y: number) => onUpdateField(key, { x, y }),
             };
           }),
@@ -643,6 +648,8 @@ export function SelectedElementPanel({
                 nome: `${rotulo} ${shapes.indexOf(forma) + 1}`,
                 x: forma.x,
                 y: forma.y,
+                w: forma.w,
+                h: forma.h,
                 mover: (x: number, y: number) => onUpdateShape(id, { x, y }),
               };
             }
@@ -652,11 +659,15 @@ export function SelectedElementPanel({
               nome: `Texto ${listarTextos(layout).findIndex((t) => t.id === id) + 1}`,
               x: cfg?.x ?? 0,
               y: cfg?.y ?? 0,
+              ...tamanhoDoElemento(layout[chaveTexto(id)] ?? {}),
               mover: (x: number, y: number) => onUpdateTexto(id, { x, y }),
             };
           }),
         ]
       : [];
+  // Na ordem da seleção (o último = referência do "Centralizar").
+  const itensSelecionados = [...itensDaSelecao].sort((a, b) => ordemSelecao.indexOf(a.id) - ordemSelecao.indexOf(b.id));
+  const referencia = itensSelecionados[itensSelecionados.length - 1];
   const caixaX = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.x)) : 0;
   const caixaY = itensSelecionados.length ? Math.min(...itensSelecionados.map((i) => i.y)) : 0;
   // Move todos juntos pro canto (x, y) da seleção, mantendo as distâncias entre eles.
@@ -670,6 +681,17 @@ export function SelectedElementPanel({
   }
   function alinharPelaEsquerda() {
     for (const it of itensSelecionados) it.mover(caixaX, it.y);
+  }
+  // Centralizar: o CENTRO de cada elemento vai pro centro do último selecionado
+  // (a referência). "Verticalmente" = mesma linha do meio (muda o Y);
+  // "horizontalmente" = mesma coluna do meio (muda o X).
+  function centralizarVerticalmente() {
+    const centro = referencia.y + referencia.h / 2;
+    for (const it of itensSelecionados) it.mover(it.x, Math.round(centro - it.h / 2));
+  }
+  function centralizarHorizontalmente() {
+    const centro = referencia.x + referencia.w / 2;
+    for (const it of itensSelecionados) it.mover(Math.round(centro - it.w / 2), it.y);
   }
 
   return (
@@ -728,7 +750,25 @@ export function SelectedElementPanel({
               >
                 Pela esquerda
               </button>
+              <button
+                onClick={centralizarVerticalmente}
+                title="Centro de cada elemento na mesma linha do meio do ÚLTIMO elemento selecionado (muda só o Y)"
+                className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Centralizar verticalmente
+              </button>
+              <button
+                onClick={centralizarHorizontalmente}
+                title="Centro de cada elemento na mesma coluna do meio do ÚLTIMO elemento selecionado (muda só o X)"
+                className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Centralizar horizontalmente
+              </button>
             </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Centralizar usa o último elemento selecionado como referência
+              {referencia ? <> (agora: <strong>{referencia.nome}</strong>)</> : null}.
+            </p>
           </Secao>
 
           <Secao titulo="Cada elemento">
@@ -1000,6 +1040,33 @@ function TextProperties({
             value={toDisplay(cfg.maxW)}
             onCommit={(v) => onUpdate({ maxW: Math.max(40, fromDisplay(v)) })}
           />
+          <div>
+            <NumberField
+              label={`Altura da caixa (${unit})`}
+              value={toDisplay(alturaCaixaTexto(cfg))}
+              onCommit={(v) => onUpdate({ h: Math.max(4, fromDisplay(v)) })}
+            />
+            <div className="mt-1 flex items-center gap-1">
+              <button
+                onClick={() => onUpdate({ h: Math.ceil(cfg.fontSize * 1.2) })}
+                title="Caixa do tamanho de uma linha de texto"
+                className="rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-200"
+              >
+                Ajustar a 1 linha
+              </button>
+              <button
+                onClick={() => onUpdate({ h: undefined })}
+                disabled={!cfg.h}
+                title={`Volta ao automático (${alturaAutomaticaTexto(cfg)} px: linhas x fonte)`}
+                className="rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Automática
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Só muda a caixa de seleção e a referência pra alinhar/centralizar; o texto continua saindo do topo da caixa. Também dá pra arrastar as alças de cima e de baixo no canvas.
+            </p>
+          </div>
           <div>
             <label className="text-xs text-slate-500">Número de linhas</label>
             <div className="mt-1 flex gap-1">
