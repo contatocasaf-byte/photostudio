@@ -12,6 +12,7 @@
 // que "sobrou" pra próxima página. Resultado final é o mesmo descrito
 // na spec, só a forma de calcular é mais robusta.
 import { wrapTextToLines } from "@/lib/canvasText";
+import { escalarCardTemplate } from "./escalarCard";
 import {
   fontPairsFromCardLayout,
   substitutePlaceholders,
@@ -58,8 +59,8 @@ export type SectionReflowInput = {
   // um produto posicionado antes de uma edição "aplicar só aos novos"
   // continuar desenhando com o molde antigo.
   templateVersions: { versao: number; template: CardTemplateInput }[];
-  // `destaque`: produto em destaque — ocupa uma LINHA PRÓPRIA, na largura da
-  // grade inteira, desenhado com o card-molde de destaque da seção (abaixo).
+  // `destaque`: produto em destaque — ocupa uma LINHA PRÓPRIA, na largura útil
+  // da página inteira, desenhado com o card-molde de destaque da seção (abaixo).
   // Ausente/false = item normal. `cardTemplateVersao` de um item em destaque é
   // versão da cadeia do card de destaque (não do padrão).
   items: { product: ProductRow; cardTemplateVersao: number; destaque?: boolean }[]; // já ordenados (ver Parte 5)
@@ -143,7 +144,7 @@ export type PositionedCard = {
   // faixa de cor pensada pra ser contínua entre os cards.
   isFirstCol: boolean;
   isLastCol: boolean;
-  // Card em destaque (linha própria, largura da grade) — só informativo; o
+  // Card em destaque (linha própria, largura útil da página) — só informativo; o
   // desenho usa `cardTemplate`/`width`/`height` como em qualquer card.
   destaque?: boolean;
 };
@@ -298,6 +299,26 @@ function reflowSection(
     const larguraNecessaria = (section.colunas - 1) * cardTemplateAtual.gutterX + cardTemplateAtual.largura;
     const cardScale = larguraNecessaria > areaUtilLargura && larguraNecessaria > 0 ? areaUtilLargura / larguraNecessaria : 1;
 
+    // Card de DESTAQUE: sempre na largura ÚTIL da página (página menos margens),
+    // não na da grade — numa seção de 1 coluna, por exemplo, a grade é um card só
+    // e o destaque ficaria estreito. O card é desenhado numa largura qualquer e
+    // aqui é escalado proporcionalmente (largura, altura, fontes, formas...) pra
+    // largura final = areaUtilLargura na escala da página (cardScale).
+    const destaquesEscalados = new Map<CardTemplateInput, CardTemplateInput>();
+    function destaqueNaPagina(molde: CardTemplateInput): CardTemplateInput {
+      if (!(molde.largura > 0) || !(areaUtilLargura > 0)) return molde;
+      let escalado = destaquesEscalados.get(molde);
+      if (!escalado) {
+        escalado = escalarCardTemplate(molde, areaUtilLargura / cardScale / molde.largura);
+        destaquesEscalados.set(molde, escalado);
+      }
+      return escalado;
+    }
+    function moldeDoItemNaPagina(it: SectionReflowInput["items"][number]): CardTemplateInput {
+      const molde = templateDoItem(it);
+      return ehDestaque(it) ? destaqueNaPagina(molde) : molde;
+    }
+
     const page: PreviewPage = {
       tipo: tipoPagina,
       sectionId: section.id,
@@ -330,7 +351,7 @@ function reflowSection(
       // versão atual da seção — é isso que permite um produto
       // posicionado antes de uma edição "só novos" continuar com a
       // altura/layout do molde antigo (spec 3.5).
-      const alturaLinha = Math.max(...linha.map((it) => calcularAlturaCard(templateDoItem(it), it.product)));
+      const alturaLinha = Math.max(...linha.map((it) => calcularAlturaCard(moldeDoItemNaPagina(it), it.product)));
 
       // Só recusa a linha se já colocou pelo menos uma nesta página —
       // garante progresso mesmo se uma linha sozinha já estourar a
@@ -338,12 +359,12 @@ function reflowSection(
       if (alturaLinha > areaRestante && progressoNestaPagina) break;
 
       linha.forEach((it, col) => {
-        const molde = templateDoItem(it);
+        const molde = moldeDoItemNaPagina(it);
         page.cards.push({
           x: col * cardTemplateAtual.gutterX * cardScale,
           y: cursorY,
-          // Destaque: a largura é a do PRÓPRIO card de destaque (o editor trava
-          // ela na largura da grade), na mesma escala da página.
+          // Destaque: a largura é a do PRÓPRIO card de destaque já escalado pra
+          // largura útil da página (ver destaqueNaPagina), na escala da página.
           width: (linhaEhDestaque ? (molde.largura ?? cardTemplateAtual.largura) : cardTemplateAtual.largura) * cardScale,
           height: alturaLinha * cardScale,
           product: it.product,

@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  getCatalog,
   getSection,
   getCardTemplate,
   listCardTemplateVersions,
@@ -89,11 +90,8 @@ export default function CardEditorPage({
   const [gutterY, setGutterY] = useState<number | null>(null);
   const [shapes, setShapes] = useState<CardShape[]>([]);
   const [borda, setBorda] = useState<CardBorda>(() => defaultCardBorda());
-  // Card de destaque: a largura é a da GRADE da seção ((colunas-1) x espaçamento
-  // + largura do card padrão) e fica travada — null = sem card padrão ainda (aí
-  // a largura é livre) ou editando o próprio card padrão.
-  const [larguraGrade, setLarguraGrade] = useState<number | null>(null);
-  const larguraTravada = ehDestaque && larguraGrade !== null;
+  // Card de destaque: pode ser desenhado em qualquer largura — o reflow o encaixa
+  // na largura útil da página (ver reflow.ts), mantendo as proporções.
 
   // Seleção múltipla (Ctrl+clique adiciona, Alt+clique retira, clique
   // simples substitui — ver SelectMode em CardEditorCanvas.tsx) — um
@@ -150,28 +148,24 @@ export default function CardEditorPage({
       listSections(catalogId),
       sectionHasItems(sectionId, variante),
       listCardTemplateVersions(sectionId, variante),
-      // Só o card de destaque precisa do padrão (pra saber a largura da grade).
-      ehDestaque ? getCardTemplate(sectionId, "padrao") : Promise.resolve(null),
-    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes, versionsRes, padraoRes]) => {
+      // Só o card de destaque precisa do catálogo (largura da página, pro tamanho inicial).
+      ehDestaque ? getCatalog(catalogId) : Promise.resolve(null),
+    ]).then(([sectionRes, templateRes, sectionsRes, hasItemsRes, versionsRes, catalogRes]) => {
       if (cancelled) return;
       if (sectionRes.error) setError(sectionRes.error);
       else setSection(sectionRes.section ?? null);
       // O card de destaque não participa do "seguir outra seção".
       if (!sectionRes.error && !ehDestaque) setFollowSourceId(sectionRes.section?.segue_secao_id ?? null);
 
-      let grade: number | null = null;
-      if (ehDestaque && padraoRes?.template && sectionRes.section) {
-        const p = padraoRes.template;
-        grade = (sectionRes.section.colunas - 1) * (p.gutterX ?? p.largura + 20) + p.largura;
-        setLarguraGrade(grade);
-      }
-
       if (templateRes.error) setError(templateRes.error);
-      else if (!templateRes.template && grade !== null) {
-        // Card de destaque novo: começa já na largura da grade.
-        setLargura(grade);
-        setAlturaMinima(260);
-        setLayout(defaultCardLayout(grade, 260));
+      else if (!templateRes.template && ehDestaque && catalogRes?.catalog) {
+        // Card de destaque novo: começa largo (a largura da página) e baixo, no
+        // formato de um destaque; o reflow o encaixa na largura útil da página.
+        const larguraInicial = Math.round(catalogRes.catalog.paginaLargura);
+        const alturaInicial = Math.round(larguraInicial * 0.4);
+        setLargura(larguraInicial);
+        setAlturaMinima(alturaInicial);
+        setLayout(defaultCardLayout(larguraInicial, alturaInicial));
       } else if (templateRes.template) {
         const t = templateRes.template;
         // Mescla por cima dos padrões (mesmo padrão já usado no editor
@@ -185,7 +179,7 @@ export default function CardEditorPage({
         const bordaVal = t.borda ?? defaultCardBorda();
         setLayout(merged);
         setCamposHabilitados(campos);
-        setLargura(grade ?? t.largura);
+        setLargura(t.largura);
         setAlturaMinima(t.alturaMinima);
         setAlturaCresceCom(t.alturaCresceCom);
         setGutterX(t.gutterX);
@@ -240,7 +234,7 @@ export default function CardEditorPage({
       const bordaVal = t.borda ?? defaultCardBorda();
       setLayout(merged);
       setCamposHabilitados(campos);
-      setLargura(larguraTravada ? (larguraGrade as number) : t.largura);
+      setLargura(t.largura);
       setAlturaMinima(t.alturaMinima);
       setAlturaCresceCom(t.alturaCresceCom);
       setGutterX(t.gutterX);
@@ -282,7 +276,7 @@ export default function CardEditorPage({
     const t = v.template;
     setLayout({ ...defaultCardLayout(t.largura, t.alturaMinima), ...t.layout });
     setCamposHabilitados(t.camposHabilitados.length > 0 ? t.camposHabilitados : DEFAULT_CAMPOS_HABILITADOS);
-    setLargura(larguraTravada ? (larguraGrade as number) : t.largura);
+    setLargura(t.largura);
     setAlturaMinima(t.alturaMinima);
     setAlturaCresceCom(t.alturaCresceCom);
     setGutterX(t.gutterX);
@@ -471,8 +465,7 @@ export default function CardEditorPage({
   }, [selectedKeys, selectedShapeIds]);
 
   function handleResizeBoundary(patch: { largura: number; alturaMinima: number }) {
-    // Card de destaque: largura travada na da grade.
-    setLargura(larguraTravada ? (larguraGrade as number) : patch.largura);
+    setLargura(patch.largura);
     setAlturaMinima(patch.alturaMinima);
   }
 
@@ -583,10 +576,11 @@ export default function CardEditorPage({
         <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <p>
             ★ Este card é usado nos produtos marcados como <b>destaque</b> na tela de Produtos da seção: cada um ocupa uma linha própria, na
-            largura da grade.{" "}
-            {larguraTravada
-              ? `A largura (${Math.round(larguraGrade as number)} px) é a da grade e não pode ser alterada aqui — só a altura.`
-              : "Esta seção ainda não tem o card padrão; a largura fica livre até ele existir (depois a largura passa a ser a da grade)."}
+            largura útil da página (página menos margens).
+          </p>
+          <p className="mt-1">
+            Desenhe-o em qualquer largura: ele é ajustado automaticamente à da página, mantendo as proporções (largura e altura, fontes,
+            formas). Quanto mais perto da proporção final, mais fiel fica o que você vê aqui.
           </p>
           <p className="mt-1">
             <Link href={`/catalogos/${catalogId}/secoes/${sectionId}`} className="underline hover:text-amber-700">
@@ -756,7 +750,6 @@ export default function CardEditorPage({
             onSelectShape={handleSelectShape}
             onClearSelection={handleClearSelection}
             borda={borda}
-            larguraTravada={larguraTravada}
           />
         </div>
 
@@ -779,7 +772,6 @@ export default function CardEditorPage({
               onUpdateBorda={handleUpdateBorda}
               unit={unit}
               onUnitChange={setUnit}
-              larguraTravada={larguraTravada}
             />
           ) : (
             <SelectedElementPanel

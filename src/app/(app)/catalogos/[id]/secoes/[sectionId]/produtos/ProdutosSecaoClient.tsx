@@ -338,7 +338,7 @@ export default function SectionProdutosPage({ params }: { params: Promise<{ id: 
             {ehJornal && items.length > 1 && <CabecalhoOrdenacao ordenacao={ordenacao} onOrdenar={handleOrdenar} />}
             {items.length > 0 && (
               <p className="mt-1 text-xs text-slate-400">
-                ☆ Clique na estrela para marcar um produto como <b>destaque</b>: ele ocupa uma linha própria, na largura da grade, com o{" "}
+                ☆ Clique na estrela para marcar um produto como <b>destaque</b>: ele ocupa uma linha própria, na largura da página, com o{" "}
                 <Link href={`/catalogos/${catalogId}/secoes/${sectionId}/destaque`} className="underline hover:text-slate-600">
                   card de destaque
                 </Link>{" "}
