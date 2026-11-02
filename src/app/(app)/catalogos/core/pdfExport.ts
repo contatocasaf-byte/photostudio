@@ -10,6 +10,7 @@
 import type { TextAlign } from "@/lib/canvasText";
 import { CARD_FIELD_DEFS, DEFAULT_FONT_FAMILY, type CardImageElementConfig, type CardShapeType, type CardTextElementConfig } from "./cardConfig";
 import { PAGE_FIELD_DEFS, substitutePlaceholders, type PageImageElementConfig, type PageShapeType, type PageTextElementConfig } from "./pageConfig";
+import { listarTextos } from "./cardElementos";
 import { contornosArredondados, fundosDosCards } from "./fundosDoCard";
 import { resolveCardFieldDisplayText, type PreviewPage } from "./reflow";
 
@@ -375,6 +376,27 @@ function buildCardFields(page: PreviewPage, fotoKeyByUrl: Map<string, string>): 
           ...(textCfg.precoEstilo === "destacado" ? { precoEstilo: "destacado" as const } : {}),
         });
       }
+    }
+
+    // Textos livres (adicionados à mão no card-molde): texto fixo, por cima dos
+    // campos fixos, no mesmo espaço do card.
+    for (const t of listarTextos(cardTemplate.layout)) {
+      if (!t.text) continue;
+      ops.push({
+        kind: "text",
+        text: t.text,
+        x: originX + t.x * cardScale,
+        y: originY + t.y * cardScale,
+        maxW: t.maxW * cardScale,
+        fontSizeMax: t.fontSize * cardScale,
+        minSize: 8,
+        color: t.color,
+        align: t.align,
+        fontWeight: t.fontWeight,
+        fontFamily: t.fontFamily ?? DEFAULT_FONT_FAMILY,
+        maxLines: t.maxLines,
+        lineSpacing: 1.15,
+      });
     }
   }
   return ops;

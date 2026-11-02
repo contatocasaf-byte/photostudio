@@ -76,6 +76,8 @@ export type CardImageElementConfig = {
   // sem fundo / cantos retos (molde salvo antes disto).
   fundo?: CardFundo;
   raio?: number;
+  // Id do grupo (ver cardElementos.ts) — só vínculo de seleção/movimento no editor.
+  grupo?: string;
 };
 export type CardTextElementConfig = {
   x: number;
@@ -92,22 +94,30 @@ export type CardTextElementConfig = {
   // "R$" e os centavos menores no alto (ver lib/precoDestacado.ts). Ausente ou
   // "normal" = texto comum, como sempre.
   precoEstilo?: "normal" | "destacado";
+  // Id do grupo (ver cardElementos.ts).
+  grupo?: string;
 };
 export type CardElementConfig = Partial<CardImageElementConfig & CardTextElementConfig>;
-export type CardLayout = Record<CardFieldKey, CardElementConfig>;
+// Além dos campos fixos, o layout guarda os TEXTOS LIVRES adicionados à mão,
+// sob chaves "texto:<id>" (ver cardElementos.ts) — por isso o índice por string.
+export type CardLayout = Record<CardFieldKey, CardElementConfig> & { [chave: string]: CardElementConfig };
 
 // Todo par família/peso realmente usado pelos campos de TEXTO de um
 // card-molde — usado pra pré-carregar (ensureFontsLoaded, ver
 // src/lib/fonts/fontLoader.ts) antes de desenhar, mesmo mecanismo já
 // usado no Editor de Layout do Gerador de Ofertas.
 export function fontPairsFromCardLayout(layout: CardLayout): { family: string; weight: number }[] {
-  return CARD_FIELD_DEFS.filter((d) => d.type === "text").map((d) => {
-    const cfg = layout[d.key] as Partial<CardTextElementConfig> | undefined;
-    return {
-      family: cfg?.fontFamily ?? DEFAULT_FONT_FAMILY,
-      weight: cfg?.fontWeight === "bold" ? 700 : 400,
-    };
-  });
+  // Campos de texto fixos + os textos livres ("texto:<id>", ver cardElementos.ts).
+  const cfgs = [
+    ...CARD_FIELD_DEFS.filter((d) => d.type === "text").map((d) => layout[d.key] as Partial<CardTextElementConfig> | undefined),
+    ...Object.entries(layout)
+      .filter(([k]) => k.startsWith("texto:"))
+      .map(([, cfg]) => cfg as Partial<CardTextElementConfig>),
+  ];
+  return cfgs.map((cfg) => ({
+    family: cfg?.fontFamily ?? DEFAULT_FONT_FAMILY,
+    weight: cfg?.fontWeight === "bold" ? 700 : 400,
+  }));
 }
 
 export const DEFAULT_CARD_WIDTH = 300;
@@ -230,6 +240,8 @@ export type CardShape = {
   // do card; ausente/0 = cantos retos (formas salvas antes disto). Ver
   // formaArredondada.ts.
   raio?: number;
+  // Id do grupo (ver cardElementos.ts).
+  grupo?: string;
 };
 
 export function defaultCardShape(type: CardShapeType, id: string): CardShape {

@@ -14,6 +14,7 @@ import {
   type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
+import { chaveTexto, listarTextos } from "../../../core/cardElementos";
 import { mmToPx, pxToMm } from "../../../core/pageConfig";
 import type { TextAlign } from "@/lib/canvasText";
 import FontPicker from "@/components/fonts/FontPicker";
@@ -150,10 +151,16 @@ function PanelCard({
   );
 }
 
-function Secao({ titulo, children }: { titulo?: string; children: React.ReactNode }) {
+// `acao` = botão à direita do subtítulo (ex.: "+ Texto").
+function Secao({ titulo, acao, children }: { titulo?: string; acao?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="py-3">
-      {titulo && <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{titulo}</h3>}
+      {(titulo || acao) && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {titulo ? <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{titulo}</h3> : <span />}
+          {acao}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -307,6 +314,9 @@ export type ElementsPanelProps = {
   selectedShapeIds: string[];
   onSelectShape: (id: string, mode: SelectMode) => void;
   onAddShape: (type: CardShapeType) => void;
+  // Textos livres moram no layout ("texto:<id>"); "+ Texto" cria um novo.
+  layout: CardLayout;
+  onAddTexto: () => void;
   // "Estrutura do card" é um item da lista, como os campos: selecionada
   // quando não há campo/forma selecionado.
   estruturaSelecionada: boolean;
@@ -324,10 +334,20 @@ export function ElementsPanel({
   selectedShapeIds,
   onSelectShape,
   onAddShape,
+  layout,
+  onAddTexto,
   estruturaSelecionada,
   onSelectEstrutura,
 }: ElementsPanelProps) {
   const camposTexto = CARD_FIELD_DEFS.filter((d) => d.type === "text" && camposHabilitados.includes(d.key));
+  const textosLivres = listarTextos(layout);
+  const emGrupoCampo = (chave: string) => !!(layout[chave] as { grupo?: string } | undefined)?.grupo;
+  const marcaGrupo = (ativo: boolean) =>
+    ativo ? (
+      <span className="ml-auto shrink-0 rounded bg-sky-100 px-1 text-[9px] font-semibold uppercase text-sky-700" title="Faz parte de um grupo">
+        grupo
+      </span>
+    ) : null;
 
   return (
     <PanelCard titulo="Card">
@@ -371,6 +391,7 @@ export function ElementsPanel({
                 >
                   {def.label}
                 </button>
+                {marcaGrupo(habilitado && emGrupoCampo(def.key))}
               </div>
             );
           })}
@@ -391,6 +412,43 @@ export function ElementsPanel({
             </option>
           ))}
         </select>
+      </Secao>
+
+      <Secao
+        titulo="Textos"
+        acao={
+          <button
+            onClick={onAddTexto}
+            className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+          >
+            + Texto
+          </button>
+        }
+      >
+        {textosLivres.length === 0 ? (
+          <p className="text-xs text-slate-400">Nenhum texto. Use &quot;+ Texto&quot; para um rótulo fixo (ex.: Oferta destaque).</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {textosLivres.map((t, i) => (
+              <button
+                key={t.id}
+                onClick={(e) => onSelectShape(t.id, getClickMode(e))}
+                className={
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium " +
+                  (selectedShapeIds.includes(t.id) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")
+                }
+              >
+                <span className="truncate">
+                  Texto {i + 1}
+                  <span className={"ml-1 font-normal " + (selectedShapeIds.includes(t.id) ? "text-slate-300" : "text-slate-400")}>
+                    {t.text ? `“${t.text.length > 18 ? t.text.slice(0, 18) + "…" : t.text}”` : ""}
+                  </span>
+                </span>
+                {marcaGrupo(emGrupoCampo(chaveTexto(t.id)))}
+              </button>
+            ))}
+          </div>
+        )}
       </Secao>
 
       <Secao titulo="Formas">
@@ -420,6 +478,7 @@ export function ElementsPanel({
                 >
                   <span className="h-3 w-3 shrink-0 rounded-sm border border-slate-400" style={{ backgroundColor: shape.color }} />
                   {def?.label ?? shape.type} {i + 1}
+                  {marcaGrupo(!!shape.grupo)}
                 </button>
               );
             })}
@@ -438,10 +497,50 @@ export type SelectedElementPanelProps = {
   selectedShapeIds: string[];
   onUpdateShape: (id: string, patch: Partial<CardShape>) => void;
   onRemoveShape: (id: string) => void;
+  onUpdateTexto: (id: string, patch: Partial<CardTextElementConfig>) => void;
+  // Ações sobre a seleção (duplicar / agrupar / desagrupar / excluir).
+  acoes: AcoesSelecao;
   // Unidade (px/mm) compartilhada com o painel de estrutura.
   unit: Unidade;
   onUnitChange: (u: Unidade) => void;
 };
+
+export type AcoesSelecao = {
+  podeDuplicar: boolean;
+  podeAgrupar: boolean;
+  temGrupo: boolean;
+  podeExcluir: boolean;
+  onDuplicar: () => void;
+  onAgrupar: () => void;
+  onDesagrupar: () => void;
+  onExcluir: () => void;
+};
+
+function BarraDeAcoes({ acoes }: { acoes: AcoesSelecao }) {
+  const botao = (rotulo: string, ativo: boolean, onClick: () => void, titulo: string, perigo = false) => (
+    <button
+      onClick={onClick}
+      disabled={!ativo}
+      title={titulo}
+      className={
+        "rounded-md px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 " +
+        (perigo ? "bg-red-50 text-red-700 hover:bg-red-100" : "bg-slate-100 text-slate-700 hover:bg-slate-200")
+      }
+    >
+      {rotulo}
+    </button>
+  );
+  return (
+    <Secao titulo="Ações">
+      <div className="grid grid-cols-2 gap-1">
+        {botao("Duplicar", acoes.podeDuplicar, acoes.onDuplicar, "Duplica formas e textos da seleção (Ctrl+D). Campos fixos (foto, código…) existem uma vez só.")}
+        {botao("Agrupar", acoes.podeAgrupar, acoes.onAgrupar, "Junta 2 ou mais elementos: mexer em um move o grupo todo (Ctrl+G)")}
+        {botao("Desagrupar", acoes.temGrupo, acoes.onDesagrupar, "Desfaz o grupo da seleção (Ctrl+Shift+G)")}
+        {botao("Excluir", acoes.podeExcluir, acoes.onExcluir, "Exclui as formas e textos da seleção (Delete)", true)}
+      </div>
+    </Secao>
+  );
+}
 
 function UnitToggle({ unit, onChange }: { unit: Unidade; onChange: (u: Unidade) => void }) {
   return (
@@ -470,12 +569,19 @@ export function SelectedElementPanel({
   selectedShapeIds,
   onUpdateShape,
   onRemoveShape,
+  onUpdateTexto,
+  acoes,
   unit,
   onUnitChange,
 }: SelectedElementPanelProps) {
   const selectionCount = selectedKeys.length + selectedShapeIds.length;
   const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
   const selectedShape = selectedShapeIds.length === 1 ? shapes.find((s) => s.id === selectedShapeIds[0]) : null;
+  // Texto livre selecionado (os ids de textos ficam junto com os das formas).
+  const selectedTextoId =
+    selectedShapeIds.length === 1 && selectedKeys.length === 0 && !selectedShape && chaveTexto(selectedShapeIds[0]) in layout
+      ? selectedShapeIds[0]
+      : null;
 
   function toDisplay(px: number) {
     return unit === "mm" ? pxToMm(px) : Math.round(px);
@@ -499,9 +605,24 @@ export function SelectedElementPanel({
       {selectionCount > 1 && (
         <Secao>
           <p className="text-xs text-slate-500">
-            {selectionCount} elementos selecionados. Use as setas do teclado pra mover todos juntos (Shift+seta move 10px).
+            {selectionCount} elementos selecionados. Arraste ou use as setas do teclado pra mover todos juntos (Shift+seta move 10px).
           </p>
         </Secao>
+      )}
+
+      {selectionCount >= 1 && <BarraDeAcoes acoes={acoes} />}
+
+      {selectionCount === 1 && selectedTextoId && (
+        <TextProperties
+          label="Texto"
+          livre
+          ehPreco={false}
+          cfg={layout[chaveTexto(selectedTextoId)] as CardTextElementConfig}
+          unit={unit}
+          toDisplay={toDisplay}
+          fromDisplay={fromDisplay}
+          onUpdate={(patch) => onUpdateTexto(selectedTextoId, patch)}
+        />
       )}
 
       {selectionCount === 1 && selectedShape && (
@@ -645,6 +766,7 @@ function ShapeProperties({
 
 function TextProperties({
   label,
+  livre = false,
   ehPreco,
   cfg,
   unit,
@@ -653,6 +775,8 @@ function TextProperties({
   onUpdate,
 }: {
   label: string;
+  // Texto livre (adicionado à mão): conteúdo fixo, igual em todos os cards.
+  livre?: boolean;
   ehPreco: boolean;
   cfg: CardTextElementConfig;
   unit: "px" | "mm";
@@ -676,10 +800,14 @@ function TextProperties({
           onBlur={(e) => onUpdate({ text: e.target.value })}
           className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
         />
-        <p className="mt-1 text-[11px] text-slate-400">
-          O valor real do produto entra em <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">{"{valor}"}</code> — pode
-          adicionar um rótulo fixo em volta, ex.: <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">À vista: {"{valor}"}</code>.
-        </p>
+        {livre ? (
+          <p className="mt-1 text-[11px] text-slate-400">Texto fixo — o mesmo em todos os cards (ex.: rótulos como &quot;Oferta destaque&quot;).</p>
+        ) : (
+          <p className="mt-1 text-[11px] text-slate-400">
+            O valor real do produto entra em <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">{"{valor}"}</code> — pode
+            adicionar um rótulo fixo em volta, ex.: <code className="mx-0.5 rounded bg-slate-100 px-1 py-0.5">À vista: {"{valor}"}</code>.
+          </p>
+        )}
       </Secao>
 
       <Secao titulo="Fonte">

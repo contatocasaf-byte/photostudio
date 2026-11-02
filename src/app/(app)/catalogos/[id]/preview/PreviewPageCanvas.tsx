@@ -17,6 +17,7 @@ import {
   type PageShape,
   type PageTextElementConfig,
 } from "../../core/pageConfig";
+import { chaveTexto, listarTextos } from "../../core/cardElementos";
 import { corComOpacidade } from "../../core/cor";
 import { raioEfetivoRetangulo, tracarRetanguloArredondado, tracarTriangulo } from "../../core/formaArredondada";
 import { contornosArredondados, fundosDosCards } from "../../core/fundosDoCard";
@@ -641,7 +642,7 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
             const originX = margens.left + card.x;
             const originY = margens.top + card.y;
 
-            return CARD_FIELD_DEFS.filter((d) => cardTemplate.camposHabilitados.includes(d.key)).map((def) => {
+            const campos = CARD_FIELD_DEFS.filter((d) => cardTemplate.camposHabilitados.includes(d.key)).map((def) => {
               const cfg = cardTemplate.layout[def.key];
               if (!cfg) return null;
               const key = `${card.product.id}-${def.key}`;
@@ -690,6 +691,24 @@ export default function PreviewPageCanvas({ page, paginaLargura, paginaAltura, n
                 />
               );
             });
+
+            // Textos livres (adicionados à mão no card-molde) — texto fixo, por
+            // cima dos campos.
+            const textos = listarTextos(cardTemplate.layout)
+              .filter((t) => t.text)
+              .map((t) => (
+                <CardTextField
+                  key={`${card.product.id}-${chaveTexto(t.id)}`}
+                  cfg={t}
+                  text={t.text}
+                  originX={originX}
+                  originY={originY}
+                  scale={scale}
+                  cardScale={page.cardScale}
+                  fontsTick={fontsTick}
+                />
+              ));
+            return [...campos, ...textos];
           })}
       </Layer>
     </Stage>

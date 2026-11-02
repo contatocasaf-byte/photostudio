@@ -17,6 +17,7 @@ import {
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
 import { corComOpacidade } from "../../../core/cor";
+import { chaveTexto, expandirPorGrupo, listarTextos } from "../../../core/cardElementos";
 import { raioEfetivoRetangulo, tracarTriangulo } from "../../../core/formaArredondada";
 import { drawTextFit } from "@/lib/canvasText";
 import { desenharPrecoDestacado } from "@/lib/precoDestacado";
@@ -155,9 +156,11 @@ function TextFieldNode({
   onSelect,
   onUpdate,
   registerRef,
+  onDragStart,
   fontsTick,
 }: NodeProps & {
-  fieldKey: CardFieldKey;
+  // Chave de campo fixo OU id de um texto livre (os dois usam este nó).
+  fieldKey: string;
   cfg: CardTextElementConfig;
   sampleText: string;
   onUpdate: (patch: Partial<CardTextElementConfig>) => void;
@@ -187,6 +190,7 @@ function TextFieldNode({
       draggable
       onClick={onSelect}
       onTap={onSelect}
+      onDragStart={onDragStart}
       onDragMove={(e) =>
         onUpdate({ x: Math.round((e.target.x() - ORIGIN) / scale), y: Math.round((e.target.y() - ORIGIN) / scale) })
       }
@@ -630,6 +634,74 @@ export default function CardEditorCanvas({
     onShapesChange((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
+  // Texto livre (layout["texto:<id>"]) — atualiza só ele.
+  function updateTexto(id: string, patch: CardElementConfig) {
+    const chave = chaveTexto(id);
+    onLayoutChange((prev) => (prev[chave] ? { ...prev, [chave]: { ...prev[chave], ...patch } } : prev));
+  }
+
+  const ehCampoFixo = (chave: string) => CARD_FIELD_DEFS.some((d) => d.key === chave);
+
+  // --- Movimento em conjunto (grupos e seleção múltipla) -------------------
+  // Ao começar a arrastar um elemento, guarda a posição de todos os que devem
+  // andar junto (a seleção atual, ou o grupo dele se ainda não estava
+  // selecionado); enquanto arrasta, os outros recebem o mesmo deslocamento.
+  const arrasteRef = useRef<{ dono: string; inicio: Record<string, { x: number; y: number }> } | null>(null);
+
+  function posicaoDe(chave: string): { x: number; y: number } | null {
+    const forma = shapes.find((s) => s.id === chave);
+    if (forma) return { x: forma.x, y: forma.y };
+    const cfg = (ehCampoFixo(chave) ? layout[chave] : layout[chaveTexto(chave)]) as { x?: number; y?: number } | undefined;
+    return cfg && cfg.x !== undefined && cfg.y !== undefined ? { x: cfg.x, y: cfg.y } : null;
+  }
+
+  function aplicarPosicao(chave: string, x: number, y: number) {
+    if (shapes.some((s) => s.id === chave)) updateShape(chave, { x, y });
+    else if (ehCampoFixo(chave)) updateField(chave as CardFieldKey, { x, y });
+    else updateTexto(chave, { x, y });
+  }
+
+  function iniciarArraste(chave: string) {
+    const selecionados = [...selectedKeys, ...selectedShapeIds];
+    const base = selecionados.includes(chave) ? selecionados : [chave];
+    const exp = expandirPorGrupo(
+      { layout, shapes },
+      { campos: base.filter(ehCampoFixo), livres: base.filter((k) => !ehCampoFixo(k)) },
+      camposHabilitados
+    );
+    const inicio: Record<string, { x: number; y: number }> = {};
+    for (const k of [...exp.campos, ...exp.livres, chave]) {
+      const p = posicaoDe(k);
+      if (p) inicio[k] = p;
+    }
+    arrasteRef.current = { dono: chave, inicio };
+    const limpar = () => {
+      arrasteRef.current = null;
+    };
+    window.addEventListener("mouseup", limpar, { once: true });
+    window.addEventListener("touchend", limpar, { once: true });
+  }
+
+  // Chamado a cada movimento do elemento que está sendo arrastado.
+  function moverJuntos(dono: string, x: number, y: number) {
+    const a = arrasteRef.current;
+    if (!a || a.dono !== dono || !a.inicio[dono]) return;
+    const dx = x - a.inicio[dono].x;
+    const dy = y - a.inicio[dono].y;
+    for (const [k, p] of Object.entries(a.inicio)) {
+      if (k === dono) continue;
+      aplicarPosicao(k, p.x + dx, p.y + dy);
+    }
+  }
+
+  // onUpdate de um nó arrastável: atualiza o próprio e leva os demais junto.
+  function aoAtualizar(chave: string, aplicar: (patch: never) => void) {
+    return (patch: { x?: number; y?: number } & Record<string, unknown>) => {
+      (aplicar as (p: unknown) => void)(patch);
+      if (patch.x !== undefined && patch.y !== undefined) moverJuntos(chave, patch.x, patch.y);
+    };
+  }
+
   // Elementos sobrepostos: uma forma pequena em cima (ou atrás) da área da foto
   // não dava pra selecionar — o clique/arraste caía na foto, que é maior. Regra:
   // entre os elementos que cobrem o ponteiro, vale o de MENOR área (o pequeno
@@ -641,7 +713,10 @@ export default function CardEditorCanvas({
     // ponteiro pode já ter saído de cima do elemento (movimento rápido).
     const pos = (noArraste ? pressionadoEm.current : null) ?? stage?.getPointerPosition();
     if (!pos) return chaveNativa;
-    if (CARD_FIELD_DEFS.some((d) => d.key === chaveNativa && d.type === "text")) return chaveNativa;
+    // Só foto (quadro tracejado) e formas disputam o clique; texto (fixo ou
+    // livre) acertado nas letras vale como sempre.
+    const nativaEhFoto = CARD_FIELD_DEFS.some((d) => d.key === chaveNativa && d.type === "image");
+    if (!nativaEhFoto && !shapes.some((s) => s.id === chaveNativa)) return chaveNativa;
 
     const melhor = { key: chaveNativa, area: Number.POSITIVE_INFINITY };
     const considerar = (key: string, tipo: CardShape["type"]) => {
@@ -665,9 +740,22 @@ export default function CardEditorCanvas({
     return melhor.key;
   }
 
+  function chamarSelecao(chave: string, modo: SelectMode) {
+    if (ehCampoFixo(chave)) onSelectField(chave as CardFieldKey, modo);
+    else onSelectShape(chave, modo); // forma ou texto livre (ids ficam na mesma lista)
+  }
+
+  // Clicar num elemento que está num grupo seleciona (ou, com Alt, retira) o
+  // grupo inteiro.
   function selecionarEm(chave: string, modo: SelectMode) {
-    if (shapes.some((s) => s.id === chave)) onSelectShape(chave, modo);
-    else onSelectField(chave as CardFieldKey, modo);
+    const exp = expandirPorGrupo(
+      { layout, shapes },
+      ehCampoFixo(chave) ? { campos: [chave], livres: [] } : { campos: [], livres: [chave] },
+      camposHabilitados
+    );
+    chamarSelecao(chave, modo);
+    const outroModo: SelectMode = modo === "remove" ? "remove" : "add";
+    for (const k of [...exp.campos, ...exp.livres]) if (k !== chave) chamarSelecao(k, outroModo);
   }
 
   function selectField(key: CardFieldKey, e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
@@ -682,12 +770,16 @@ export default function CardEditorCanvas({
   // este arraste, seleciona o menor e passa o arraste pra ele.
   function redirecionarArraste(chave: string, e: Konva.KonvaEventObject<DragEvent>) {
     const alvo = alvoSobPonteiro(e.target.getStage(), chave, true);
-    if (alvo === chave) return;
-    const outro = nodeRefs.current[alvo];
-    if (!outro) return;
-    e.target.stopDrag();
-    selecionarEm(alvo, "replace");
-    outro.startDrag();
+    if (alvo !== chave) {
+      const outro = nodeRefs.current[alvo];
+      if (outro) {
+        e.target.stopDrag();
+        selecionarEm(alvo, "replace");
+        outro.startDrag(); // dispara o dragstart do outro, que inicia o arraste dele
+        return;
+      }
+    }
+    iniciarArraste(chave);
   }
 
   // Posição da cópia fantasma é derivada direto de gutterX/gutterY (sem
@@ -703,7 +795,8 @@ export default function CardEditorCanvas({
   const selectedDef = selectedKeys.length === 1 ? CARD_FIELD_DEFS.find((d) => d.key === selectedKeys[0]) : null;
   // Forma selecionada usa o mesmo conjunto de âncoras livres (8 pontos)
   // já usado pro campo de imagem — redimensiona livre em qualquer eixo.
-  const isFreeResize = selectedShapeIds.length === 1 || selectedDef?.type === "image";
+  const textoLivreSelecionado = selectedShapeIds.length === 1 && chaveTexto(selectedShapeIds[0]) in layout;
+  const isFreeResize = (selectedShapeIds.length === 1 && !textoLivreSelecionado) || selectedDef?.type === "image";
   // Com mais de um elemento selecionado, o Transformer só mostra o
   // contorno da seleção (sem alças de redimensionar) — redimensionar
   // vários elementos de tipos/tamanhos diferentes ao mesmo tempo não foi
@@ -761,7 +854,7 @@ export default function CardEditorCanvas({
             scale={scale}
             selected={selectedShapeIds.includes(shape.id)}
             onSelect={(e) => selectShape(shape.id, e)}
-            onUpdate={(patch) => updateShape(shape.id, patch)}
+            onUpdate={aoAtualizar(shape.id, (patch: Partial<CardShape>) => updateShape(shape.id, patch))}
             registerRef={registerRef}
             onDragStart={(e) => redirecionarArraste(shape.id, e)}
           />
@@ -776,7 +869,7 @@ export default function CardEditorCanvas({
               scale={scale}
               selected={selectedKeys.includes(def.key)}
               onSelect={(e) => selectField(def.key, e)}
-              onUpdate={(patch) => updateField(def.key, patch)}
+              onUpdate={aoAtualizar(def.key, (patch: CardElementConfig) => updateField(def.key, patch))}
               registerRef={registerRef}
               onDragStart={(e) => redirecionarArraste(def.key, e)}
             />
@@ -789,12 +882,31 @@ export default function CardEditorCanvas({
               scale={scale}
               selected={selectedKeys.includes(def.key)}
               onSelect={(e) => selectField(def.key, e)}
-              onUpdate={(patch) => updateField(def.key, patch)}
+              onUpdate={aoAtualizar(def.key, (patch: CardElementConfig) => updateField(def.key, patch))}
               registerRef={registerRef}
+              onDragStart={() => iniciarArraste(def.key)}
               fontsTick={fontsTick}
             />
           )
         )}
+
+        {/* Textos livres (adicionados à mão) — por cima dos campos fixos. */}
+        {listarTextos(layout).map((t) => (
+          <TextFieldNode
+            key={t.id}
+            fieldKey={t.id}
+            cfg={t}
+            // texto fixo: "{valor}" digitado fica literal (como na visualização e no PDF)
+            sampleText="{valor}"
+            scale={scale}
+            selected={selectedShapeIds.includes(t.id)}
+            onSelect={(e) => selecionarEm(t.id, getSelectMode(e))}
+            onUpdate={aoAtualizar(t.id, (patch: CardElementConfig) => updateTexto(t.id, patch))}
+            registerRef={registerRef}
+            onDragStart={() => iniciarArraste(t.id)}
+            fontsTick={fontsTick}
+          />
+        ))}
 
         <BoundaryTransformer transformerRef={boundaryTransformerRef} scale={scale} soAltura={larguraTravada} />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   getSection,
@@ -29,6 +29,16 @@ import {
   type CardShapeType,
   type CardTextElementConfig,
 } from "../../../core/cardConfig";
+import {
+  agrupar,
+  chaveTexto,
+  defaultCardTexto,
+  desagrupar,
+  duplicar,
+  gruposDaSelecao,
+  removerLivres,
+  type EstadoElementos,
+} from "../../../core/cardElementos";
 import CardEditorCanvas from "./CardEditorCanvas";
 import { CardStructurePanel, ElementsPanel, SelectedElementPanel } from "./PropertiesPanel";
 import FontManager from "@/components/fonts/FontManager";
@@ -335,36 +345,123 @@ export default function CardEditorPage({
     setShapes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
 
+  // Remove uma forma OU um texto livre (os ids ficam na mesma lista de seleção).
   function handleRemoveShape(id: string) {
-    setShapes((prev) => prev.filter((s) => s.id !== id));
+    aplicarElementos(removerLivres({ layout, shapes }, [id]));
     setSelectedShapeIds((prev) => prev.filter((s) => s !== id));
   }
+
+  function aplicarElementos(e: EstadoElementos) {
+    setLayout(e.layout);
+    setShapes(e.shapes);
+  }
+
+  // --- Textos livres, duplicar e agrupar ------------------------------------
+  function handleAddTexto() {
+    const id = crypto.randomUUID();
+    setLayout((prev) => ({ ...prev, [chaveTexto(id)]: defaultCardTexto() }));
+    handleSelectShape(id, "replace");
+  }
+
+  function handleUpdateTexto(id: string, patch: Partial<CardTextElementConfig>) {
+    const chave = chaveTexto(id);
+    setLayout((prev) => (prev[chave] ? { ...prev, [chave]: { ...prev[chave], ...patch } } : prev));
+  }
+
+  const selecao = { campos: selectedKeys as string[], livres: selectedShapeIds };
+  const totalSelecionado = selectedKeys.length + selectedShapeIds.length;
+  const selecaoTemGrupo = gruposDaSelecao({ layout, shapes }, selecao).size > 0;
+
+  function handleDuplicar() {
+    if (selectedShapeIds.length === 0) {
+      setStatus("⚠ Só formas e textos podem ser duplicados — os campos fixos (foto, código, ref…) existem uma vez só no card.");
+      return;
+    }
+    const r = duplicar({ layout, shapes }, selecao, () => crypto.randomUUID());
+    if (r.novos.length === 0) return;
+    aplicarElementos(r.estado);
+    setSelectedKeys([]);
+    setSelectedShapeIds(r.novos);
+    setStatus(
+      r.ignorados > 0
+        ? `✔ ${r.novos.length} elemento(s) duplicado(s). ${r.ignorados} campo(s) fixo(s) foram ignorados (existem uma vez só no card).`
+        : `✔ ${r.novos.length} elemento(s) duplicado(s).`
+    );
+  }
+
+  function handleAgrupar() {
+    if (totalSelecionado < 2) return;
+    aplicarElementos(agrupar({ layout, shapes }, selecao, crypto.randomUUID()));
+    setStatus("✔ Elementos agrupados — mexer em um deles move o grupo todo.");
+  }
+
+  function handleDesagrupar() {
+    if (!selecaoTemGrupo) return;
+    aplicarElementos(desagrupar({ layout, shapes }, selecao, camposHabilitados));
+    setStatus("✔ Grupo desfeito.");
+  }
+
+  // Exclui as formas e textos da seleção (campos fixos ficam: se não quiser um,
+  // desmarque o checkbox dele na lista).
+  function handleExcluirSelecao() {
+    if (selectedShapeIds.length === 0) return;
+    aplicarElementos(removerLivres({ layout, shapes }, selectedShapeIds));
+    setSelectedShapeIds([]);
+  }
+
+  // Atalhos (Ctrl+D, Ctrl+G, Ctrl+Shift+G, Delete) usam sempre a versão mais
+  // recente dos handlers acima.
+  const atalhos = useRef({ duplicar: handleDuplicar, agrupar: handleAgrupar, desagrupar: handleDesagrupar, excluir: handleExcluirSelecao });
+  useEffect(() => {
+    atalhos.current = { duplicar: handleDuplicar, agrupar: handleAgrupar, desagrupar: handleDesagrupar, excluir: handleExcluirSelecao };
+  });
 
   // Move todo campo/forma selecionado com as setas do teclado (1px, ou
   // 10px com Shift) — ignora quando o foco está num campo de texto do
   // painel de propriedades, senão roubaria a digitação de número/texto.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const alvo = e.target as HTMLElement | null;
+      const digitando = !!alvo && ["INPUT", "TEXTAREA", "SELECT"].includes(alvo.tagName);
+      if (!digitando && (e.ctrlKey || e.metaKey)) {
+        const k = e.key.toLowerCase();
+        if (k === "d") {
+          e.preventDefault();
+          atalhos.current.duplicar();
+          return;
+        }
+        if (k === "g") {
+          e.preventDefault();
+          if (e.shiftKey) atalhos.current.desagrupar();
+          else atalhos.current.agrupar();
+          return;
+        }
+      }
+      if (!digitando && e.key === "Delete") {
+        atalhos.current.excluir();
+        return;
+      }
+
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
       if (selectedKeys.length === 0 && selectedShapeIds.length === 0) return;
-      const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (digitando) return;
 
       e.preventDefault();
       const step = e.shiftKey ? 10 : 1;
       const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
       const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
 
-      if (selectedKeys.length > 0) {
-        setLayout((prev) => {
-          const next = { ...prev };
-          for (const key of selectedKeys) {
-            const cfg = next[key];
-            next[key] = { ...cfg, x: (cfg?.x ?? 0) + dx, y: (cfg?.y ?? 0) + dy };
-          }
-          return next;
-        });
-      }
+      // Campos fixos e textos livres (os ids de textos vêm junto com os das formas).
+      setLayout((prev) => {
+        const next = { ...prev };
+        const mover = (chave: string) => {
+          const cfg = next[chave];
+          if (cfg) next[chave] = { ...cfg, x: (cfg.x ?? 0) + dx, y: (cfg.y ?? 0) + dy };
+        };
+        for (const key of selectedKeys) mover(key);
+        for (const id of selectedShapeIds) mover(chaveTexto(id));
+        return next;
+      });
       if (selectedShapeIds.length > 0) {
         setShapes((prev) => prev.map((s) => (selectedShapeIds.includes(s.id) ? { ...s, x: s.x + dx, y: s.y + dy } : s)));
       }
@@ -693,6 +790,17 @@ export default function CardEditorPage({
               selectedShapeIds={selectedShapeIds}
               onUpdateShape={handleUpdateShape}
               onRemoveShape={handleRemoveShape}
+              onUpdateTexto={handleUpdateTexto}
+              acoes={{
+                podeDuplicar: selectedShapeIds.length > 0,
+                podeAgrupar: totalSelecionado >= 2,
+                temGrupo: selecaoTemGrupo,
+                podeExcluir: selectedShapeIds.length > 0,
+                onDuplicar: handleDuplicar,
+                onAgrupar: handleAgrupar,
+                onDesagrupar: handleDesagrupar,
+                onExcluir: handleExcluirSelecao,
+              }}
               unit={unit}
               onUnitChange={setUnit}
             />
@@ -711,6 +819,8 @@ export default function CardEditorPage({
             selectedShapeIds={selectedShapeIds}
             onSelectShape={handleSelectShape}
             onAddShape={handleAddShape}
+            layout={layout}
+            onAddTexto={handleAddTexto}
             estruturaSelecionada={selectedKeys.length + selectedShapeIds.length === 0}
             onSelectEstrutura={handleClearSelection}
           />
