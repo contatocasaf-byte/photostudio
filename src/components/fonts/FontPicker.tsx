@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { listGoogleFontOptions, listCustomFontOptions, ensureFontLoaded, type FontOption } from "@/lib/fonts/fontLoader";
 
-type FamilyEntry = { family: string; weights: number[]; source: "google" | "custom" };
+type FamilyEntry = { family: string; weights: number[]; source: "google" | "custom" | "system" };
+
+// Arial é o padrão de todo card/página/layout e não está em nenhuma biblioteca
+// (fonte do sistema; o PDF a resolve como Helvetica). Entra na lista à parte
+// pra poder ser escolhida de volta depois de trocar por outra.
+const FONTES_SISTEMA: FamilyEntry[] = [{ family: "Arial", weights: [400, 700], source: "system" }];
 
 function groupByFamily(options: FontOption[]): FamilyEntry[] {
   const map = new Map<string, FamilyEntry>();
@@ -15,6 +20,7 @@ function groupByFamily(options: FontOption[]): FamilyEntry[] {
       map.set(o.family, { family: o.family, weights: [o.weight], source: o.source });
     }
   }
+  for (const f of FONTES_SISTEMA) if (!map.has(f.family)) map.set(f.family, f);
   return [...map.values()].sort((a, b) => a.family.localeCompare(b.family));
 }
 
@@ -109,6 +115,9 @@ export default function FontPicker({ family, weight, onSelect }: Props) {
                   <span className="truncate">{f.family}</span>
                   {f.source === "custom" && (
                     <span className="ml-2 shrink-0 text-[10px] font-sans normal-case text-slate-400">própria</span>
+                  )}
+                  {f.source === "system" && (
+                    <span className="ml-2 shrink-0 text-[10px] font-sans normal-case text-slate-400">padrão</span>
                   )}
                 </button>
               ))}
